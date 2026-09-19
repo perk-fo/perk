@@ -97,6 +97,55 @@ describe("indexer", () => {
     expect(state?.cursorBlock).toBe(head - BigInt(confirmations));
   });
 
+  test("a redeployment (new start block) clears the old index and restarts from the new deployment", async () => {
+    const chain = emptyChain(1010n);
+    chain.erc20.set(MEME.toLowerCase(), { name: "Meme", symbol: "MEME", decimals: 18, totalSupply: 1_000_000n });
+    chain.logs.push(
+      makeLog({
+        address: D.factory,
+        abi: ABI_BY_CONTRACT.factory,
+        eventName: "LaunchCreated",
+        args: {
+          launchId: LAUNCH_ID,
+          meme: MEME,
+          creator: CREATOR,
+          quote: ZERO,
+          templateId: TEMPLATE_ID,
+          configHash: CONFIG_HASH,
+        },
+        blockNumber: 1000n,
+      }),
+    );
+    const first = new Indexer({ db, client: mockClient(chainHandler(chain)), config: testConfig({ confirmations: 2 }) });
+    await first.init();
+    await first.syncOnce();
+    expect((await db`select count(*)::int as n from launches`)[0].n).toBe(1);
+
+    // same database, contracts redeployed later on the same chain
+    const redeployed = { ...D, blockNumber: 1005, factory: "0x00000000000000000000000000000000000f00d5" as const };
+    const second = new Indexer({
+      db,
+      client: mockClient(chainHandler(chain)),
+      config: testConfig({ confirmations: 2, deployment: redeployed }),
+    });
+    await second.init();
+    expect((await db`select count(*)::int as n from launches`)[0].n).toBe(0);
+    const state = await readSyncState(db, CHAIN);
+    expect(state?.startBlock).toBe(1005n);
+    expect(state?.cursorBlock).toBe(1004n);
+    expect((await db`select count(*)::int as n from schema_migrations`)[0].n).toBeGreaterThan(0);
+
+    // and an unchanged deployment leaves the index alone on the next boot
+    await second.syncOnce();
+    const third = new Indexer({
+      db,
+      client: mockClient(chainHandler(chain)),
+      config: testConfig({ confirmations: 2, deployment: redeployed }),
+    });
+    await third.init();
+    expect((await readSyncState(db, CHAIN))?.cursorBlock).toBe(1008n);
+  });
+
   test("crash after apply rolls back the window; rerun applies fully", async () => {
     const head = 1010n;
     const chain = emptyChain(head);

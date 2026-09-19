@@ -15,6 +15,8 @@ export interface Deployment {
   referralRegistry: Address;
   templateRegistry: Address;
   poolManager: Address;
+  positionManager: Address;
+  permit2: Address;
   xdogToken: Address;
   assetRegistry?: Address;
   /** symbol -> token address for every registered ERC-20 quote asset. */

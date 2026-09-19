@@ -189,10 +189,6 @@ contract SixDecimalQuoteTest is PerkDeployer, Deployers {
         t.curve.buy(meme, 20_000, 0, buyer); // straight past the 8,500 threshold
         assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATION_PENDING));
 
-        IPerkBondingCurve.CurveState memory cs0 = t.curve.curveState(meme);
-        emit log_named_uint("vQuote at graduation", cs0.virtualQuote);
-        emit log_named_uint("vMeme  at graduation", cs0.virtualMeme);
-
         t.graduation.graduate(meme);
         // graduate() swallows a failing stage; call the stage directly so the revert is visible
         if (uint256(t.graduation.graduationOf(meme).stage) != uint256(IPerkGraduationManager.Stage.DONE)) {
@@ -201,16 +197,6 @@ contract SixDecimalQuoteTest is PerkDeployer, Deployers {
         }
 
         IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
-        emit log_named_address("quote", Currency.unwrap(quote));
-        emit log_named_address("meme ", meme);
-        emit log_named_string(
-            "quote is currency0",
-            Currency.unwrap(quote) == Currency.unwrap(g.key.currency0) ? "YES (overflow path)" : "no"
-        );
-        IPerkBondingCurve.CurveState memory cs1 = t.curve.curveState(meme);
-        emit log_named_uint("vQuote AFTER stageFunded", cs1.virtualQuote);
-        emit log_named_uint("vMeme  AFTER stageFunded", cs1.virtualMeme);
-        emit log_named_uint("sqrtPriceX96", g.sqrtPriceX96);
         assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.DONE));
         assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATED));
         // a real, in-range price rather than a clamp to the tick bound

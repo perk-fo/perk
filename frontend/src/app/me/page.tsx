@@ -5,7 +5,9 @@ import { useEffect } from "react";
 import { useAccount, useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import { feeRouterAbi, holderRewardDistributorAbi } from "@/generated/abis";
-import { useLaunchList, useWalletSummary } from "@/lib/api-hooks";
+import { useLaunchList, useWalletSummary,
+  useLpPositions,
+} from "@/lib/api-hooks";
 import { useDeployment, useTx } from "@/lib/hooks";
 import type { LaunchSummary } from "@/lib/api-types";
 import { HashSeal } from "@/components/art/HashSeal";
@@ -35,6 +37,7 @@ export default function MePage() {
   const { deployment } = useDeployment();
   const summary = useWalletSummary(address);
   const roles = useRoles();
+  const lp = useLpPositions(address);
   const s = summary.data;
   const names = useLaunchList({ limit: 100 });
   const nameOf = new Map((names.data?.launches ?? []).map((l) => [l.meme.toLowerCase(), `${l.name} (${l.symbol})`]));
@@ -189,7 +192,37 @@ export default function MePage() {
                 <span className="num">
                   #{p.positionId} · {nameOf.get(p.meme.toLowerCase()) ?? shortAddress(p.meme)}
                 </span>
-                <Pill tone={p.exited ? "muted" : "verdigris"}>{p.exited ? t("grant.position.exited") : t("me.positions.open")}</Pill>
+                <span className="flex items-center gap-2">
+                  <Pill tone="muted">{t("me.lp.grant")}</Pill>
+                  <Pill tone={p.exited ? "muted" : "verdigris"}>
+                    {p.exited ? t("grant.position.exited") : t("me.positions.open")}
+                  </Pill>
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* liquidity pool positions */}
+      <Panel
+        title={t("me.lp.title")}
+        right={<span className="num text-xs text-bone/45">{lp.data?.positions.length ?? 0}</span>}
+      >
+        {(lp.data?.positions.length ?? 0) === 0 ? (
+          <p className="text-sm text-bone/50">{t("me.lp.empty")}</p>
+        ) : (
+          <div className="divide-y divide-bone/6">
+            {(lp.data?.positions ?? []).map((p) => (
+              <Link
+                key={p.tokenId}
+                href={p.meme ? `/pool/${p.meme}` : "/pool"}
+                className="flex items-center justify-between gap-3 py-3 text-sm hover:text-flare"
+              >
+                <span className="num">
+                  #{p.tokenId} · {p.meme ? (nameOf.get(p.meme.toLowerCase()) ?? shortAddress(p.meme)) : "—"}
+                </span>
+                <span className="text-xs text-bone/50">{t("pool.mine.manage")} →</span>
               </Link>
             ))}
           </div>

@@ -39,7 +39,15 @@ export function PriceChart({
   trades: TradePoint[];
   height?: number;
   quoteSymbol: string;
-  labels: { empty: string; volume: string; ranges: Record<RangeKey, string>; myBuy?: string; mySell?: string };
+  labels: {
+    empty: string;
+    /** shown when the token has traded but not inside the selected range */
+    emptyRange?: string;
+    volume: string;
+    ranges: Record<RangeKey, string>;
+    myBuy?: string;
+    mySell?: string;
+  };
   now?: number;
 }) {
   const [range, setRange] = useState<RangeKey>("all");
@@ -83,6 +91,9 @@ export function PriceChart({
   const change = candleChange(candles);
   const active = hoverIdx !== null ? candles[hoverIdx] : last;
   const hasTrades = candles.some((c) => c.n > 0);
+  // "no trades yet" and "nothing in the last hour" are different things to tell someone, and saying the first
+  // when a token has a full history reads as though the page is broken.
+  const everTraded = trades.length > 0;
 
   // ~5 evenly spaced time labels over the drawn candles
   const ticks = useMemo(() => {
@@ -127,7 +138,7 @@ export function PriceChart({
           className="flex items-center justify-center rounded-panel border border-dashed border-bone/10 text-sm text-bone/40"
           style={{ height }}
         >
-          {labels.empty}
+          {everTraded ? (labels.emptyRange ?? labels.empty) : labels.empty}
         </div>
       ) : (
         <svg

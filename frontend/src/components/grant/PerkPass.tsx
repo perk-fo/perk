@@ -39,12 +39,15 @@ export function PerkPass() {
   const optInBlock = reads.data?.[0]?.result as bigint | undefined;
   const inviter = reads.data?.[1]?.result as Address | undefined;
   const loaded = optInBlock !== undefined && inviter !== undefined;
-  const issued = !!optInBlock && optInBlock > 0n;
+  const issuedOnChain = !!optInBlock && optInBlock > 0n;
   const hasInviter = !!inviter && inviter !== ZERO;
   const invitedBy = hasInviter ? inviter : invite.canBind ? invite.pending : null;
 
   const bindTx = useTx();
   const optInTx = useTx();
+  // The receipt is authoritative. The follow-up read can come from a load-balanced RPC node that has not seen the
+  // block yet and still answer 0 — which is how the pass stayed on "Claim" after a successful claim.
+  const issued = issuedOnChain || optInTx.isSuccess;
   const [chain, setChain] = useState(false);
   /** The current claim was started as bind + opt-in; drives the "step n/2" label until the opt-in settles. */
   const [twoStepClaim, setTwoStepClaim] = useState(false);
@@ -175,7 +178,7 @@ export function PerkPass() {
           </div>
           <div className="mt-4 text-center">
             <p className="label">{t("pass.no")}</p>
-            <p className="num mt-1 text-lg text-bone">{issued ? `#${formatNumber(optInBlock!, locale)}` : "— — —"}</p>
+            <p className="num mt-1 text-lg text-bone">{issuedOnChain ? `#${formatNumber(optInBlock!, locale)}` : issued ? "· · ·" : "— — —"}</p>
             <p className="label mt-3">{t("pass.holder")}</p>
             <p className="num mt-1 text-[12px] text-bone/75">{address ? shortAddress(address) : "0x……"}</p>
           </div>

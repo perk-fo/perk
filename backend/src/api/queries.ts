@@ -56,7 +56,7 @@ const LAUNCH_COLUMNS = `
   l.last_price_quote, l.last_price_meme, l.last_price, l.last_trade_at,
   l.trade_count, l.volume_quote_total, l.holder_count,
   gc.status as grant_status,
-  l.token_uri, l.metadata, l.metadata_status
+  l.token_uri, l.metadata, l.metadata_status, l.last_sqrt_price_x96
 `;
 
 export function parseStatusList(raw: string | undefined, min: number, max: number, name = "status"): number[] | undefined {
@@ -580,4 +580,37 @@ export async function selectHealth(db: Db, chainId: number): Promise<HealthRow |
     where s.chain_id = ${chainId}
   `;
   return rows[0] ?? null;
+}
+
+export interface LpPositionRow {
+  token_id: string | bigint;
+  owner: string;
+  meme: string | null;
+  pool_id: string | null;
+  liquidity: string | bigint;
+  created_at: string | number;
+  created_block: string | number;
+  closed: boolean;
+}
+
+/** Open ordinary LP positions a wallet holds, newest first. Grant positions are not in this table. */
+export async function selectLpPositionsForWallet(db: Db, chainId: number, owner: string): Promise<LpPositionRow[]> {
+  return db<LpPositionRow[]>`
+    select token_id, owner, meme, pool_id, liquidity, created_at, created_block, closed
+    from lp_positions
+    where chain_id = ${chainId} and owner = ${owner} and not closed
+    order by created_block desc, token_id desc
+    limit 100
+  `;
+}
+
+/** Open ordinary LP positions in one launch's pool. */
+export async function selectLpPositionsForMeme(db: Db, chainId: number, meme: string): Promise<LpPositionRow[]> {
+  return db<LpPositionRow[]>`
+    select token_id, owner, meme, pool_id, liquidity, created_at, created_block, closed
+    from lp_positions
+    where chain_id = ${chainId} and meme = ${meme} and not closed
+    order by created_block desc, token_id desc
+    limit 100
+  `;
 }

@@ -9,7 +9,16 @@ import { Notice } from "@/components/ui/Notice";
 import { useT } from "@/i18n/provider";
 
 /** Renders the status of one write flow: pending / confirming / success link / decoded error. */
-export function TxStatus({ tx, successText }: { tx: Tx; successText?: string }) {
+export function TxStatus({
+  tx,
+  successText,
+  successTone = "verdigris",
+}: {
+  tx: Tx;
+  successText?: string;
+  /** amber when the transaction mined but did not achieve what the user wanted */
+  successTone?: "verdigris" | "amber";
+}) {
   const chainId = useChainId();
   const { t } = useT();
   if (tx.error) {
@@ -23,7 +32,9 @@ export function TxStatus({ tx, successText }: { tx: Tx; successText?: string }) 
   return (
     <p className="num mt-3 text-[13px]">
       {tx.isConfirming && <span className="text-bone/60">{t("tx.confirming")} </span>}
-      {tx.isSuccess && <span className="text-verdigris">{successText ?? t("tx.confirmed")} </span>}
+      {tx.isSuccess && (
+        <span className={successTone === "amber" ? "text-amber" : "text-verdigris"}>{successText ?? t("tx.confirmed")} </span>
+      )}
       {!tx.isConfirming && !tx.isSuccess && <span className="text-bone/60">{t("tx.submitted")} </span>}
       <a
         className="text-flare underline decoration-flare/40 hover:decoration-flare"

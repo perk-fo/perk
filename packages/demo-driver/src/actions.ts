@@ -256,6 +256,15 @@ export async function launchStatus(cfg: DriverConfig, meme: Address): Promise<nu
   return Number(rec.status);
 }
 
+export async function memeBalance(cfg: DriverConfig, meme: Address, holder: Address): Promise<bigint> {
+  return cfg.publicClient.readContract({
+    address: meme,
+    abi: perkMemeTokenAbi,
+    functionName: "balanceOf",
+    args: [holder],
+  });
+}
+
 export async function progressBps(cfg: DriverConfig, meme: Address): Promise<number> {
   const bps = await cfg.publicClient.readContract({
     address: cfg.deployment.curve,
@@ -392,6 +401,7 @@ export async function poolSwap(
   meme: Address,
   trader: Account,
   buy: boolean,
+  /** quote-denominated when buying, meme-denominated when selling: the two sides have different decimals */
   amount: bigint,
   log: (m: string) => void,
 ): Promise<void> {
@@ -401,9 +411,13 @@ export async function poolSwap(
   const key = g.key;
   const quoteIsCurrency0 = key.currency0 !== meme;
   const zeroForOne = buy ? quoteIsCurrency0 : !quoteIsCurrency0;
-  if (!buy) {
+  // Whichever token is being paid in has to be approved to the router first. Only the sell side was covered here,
+  // so every buy against an ERC-20-quoted pool reverted inside the PoolManager and those pools simply stopped
+  // producing trades.
+  const payingWith = buy ? (quoteIsCurrency0 ? key.currency0 : key.currency1) : meme;
+  if (payingWith !== zeroAddress) {
     await call(cfg, trader, {
-      address: meme,
+      address: payingWith as Address,
       abi: perkMemeTokenAbi,
       functionName: "approve",
       args: [router, amount],
@@ -419,7 +433,7 @@ export async function poolSwap(
       { takeClaims: false, settleUsingBurn: false },
       "0x",
     ],
-    value: buy && key.currency0 === zeroAddress && zeroForOne ? amount : 0n,
+    value: buy && payingWith === zeroAddress ? amount : 0n,
   });
   log(`pool ${buy ? "buy" : "sell"} ${meme} ${amount}`);
 }

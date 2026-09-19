@@ -119,6 +119,7 @@ export function Header() {
   // A token page belongs to Trade; a campaign page belongs to LP Grant.
   const nav = [
     { href: "/trade", label: t("nav.trade"), match: (p: string) => p.startsWith("/trade") || p.startsWith("/meme") },
+    { href: "/pool", label: t("nav.pool"), match: (p: string) => p.startsWith("/pool") },
     { href: "/grant", label: t("nav.grant"), match: (p: string) => p.startsWith("/grant") },
     // launching is rare next to trading / LP: a plain entry, not a highlighted button
     { href: "/launch", label: t("nav.launch"), match: (p: string) => p.startsWith("/launch") },

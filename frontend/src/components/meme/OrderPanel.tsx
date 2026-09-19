@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   useAccount,
   useBalance,
@@ -218,7 +218,6 @@ export function OrderPanel({
   }, [approveTx.isSuccess, refetchAllowance, resetApprove]);
 
   const resetTrade = tradeTx.reset;
-  const queryClient = useQueryClient();
   const refetchQuoteBal = quoteBal.refetch;
   const refetchMemeBal = memeBal.refetch;
   useEffect(() => {
@@ -229,17 +228,15 @@ export function OrderPanel({
     setInput("");
     void refetchQuoteBal();
     void refetchMemeBal();
-    const refresh = () => void queryClient.invalidateQueries({ queryKey: ["api"] });
-    const ids = [
-      setTimeout(() => {
-        setFlash(false);
-        resetTrade();
-      }, 1500),
-      setTimeout(refresh, 2500),
-      setTimeout(refresh, 6000),
-    ];
-    return () => ids.forEach(clearTimeout);
-  }, [tradeTx.isSuccess, resetTrade, refetchQuoteBal, refetchMemeBal, queryClient]);
+    // Balances and the indexer-backed views are refreshed by useTx on a schedule that survives the reset below.
+    // (The delayed refreshes that used to live here never ran: resetTrade() flipped isSuccess, and this effect's
+    // own cleanup cancelled them.)
+    const id = setTimeout(() => {
+      setFlash(false);
+      resetTrade();
+    }, 1500);
+    return () => clearTimeout(id);
+  }, [tradeTx.isSuccess, resetTrade, refetchQuoteBal, refetchMemeBal]);
 
   const activeSlip = slipCustom
     ? Math.min(10_000, Math.max(0, Math.round(Number.parseFloat(customSlip || "0") * 100))) || 0
@@ -537,23 +534,29 @@ export function OrderPanel({
             {bps / 100}%
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setSlipCustom(true)}
-          className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors duration-fast ${
-            slipCustom ? "border-flare/50 bg-flare/10 text-flare" : "border-bone/10 text-bone/60 hover:text-bone"
-          }`}
-        >
-          {t("meme.order.slippageCustom")}
-        </button>
-        {slipCustom && (
-          <input
-            value={customSlip}
-            onChange={(e) => setCustomSlip(e.target.value)}
-            inputMode="decimal"
-            placeholder="1.5"
-            className="num w-14 rounded-full border border-bone/15 bg-transparent px-2 py-0.5 text-[11px] outline-none focus:border-flare/60"
-          />
+        {/* One control, two states: the Custom pill becomes the input in place, already focused, and picking a
+            preset turns it back into the pill. The typed value is kept, so switching back to Custom restores it. */}
+        {slipCustom ? (
+          <span className="num inline-flex items-center rounded-full border border-flare/50 bg-flare/10 px-2 py-0.5 text-[11px] text-flare">
+            <input
+              autoFocus
+              value={customSlip}
+              onChange={(e) => setCustomSlip(e.target.value.replace(/[^0-9.]/g, "").slice(0, 5))}
+              inputMode="decimal"
+              placeholder="1.5"
+              aria-label={t("meme.order.slippageCustom")}
+              className="w-9 bg-transparent text-right outline-none placeholder:text-flare/40"
+            />
+            <span className="ml-0.5">%</span>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSlipCustom(true)}
+            className="rounded-full border border-bone/10 px-2 py-0.5 text-[11px] text-bone/60 transition-colors duration-fast hover:text-bone"
+          >
+            {t("meme.order.slippageCustom")}
+          </button>
         )}
       </div>
 

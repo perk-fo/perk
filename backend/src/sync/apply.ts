@@ -10,7 +10,7 @@
 import type { Address, Hex } from "viem";
 import type { Tx } from "../db/client";
 import type { DecodedLog, SwapArgs } from "../chain/events";
-import { getErc20Meta, type Client } from "../chain/rpc";
+import { getPositionPool, getErc20Meta, type Client } from "../chain/rpc";
 import type { Deployment } from "../config";
 import type { TrackedSet } from "./tracked";
 
@@ -30,6 +30,8 @@ export interface ApplyContext {
 export const NATIVE_QUOTE = "0x0000000000000000000000000000000000000000";
 /** PerkConstants.MODULE_LP_GRANT_V1 */
 export const LP_GRANT_V1 = 1n << 3n;
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export function lower(a: string): string {
   return a.toLowerCase();
@@ -474,6 +476,9 @@ export async function onPoolSwap(tx: Tx, ctx: ApplyContext, log: DecodedLog<Swap
   const memeAmount = memeDelta < 0n ? -memeDelta : memeDelta;
   const quoteAmount = quoteDelta < 0n ? -quoteDelta : quoteDelta;
   if (memeAmount === 0n || quoteAmount === 0n) return;
+
+  await tx`update launches set last_sqrt_price_x96 = ${a.sqrtPriceX96.toString()}, updated_at = now()
+    where chain_id = ${ctx.chainId} and meme = ${m}`;
 
   const side = quoteDelta < 0n ? "buy" : "sell";
   const sender = addr(a.sender);
@@ -923,6 +928,52 @@ export async function onAssetUpdated(tx: Tx, ctx: ApplyContext, log: DecodedLog)
   ctx.quoteDecimals.set(addr(q), decimals);
 }
 
+/**
+ * PositionManager ERC-721 Transfer: an ordinary LP position was minted, moved or burnt.
+ *
+ * These are positions a wallet holds itself, as opposed to grant positions, which the vault owns on the
+ * beneficiary's behalf and which are tracked in `grant_positions`. Vault-owned ids are skipped here so the two
+ * never mix in a wallet's view. On a mint the pool is resolved once through the PositionManager and matched to an
+ * indexed launch; a position in a pool Perk did not create is recorded with a null meme and simply never surfaces.
+ */
+export async function onLpPositionTransfer(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
+  const a = log.args as { from: Address; to: Address; id: bigint };
+  const vault = ctx.deployment.lpGrantVault.toLowerCase();
+  const to = lower(a.to);
+  const from = lower(a.from);
+  const burnt = to === ZERO_ADDRESS;
+
+  if (from === ZERO_ADDRESS) {
+    // mint: resolve the pool once, then remember the position
+    if (to === vault) return; // the vault's own grant positions are tracked elsewhere
+    let meme: string | null = null;
+    let poolId: string | null = null;
+    let liquidity = 0n;
+    try {
+      const [key] = await getPositionPool(ctx.client, ctx.deployment.positionManager, a.id);
+      poolId = key.poolId;
+      liquidity = key.liquidity;
+      const rows = await tx<{ meme: string }[]>`
+        select meme from launches where chain_id = ${ctx.chainId} and pool_id = ${poolId} limit 1`;
+      meme = rows[0]?.meme ?? null;
+    } catch (err) {
+      console.warn("onLpPositionTransfer: pool lookup failed", a.id, err);
+    }
+    await tx`insert into lp_positions (
+        chain_id, token_id, owner, meme, pool_id, liquidity, created_block, created_at
+      ) values (
+        ${ctx.chainId}, ${a.id}, ${to}, ${meme}, ${poolId}, ${liquidity.toString()}, ${log.blockNumber}, ${tsOf(ctx, log)}
+      ) on conflict (chain_id, token_id) do update set owner = excluded.owner, updated_at = now()`;
+    return;
+  }
+
+  await tx`update lp_positions set
+      owner = ${burnt ? from : to},
+      closed = ${burnt},
+      updated_at = now()
+    where chain_id = ${ctx.chainId} and token_id = ${a.id}`;
+}
+
 export const HANDLERS: Record<string, Handler> = {
   "factory.LaunchCreated": onLaunchCreated,
   "factory.LaunchTemplateSelected": onLaunchTemplateSelected,
@@ -953,6 +1004,7 @@ export const HANDLERS: Record<string, Handler> = {
   "lpGrantVault.GrantMemeBurned": onGrantMemeBurned,
   "lpGrantVault.GrantFinalized": onGrantFinalized,
   "lpGrantVault.IncentiveSwept": onIncentiveSwept,
+  "positionManager.Transfer": onLpPositionTransfer as unknown as Handler,
   "referralRegistry.InviterBound": onInviterBound,
   "referralRegistry.OptedIn": onOptedIn,
   "templateRegistry.TemplateRegistered": onTemplateRegistered,

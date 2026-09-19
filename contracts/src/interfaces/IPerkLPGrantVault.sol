@@ -75,6 +75,7 @@ interface IPerkLPGrantVault {
         int24 tickLower;
         int24 tickUpper;
         uint64 activatedAt;
+        uint160 entrySqrtPriceX96; // pool price when the position was opened; prices the exit top-up with the exit price
         uint256 incentiveDebt; // liquidity * accIncentivePerLiquidity / 1e36 at last settlement
         uint256 incentiveSettled;
         bool exited;
@@ -86,6 +87,7 @@ interface IPerkLPGrantVault {
         uint64 rootDeadlineSeconds; // no active root this long after graduation => anyone may cancel and burn
         uint256 minActivation; // smallest grant meme amount per activation
         uint16 excessToIncentiveBps; // share of exit excess quote recycled to remaining grant liquidity
+        uint24 maxPriceDeviationTicks; // positions open and close only this close to the hook's reference price
     }
 
     struct GrantLeaf {
@@ -165,6 +167,9 @@ interface IPerkLPGrantVault {
     error NothingToSweep();
     error AlreadyWired();
     error NotPositionManager();
+    /// @dev The pool price is further from the hook's reference price than the vault accepts. It clears on its own
+    ///      as the reference catches up; see IPerkComposableHook.referencePrice.
+    error PriceUnstable(int24 spotTick, int24 referenceTick);
 
     // ---- wiring ----
     /// @notice One-time wiring of the GraduationManager (owner only).
@@ -209,11 +214,15 @@ interface IPerkLPGrantVault {
         returns (uint256 quoteFeesPaid, uint256 memeFeesPaid, uint256 incentivePaid);
 
     /// @notice Closes a grant position and settles principal (ADR-008 §5).
-    /// @dev Principal value at the pool's exit price is `V = quoteOut + memeOut * P`. The beneficiary is entitled to
-    ///      `E = min(quoteDeposited, V)`: their original quote deposit, capped by what the position is still worth.
-    ///      `E` is paid in quote first; when the position no longer holds that much quote, the grant meme covers the
-    ///      shortfall at `P`. Quote above `E` goes to the treasury/incentive pool, and every meme not needed to cover
-    ///      the shortfall is burned. Fees are settled separately and in full to the beneficiary.
+    /// @dev The beneficiary is owed their quote deposit `D`. It is paid in quote first; when the position no longer
+    ///      holds that much quote, grant meme covers the shortfall, converted at the geometric mean of the price the
+    ///      position was opened at and the exit price. That is the one conversion at which moving the pool price
+    ///      around an exit is worth nothing to the LP doing it: the exit price is theirs to move, and at spot a
+    ///      crash-exit-rebuy round trip drained the grant meme. With q = sqrt(P_exit / P_entry) <= 1 the beneficiary
+    ///      receives D*q in quote plus meme worth D*q*(1-q), so D*(1 - (1-q)^2) in all: 99% of the deposit after a
+    ///      20% price fall, 91% after 50%, 75% after 75%, against D*q for the same capital held without a grant.
+    ///      Quote above `D` goes to the treasury/incentive pool and every meme not paid out is burned. Fees are
+    ///      settled separately and in full to the beneficiary.
     /// @param minQuoteOut Reverts when the quote leg pays less than this.
     /// @param minMemeOut Reverts when the meme leg pays less than this. Zero for a pure-quote exit.
     function exitGrantPosition(uint256 positionId, uint256 minQuoteOut, uint256 minMemeOut)

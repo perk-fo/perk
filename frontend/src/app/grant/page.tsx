@@ -77,6 +77,12 @@ export default function GrantHubPage() {
       <header>
         <h1 className="font-display text-4xl leading-none">{t("nav.grant")}</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-bone/60">{t("grant.hub.sub")}</p>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-bone/45">
+          {t("grant.hub.vsPool")}{" "}
+          <Link href="/pool" className="text-bone/70 underline decoration-dotted underline-offset-4 hover:text-bone">
+            {t("grant.hub.toPool")} →
+          </Link>
+        </p>
       </header>
 
       <PerkPass />

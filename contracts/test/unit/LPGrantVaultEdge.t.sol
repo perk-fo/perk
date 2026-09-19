@@ -174,6 +174,7 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         PoolKey memory key = t.graduation.graduationOf(meme).key;
         _swap(key, _quoteIs0(meme), 30 ether, 0);
         _swap(key, _quoteIs0(meme), 30 ether, 0);
+        vm.warp(block.timestamp + 1 hours); // positions close only once the price has held; see PriceUnstable
 
         vm.prank(alice);
         t.vault.exitGrantPosition(alicePos, 0, 0);
@@ -505,7 +506,8 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         address meme = _activeDefault(keccak256("price-down"));
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
         uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 deposited = t.vault.position(pos).quoteDeposited;
+        IPerkLPGrantVault.GrantPosition memory p = t.vault.position(pos);
+        uint256 deposited = p.quoteDeposited;
         PoolKey memory key = t.graduation.graduationOf(meme).key;
         vm.prank(buyer);
         IERC20(meme).transfer(swapper, 20_000_000 ether);
@@ -516,21 +518,30 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         vm.prank(alice);
         (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
         assertLt(toUser, deposited); // the pool no longer holds the whole deposit in quote
-        assertGt(memeToUser, 0); // ... so the buffer pays the rest in meme
+        assertGt(memeToUser, 0); // ... so the grant meme covers the shortfall
         assertEq(IERC20(meme).balanceOf(alice) - memeBefore, memeToUser);
         assertEq(excess, 0); // nothing above the deposit is left over
         assertGt(burned, 0); // the protocol's remaining share is still burned
-        // the user is made whole: quote + meme valued at the exit price == the original deposit
-        assertApproxEqAbs(toUser + _memeValueInQuote(meme, memeToUser), deposited, 16);
+
+        // q = sqrt(P_exit / P_entry) = quote side now / quote side at entry, for a full-range position
+        uint256 q = (toUser * 1e18) / deposited;
+        // the top-up is G(1-q)/q meme, out of G/q withdrawn
+        assertApproxEqRel(memeToUser, (p.grantMemeAmount * (1e18 - q)) / q, 1e12);
+        // at the exit price the beneficiary holds D(1 - (1-q)^2): most of the deposit, never more than it
+        uint256 held = toUser + _memeValueInQuote(meme, memeToUser);
+        assertApproxEqRel(held, deposited - (deposited * (1e18 - q) ** 2) / 1e36, 1e12);
+        assertLt(held, deposited);
+        assertGt(held, (deposited * 95) / 100); // this fall costs an unprotected LP far more: see toUser
     }
 
-    /// @dev Collapse beyond the buffer: the position is worth less than the deposit, so the user takes what is left
-    ///      on both sides and nothing is burned or routed to the protocol.
-    function test_exitGrantPosition_priceCollapse_bufferExhausted_userTakesLoss() public {
+    /// @dev A deep collapse: the quote side is nearly gone, the grant meme covers most of the deposit at the
+    ///      geometric-mean price, and the beneficiary is still better off than the quote side alone.
+    function test_exitGrantPosition_priceCollapse_userKeepsGeometricShare() public {
         address meme = _activeDefault(keccak256("collapse"));
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
         uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 deposited = t.vault.position(pos).quoteDeposited;
+        IPerkLPGrantVault.GrantPosition memory p = t.vault.position(pos);
+        uint256 deposited = p.quoteDeposited;
         PoolKey memory key = t.graduation.graduationOf(meme).key;
         uint256 bal = IERC20(meme).balanceOf(buyer);
         vm.prank(buyer);
@@ -541,9 +552,112 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         vm.prank(alice);
         (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
         assertEq(excess, 0);
-        assertEq(burned, 0); // the whole meme side went to the user; there is no protocol share left
-        assertGt(memeToUser, 0);
-        assertLt(toUser + _memeValueInQuote(meme, memeToUser), deposited); // the user carries the remainder
+        uint256 q = (toUser * 1e18) / deposited;
+        assertLt(q, 0.5e18); // beyond the point where the whole position is worth less than the deposit
+        assertApproxEqRel(memeToUser, (p.grantMemeAmount * (1e18 - q)) / q, 1e12);
+        assertGt(memeToUser, p.grantMemeAmount); // more meme than the grant put in, because the pool bought meme
+        assertGt(burned, 0); // and still never the whole meme side: G/q was withdrawn, G(1-q)/q paid
+        uint256 held = toUser + _memeValueInQuote(meme, memeToUser);
+        assertApproxEqRel(held, deposited - (deposited * (1e18 - q) ** 2) / 1e36, 1e12);
+        assertGt(held, toUser + (toUser * 40) / 100); // the top-up adds (1-q) of the quote side again
+    }
+
+    /// @dev Security: the grant meme is paired at the pool price, so activation refuses a price that has only just
+    ///      appeared. Crashing the pool to pair the grant with a fraction of the quote, then buying the meme back
+    ///      from the new position on the way up, is the attack; it clears for honest users once the price has held.
+    function test_activateGrant_reverts_whilePriceIsOffReference_thenClears() public {
+        address meme = _activeDefault(keccak256("guard-activate"));
+        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        uint256 inventory = IERC20(meme).balanceOf(buyer);
+        vm.prank(buyer);
+        IERC20(meme).transfer(swapper, inventory);
+
+        (uint256 honestQuote,) = t.vault.quoteRequired(meme, ALICE_BASE);
+        _sellMeme(key, _quoteIs0(meme), meme, inventory / 4);
+        (uint256 crashedQuote,) = t.vault.quoteRequired(meme, ALICE_BASE);
+        assertLt(crashedQuote, (honestQuote * 80) / 100); // what the attacker was after: the same grant for less
+
+        vm.prank(alice);
+        vm.expectPartialRevert(IPerkLPGrantVault.PriceUnstable.selector);
+        t.vault.activateGrant(meme, ALICE_BASE, 0, 0, honestQuote, 0);
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12); // the next block is no better
+        vm.prank(alice);
+        vm.expectPartialRevert(IPerkLPGrantVault.PriceUnstable.selector);
+        t.vault.activateGrant(meme, ALICE_BASE, 0, 0, honestQuote, 0);
+
+        vm.warp(block.timestamp + 1 hours); // a price that has held is a price
+        (uint256 claimable,,) = t.vault.grantBreakdown(meme, alice); // decayed a little in the meantime
+        _activate(meme, alice, claimable, 0, 0);
+    }
+
+    /// @dev Security: the excess quote an exit routes to the incentive pool is whatever the position holds above
+    ///      the deposit, so a pump around one's own exit would mint "excess" for a second position to collect.
+    function test_exitGrantPosition_reverts_whilePriceIsOffReference_thenClears() public {
+        address meme = _activeDefault(keccak256("guard-exit"));
+        _registerDefault(meme);
+        uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
+        _activate(meme, bob, BOB_BASE, 0, 0);
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        vm.warp(block.timestamp + 1 days + 1);
+
+        _swap(key, _quoteIs0(meme), 40 ether, 0);
+        vm.prank(alice);
+        vm.expectPartialRevert(IPerkLPGrantVault.PriceUnstable.selector);
+        t.vault.exitGrantPosition(alicePos, 0, 0);
+        assertEq(t.vault.campaign(meme).incentiveBalance, 0);
+
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(alice);
+        t.vault.exitGrantPosition(alicePos, 0, 0);
+    }
+
+    /// @dev Small moves pass: the guard is a band around the reference, not a freeze on trading.
+    function test_activateGrant_allowsOrdinaryTradingInTheSameBlock() public {
+        address meme = _activeDefault(keccak256("guard-band"));
+        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        _swap(key, _quoteIs0(meme), 0.5 ether, 0);
+        _activate(meme, alice, ALICE_BASE, 0, 0);
+    }
+
+    /// @dev Whatever the market did between entry and exit, the settlement stays inside its bounds: never more
+    ///      quote than was deposited, never more value than was deposited, never less than the position's own quote
+    ///      side, meme only when quote fell short, and excess only when it did not.
+    function testFuzz_exitGrantPosition_settlementBounds(uint256 seed) public {
+        address meme = _activeDefault(keccak256(abi.encode("fuzz-exit", seed)));
+        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
+        uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
+        uint256 deposited = t.vault.position(pos).quoteDeposited;
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+
+        if (seed % 2 == 0) {
+            uint256 inventory = IERC20(meme).balanceOf(buyer);
+            vm.prank(buyer);
+            IERC20(meme).transfer(swapper, inventory);
+            _sellMeme(key, _quoteIs0(meme), meme, bound(seed >> 8, 1 ether, inventory));
+        } else {
+            _swap(key, _quoteIs0(meme), bound(seed >> 8, 0.001 ether, 200 ether), 0);
+        }
+        vm.warp(block.timestamp + 2 days);
+        t.vault.collectGrantFees(pos);
+
+        uint256 supplyBefore = IERC20(meme).totalSupply();
+        vm.prank(alice);
+        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
+
+        assertLe(toUser, deposited);
+        assertEq(supplyBefore - IERC20(meme).totalSupply(), burned);
+        if (toUser < deposited) {
+            assertEq(excess, 0);
+            assertGt(memeToUser, 0);
+            assertGt(burned, 0); // the top-up is always a strict part of the meme withdrawn
+            assertLe(toUser + _memeValueInQuote(meme, memeToUser), deposited + 1e6);
+        } else {
+            assertEq(memeToUser, 0);
+        }
     }
 
     /// @dev The meme leg has its own slippage bound, so a user expecting a top-up is not silently paid in quote only.
@@ -666,6 +780,112 @@ contract LPGrantVaultHalfIncentiveTest is GrantTestBase {
         uint256 toTreasury = excess - toPool;
         assertEq(t.vault.campaign(meme).incentiveBalance, toPool);
         assertEq(t.quoteToken.balanceOf(address(t.treasury)) - treBefore, toTreasury);
+    }
+}
+
+/// @dev The exit settlement has to be indifferent to price manipulation by itself, not because a guard happens to
+///      stand in front of it. This topology switches the vault's price guard off and attacks the settlement directly.
+contract LPGrantVaultExitManipulationTest is GrantTestBase {
+    function setUp() public {
+        _setUpPerk(10_000, type(uint24).max);
+        _bindBobToAlice();
+    }
+
+    /// @dev Security: an exiting LP must not profit from moving the pool price around their own exit. The attacker
+    ///      owns the position and the account that trades: they push the price, exit into it, then trade the price
+    ///      back, ending with the meme inventory they started with. Their wealth (quote plus meme at the restored
+    ///      price) is compared with exiting honestly from the same state. Swept over both directions and a range of
+    ///      sizes, and repeated after the market has genuinely moved either way since the position was opened,
+    ///      because each of the two earlier pricing rules was safe in one direction and exploitable in the other.
+    function test_exitGrantPosition_priceManipulation_isNotProfitable() public {
+        _assertExitManipulationUnprofitable(keccak256("manip-flat"), 0);
+    }
+
+    function test_exitGrantPosition_priceManipulation_afterPriceFell_isNotProfitable() public {
+        _assertExitManipulationUnprofitable(keccak256("manip-fell"), -1);
+    }
+
+    function test_exitGrantPosition_priceManipulation_afterPriceRose_isNotProfitable() public {
+        _assertExitManipulationUnprofitable(keccak256("manip-rose"), 1);
+    }
+
+    function _assertExitManipulationUnprofitable(bytes32 salt, int8 drift) internal {
+        address meme = _activeDefault(salt);
+        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
+        uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        bool q0 = _quoteIs0(meme);
+
+        // the attacker's trading account holds a meme inventory bought on the curve
+        uint256 inventory = IERC20(meme).balanceOf(buyer);
+        vm.prank(buyer);
+        IERC20(meme).transfer(swapper, inventory);
+
+        // a genuine market move since entry, which stays
+        if (drift < 0) _sellMeme(key, q0, meme, inventory / 5);
+        if (drift > 0) _swap(key, q0, 40 ether, 0);
+        vm.warp(block.timestamp + 1 days + 1);
+        t.vault.collectGrantFees(pos); // fees are the beneficiary's either way; keep them out of the comparison
+
+        // one price values every outcome: the market's, before anyone touches it. Restoring the inventory leaves
+        // the pool a hair off that price (the position's liquidity is gone), which must not leak into the result.
+        uint160 truePrice = _sqrtPriceOf(meme);
+        uint256 snap = vm.snapshotState();
+        vm.prank(alice);
+        t.vault.exitGrantPosition(pos, 0, 0);
+        uint256 honest = _attackerWealth(meme, truePrice);
+        vm.revertToState(snap);
+
+        uint256[6] memory sizeBps = [uint256(100), 500, 1500, 3000, 5000, 8000];
+        for (uint256 i; i < sizeBps.length; ++i) {
+            for (uint256 up; up < 2; ++up) {
+                snap = vm.snapshotState();
+                if (up == 1) _pumpExitRestore(meme, key, q0, pos, (60 ether * sizeBps[i]) / 10_000);
+                else _dumpExitRestore(meme, key, q0, pos, ((inventory / 2) * sizeBps[i]) / 10_000);
+                uint256 attacked = _attackerWealth(meme, truePrice);
+                emit log_named_int(
+                    string.concat(up == 1 ? "pump" : "dump", " bps ", vm.toString(sizeBps[i]), " profit"),
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256(attacked) - int256(honest)
+                );
+                assertLe(attacked, honest, "moving the price around an exit must not pay");
+                vm.revertToState(snap);
+            }
+        }
+    }
+
+    function _attackerWealth(address meme, uint160 sqrtP) internal view returns (uint256) {
+        uint256 quote = t.quoteToken.balanceOf(alice) + t.quoteToken.balanceOf(swapper);
+        uint256 memeHeld = IERC20(meme).balanceOf(alice) + IERC20(meme).balanceOf(swapper);
+        return quote + _memeValueInQuoteAt(meme, memeHeld, sqrtP);
+    }
+
+    function _dumpExitRestore(address meme, PoolKey memory key, bool q0, uint256 pos, uint256 dump) internal {
+        _sellMeme(key, q0, meme, dump);
+        vm.prank(alice);
+        t.vault.exitGrantPosition(pos, 0, 0);
+        // buy back exactly what was dumped (exact output), so the inventory ends where it began
+        vm.prank(swapper);
+        swapRouter.swap(
+            key,
+            SwapParams({
+                zeroForOne: q0,
+                // forge-lint: disable-next-line(unsafe-typecast)
+                amountSpecified: int256(dump),
+                sqrtPriceLimitX96: q0 ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+    }
+
+    function _pumpExitRestore(address meme, PoolKey memory key, bool q0, uint256 pos, uint256 quoteIn) internal {
+        uint256 memeBefore = IERC20(meme).balanceOf(swapper);
+        _swap(key, q0, quoteIn, 0);
+        uint256 bought = IERC20(meme).balanceOf(swapper) - memeBefore;
+        vm.prank(alice);
+        t.vault.exitGrantPosition(pos, 0, 0);
+        _sellMeme(key, q0, meme, bought); // sell exactly what was bought
     }
 }
 

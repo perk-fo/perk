@@ -49,8 +49,12 @@ abstract contract GrantTestBase is PerkDeployer, Deployers {
     }
 
     function _setUpPerk(uint16 excessToIncentiveBps) internal {
+        _setUpPerk(excessToIncentiveBps, 500);
+    }
+
+    function _setUpPerk(uint16 excessToIncentiveBps, uint24 maxPriceDeviationTicks) internal {
         deployFreshManagerAndRouters();
-        t = deployPerkV1(address(this), address(manager), excessToIncentiveBps);
+        t = deployPerkV1(address(this), address(manager), excessToIncentiveBps, maxPriceDeviationTicks);
         _fundActors();
         _setDefaultLeaves();
     }
@@ -170,17 +174,23 @@ abstract contract GrantTestBase is PerkDeployer, Deployers {
         return t.erc20Quote == t.graduation.graduationOf(meme).key.currency0;
     }
 
-    /// @dev Value of `memeAmount` in quote at the pool's current price — mirrors LPGrantVault._memeValueInQuote so
-    ///      tests can check the exit settlement independently of the contract's own arithmetic.
+    /// @dev Value of `memeAmount` in quote at the pool's current price, computed here rather than read from the
+    ///      vault so tests check the exit settlement independently of the contract's own arithmetic.
     function _memeValueInQuote(address meme, uint256 memeAmount) internal view returns (uint256) {
+        return _memeValueInQuoteAt(meme, memeAmount, _sqrtPriceOf(meme));
+    }
+
+    function _memeValueInQuoteAt(address meme, uint256 memeAmount, uint160 sqrtP) internal view returns (uint256) {
         if (memeAmount == 0) return 0;
-        PoolId id = t.graduation.graduationOf(meme).key.toId();
-        (uint160 sqrtP,,,) = StateLibrary.getSlot0(manager, id);
         uint256 q96 = 1 << 96;
         if (t.vault.campaign(meme).memeIsCurrency0) {
             return Math.mulDiv(Math.mulDiv(memeAmount, sqrtP, q96), sqrtP, q96);
         }
         return Math.mulDiv(Math.mulDiv(memeAmount, q96, sqrtP), q96, sqrtP);
+    }
+
+    function _sqrtPriceOf(address meme) internal view returns (uint160 sqrtP) {
+        (sqrtP,,,) = StateLibrary.getSlot0(manager, t.graduation.graduationOf(meme).key.toId());
     }
 
     function _leafStruct(address a, uint256 b, uint256 boost)

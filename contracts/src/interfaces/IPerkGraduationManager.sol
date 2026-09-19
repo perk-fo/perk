@@ -37,9 +37,15 @@ interface IPerkGraduationManager {
         uint256 positionTokenId;
         uint256 quoteOnlyPositionTokenId;
         uint128 liquidity;
+        /// @dev This launch's quote still sitting in the manager. The manager keeps one balance per quote currency
+        ///      for every launch that is between stages, so each launch moves only what is recorded here.
+        uint256 quoteHeld;
     }
 
     event GraduationStageAdvanced(address indexed meme, Stage stage);
+    /// @notice A stage reverted and `graduate` stopped there; earlier stages stay committed and the call can be
+    ///         repeated. `reason` is the revert data of the failed stage.
+    event GraduationStageFailed(address indexed meme, Stage reached, bytes reason);
     event LaunchGraduated(
         address indexed meme,
         bytes32 indexed launchId,

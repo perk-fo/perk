@@ -24,6 +24,7 @@ import {
   optInParticipants,
   poolSwap,
   launchStatus,
+  memeBalance,
   proposeRoot,
   templateThreshold,
   activateRoot,
@@ -37,7 +38,9 @@ const WALLET_TARGET = BigInt(process.env.DRIVER_WALLET_TARGET_WEI ?? 40_000_000_
 /** Creator dev buy, as a fraction of the launch threshold — the two quote assets have different decimals. */
 const DEV_BUY_DIVISOR = BigInt(process.env.DRIVER_DEV_BUY_DIVISOR ?? 25n);
 const POOL_SWAP_INTERVAL_S = Number(process.env.DRIVER_POOL_SWAP_INTERVAL_S ?? 600);
-const POOL_SWAP_WEI = BigInt(process.env.DRIVER_POOL_SWAP_WEI ?? 200_000_000_000_000n); // 0.0002 OKB
+/** Post-graduation swap size. A buy is a fraction of that launch's own threshold, so a six-decimal quote is not
+ *  asked for an 18-decimal amount; a sell is sized from the trader's own balance. */
+const POOL_SWAP_DIVISOR = BigInt(process.env.DRIVER_POOL_SWAP_DIVISOR ?? 40n);
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -158,7 +161,14 @@ async function stepToken(
     if ((ts.lastPoolSwapAt ?? 0) + POOL_SWAP_INTERVAL_S < t) {
       const trader = cfg.traders[(spec.index + ts.tradesDone.length) % cfg.traders.length]!;
       try {
-        await poolSwap(cfg, meme, trader, rand() < 0.6, POOL_SWAP_WEI, (m) => log(m));
+        // A sell is a slice of what the trader actually holds. A fixed token count was dust at these prices and
+        // showed up in the trades table as a sale for 0 quote; a wallet with nothing to sell buys instead.
+        const held = await memeBalance(cfg, meme, trader.address);
+        const buy = held === 0n || rand() < 0.6;
+        const size = buy
+          ? (await templateThreshold(cfg, spec.quote)) / POOL_SWAP_DIVISOR
+          : (held * BigInt(2 + Math.floor(rand() * 5))) / 100n;
+        await poolSwap(cfg, meme, trader, buy, size, (m) => log(m));
       } catch (err) {
         log("pool swap failed", { meme, error: String(err).slice(0, 200) });
       }
@@ -218,6 +228,11 @@ async function stepToken(
           ts.participantsActivated = [...activated];
           if (ok) return true;
         } catch (err) {
+          if (isPriceUnstable(err)) {
+            // the vault refuses to open a position right after a sharp move; it clears by itself within minutes
+            log("activate postponed: pool price still settling", { meme, who: p.address });
+            return false;
+          }
           log("activate failed", { meme, who: p.address, error: String(err).slice(0, 200) });
           activated.add(p.address);
           ts.participantsActivated = [...activated];
@@ -237,6 +252,10 @@ async function stepToken(
           return true;
         }
       } catch (err) {
+        if (isPriceUnstable(err)) {
+          log("exit postponed: pool price still settling", { meme });
+          return false;
+        }
         log("exit failed", { meme, error: String(err).slice(0, 200) });
         exits.add(exiter.address);
         ts.exitsDone = [...exits];
@@ -285,6 +304,14 @@ function printStatus(state: DriverState): void {
         `${ts.meme ? `  ${ts.meme}` : ""}${ts.error ? `  ERROR ${ts.error}` : ""}`,
     );
   }
+}
+
+const PRICE_UNSTABLE_SELECTOR = "c3119941"; // PriceUnstable(int24,int24)
+
+/** LPGrantVault.PriceUnstable: transient, so the step is retried on a later tick instead of being given up. */
+function isPriceUnstable(err: unknown): boolean {
+  const text = String(err);
+  return text.includes("PriceUnstable") || text.includes("0x" + PRICE_UNSTABLE_SELECTOR);
 }
 
 async function main(): Promise<void> {

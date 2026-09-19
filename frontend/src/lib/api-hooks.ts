@@ -167,6 +167,17 @@ export function useApiGrant(meme: Address | undefined) {
   return { ...q, notFound: isNotFound(q.error) };
 }
 
+/** Ordinary LP positions the wallet holds. Grant positions come from useGrantPositions and stay separate. */
+export function useLpPositions(address: Address | undefined) {
+  return useQuery({
+    queryKey: ["api", "lp-positions", address?.toLowerCase()],
+    enabled: !!address,
+    queryFn: () => api.lpPositions(address!),
+    staleTime: 10_000,
+    refetchInterval: 20_000,
+  });
+}
+
 export function useWalletRoles(address: Address | undefined) {
   return useQuery({
     queryKey: ["api", "roles", address?.toLowerCase()],

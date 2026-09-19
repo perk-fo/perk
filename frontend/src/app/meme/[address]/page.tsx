@@ -184,6 +184,7 @@ export default function MemePage() {
   });
   const launchFees = onchain?.[0]?.result;
   const graduationOnchain = onchain?.[1]?.result;
+  const graduationStage = Number((graduationOnchain as { stage?: number } | undefined)?.stage ?? 0);
 
   const quoteMeta: QuoteInfo | undefined = useMemo(() => {
     const q = findQuote(quotes, launch?.quote as Address | undefined);
@@ -400,6 +401,7 @@ export default function MemePage() {
                 quoteSymbol={quoteSymbol}
                 labels={{
                   empty: t("chart.empty"),
+                  emptyRange: t("chart.emptyRange"),
                   volume: t("chart.volume"),
                   ranges: {
                     "1h": t("chart.range.1h"),
@@ -439,6 +441,15 @@ export default function MemePage() {
                   label={t("meme.pool.quoteIn")}
                   value={`${formatAmount(graduation.quoteToPool, quoteDecimals, { locale })} ${quoteSymbol}`}
                 />
+                <div className="flex items-center justify-between py-3 text-sm">
+                  <span className="text-bone/55">{t("pool.cta.body")}</span>
+                  <Link
+                    href={`/pool/${meme}`}
+                    className="shrink-0 rounded-full border border-flare/40 px-3 py-1.5 text-[12px] text-flare transition-colors duration-fast hover:bg-flare/10"
+                  >
+                    {t("pool.lp.title")} →
+                  </Link>
+                </div>
               </div>
             )}
           </Panel>
@@ -458,12 +469,30 @@ export default function MemePage() {
                       abi: graduationManagerAbi,
                       functionName: "graduate",
                       args: [meme],
+                      // graduate() swallows a failing stage, so the wallet's estimate only covers the path up to
+                      // the failure and the last stage runs out of gas. Give it room explicitly.
+                      gas: 6_000_000n,
                     })
                   }
                 >
                   {t("meme.graduate.cta")}
                 </Button>
-                <TxStatus tx={graduateTx} successText={t("meme.graduate.success")} />
+                <TxStatus
+                  tx={graduateTx}
+                  successTone={graduationStage >= 4 ? "verdigris" : "amber"}
+                  successText={
+                    // The transaction succeeding and the launch graduating are different things: graduate() mines
+                    // even when a stage fails inside it. Report the stage the chain is actually at.
+                    graduationStage >= 4
+                      ? t("meme.graduate.success")
+                      : t("meme.graduate.stalled", { n: graduationStage, of: 4 })
+                  }
+                />
+                {graduationStage > 0 && graduationStage < 4 && (
+                  <Notice tone="amber" className="mt-3 text-xs">
+                    {t("meme.graduate.partial", { n: graduationStage, of: 4 })}
+                  </Notice>
+                )}
               </div>
             </Panel>
           )}

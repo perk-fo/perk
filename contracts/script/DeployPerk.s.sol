@@ -156,7 +156,9 @@ contract DeployPerk is Script {
                         rootDelaySeconds: uint64(vm.envOr("GRANT_ROOT_DELAY_SECONDS", uint256(1 days))),
                         rootDeadlineSeconds: uint64(vm.envOr("GRANT_ROOT_DEADLINE_SECONDS", uint256(14 days))),
                         minActivation: vm.envOr("GRANT_MIN_ACTIVATION", uint256(1e18)),
-                        excessToIncentiveBps: uint16(vm.envOr("GRANT_EXCESS_TO_INCENTIVE_BPS", uint256(10_000)))
+                        excessToIncentiveBps: uint16(vm.envOr("GRANT_EXCESS_TO_INCENTIVE_BPS", uint256(10_000))),
+                        // 500 ticks is about 5%
+                        maxPriceDeviationTicks: uint24(vm.envOr("GRANT_MAX_PRICE_DEVIATION_TICKS", uint256(500)))
                     })
                 )
             )

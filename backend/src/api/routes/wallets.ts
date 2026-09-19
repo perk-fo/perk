@@ -1,11 +1,14 @@
 import { Hono } from "hono";
 import { addressParam, type AppEnv } from "../server";
-import type { WalletRoles, WalletSummary } from "../types";
-import { mapGrantPosition, mapLaunchSummary, mapTrade, mapWalletRoles } from "../mappers";
+import type { WalletRoles,
+  LpPosition, WalletSummary } from "../types";
+import { mapGrantPosition, mapLaunchSummary, mapTrade, mapWalletRoles,
+  mapLpPosition } from "../mappers";
 import { addr, num, uint } from "../serialize";
 import {
   selectLaunchesByMemes,
   selectPositionsForWallet,
+  selectLpPositionsForWallet,
   selectWalletClaims,
   selectWalletHoldings,
   selectWalletRoleBits,
@@ -30,6 +33,15 @@ export function walletRoutes(): Hono<AppEnv> {
       mapWalletRoles(address, isAdmin, bits.creatorOf, bits.lpOf, bits.allocatedIn, bits.inviter, bits.optInBlock),
     );
   });
+  // Ordinary LP positions, kept on their own path so a client can ask for them without the whole wallet payload.
+  r.get("/:address/lp-positions", async (c) => {
+    const { db, config } = c.get("deps");
+    const address = addressParam(c.req.param("address"));
+    const rows = await selectLpPositionsForWallet(db, config.chainId, address);
+    c.header("Cache-Control", "public, max-age=5");
+    return c.json<{ positions: LpPosition[] }>({ positions: rows.map(mapLpPosition) });
+  });
+
   r.get("/:address", async (c) => {
     const { db, config } = c.get("deps");
     const address = addressParam(c.req.param("address"));

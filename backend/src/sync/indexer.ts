@@ -16,7 +16,15 @@ import {
 import { applyLog, lower, type ApplyContext } from "./apply";
 import { findReorgPoint, rollbackTo } from "./reorg";
 import { notifySync } from "./notify";
-import { advanceCursor, initSyncState, readSyncState, recordError, recordHead, type SyncState } from "./state";
+import {
+  advanceCursor,
+  initSyncState,
+  readSyncState,
+  recordError,
+  recordHead,
+  resetIndex,
+  type SyncState,
+} from "./state";
 import { loadTracked, TrackedSet } from "./tracked";
 
 export interface IndexerDeps {
@@ -77,9 +85,19 @@ export class Indexer {
   /** Load sync_state (creating it at the deployment block on first boot) and the tracked memes/pools. */
   async init(): Promise<void> {
     const chainId = this.config.chainId;
-    this.state =
-      (await readSyncState(this.db, chainId)) ??
-      (await initSyncState(this.db, chainId, BigInt(this.config.deployment.blockNumber)));
+    const startBlock = BigInt(this.config.deployment.blockNumber);
+    let state = await readSyncState(this.db, chainId);
+    if (state && state.startBlock !== startBlock) {
+      // The database was filled from a different deployment of the contracts. Nothing in it is about this one.
+      const tables = await resetIndex(this.db);
+      this.log("deployment changed; index rebuilt from scratch", {
+        previousStartBlock: state.startBlock.toString(),
+        startBlock: startBlock.toString(),
+        tablesCleared: tables.length,
+      });
+      state = null;
+    }
+    this.state = state ?? (await initSyncState(this.db, chainId, startBlock));
     this.tracked = await loadTracked(this.db, chainId);
     this.log("indexer init", { cursor: this.state.cursorBlock.toString(), memes: this.tracked.memes.size, pools: this.tracked.pools.size });
   }

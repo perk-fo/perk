@@ -651,4 +651,42 @@ describe("apply", () => {
       expect(c.cancelled_at).not.toBeNull();
     });
   });
+
+  describe("ordinary LP positions", () => {
+    test("mint records the position, transfer moves it, burn closes it, vault mints are skipped", async () => {
+      const ALICE = "0x00000000000000000000000000000000000000a5" as Address;
+      const BOB = "0x00000000000000000000000000000000000000b5" as Address;
+      const pmLog = (args: Record<string, unknown>, block: bigint): MockLog =>
+        makeLog({
+          address: D.positionManager,
+          abi: ABI_BY_CONTRACT.positionManager,
+          eventName: "Transfer",
+          args,
+          blockNumber: block,
+          logIndex: 0,
+        });
+
+      // mint to alice: no matching launch pool, so meme stays null but the position is still tracked
+      await apply(pmLog({ from: ZERO, to: ALICE, id: 7n }, 1200n));
+      let row = (await db<Record<string, unknown>[]>`select * from lp_positions where token_id = 7`)[0];
+      expect(row).toBeDefined();
+      expect(row.owner).toBe(ALICE.toLowerCase());
+      expect(row.closed).toBe(false);
+
+      // the vault's own grant positions must never appear here
+      await apply(pmLog({ from: ZERO, to: D.lpGrantVault, id: 8n }, 1201n));
+      expect(await db`select 1 from lp_positions where token_id = 8`).toHaveLength(0);
+
+      // transfer reassigns the owner
+      await apply(pmLog({ from: ALICE, to: BOB, id: 7n }, 1202n));
+      row = (await db<Record<string, unknown>[]>`select * from lp_positions where token_id = 7`)[0];
+      expect(row.owner).toBe(BOB.toLowerCase());
+      expect(row.closed).toBe(false);
+
+      // burn closes it
+      await apply(pmLog({ from: BOB, to: ZERO, id: 7n }, 1203n));
+      row = (await db<Record<string, unknown>[]>`select * from lp_positions where token_id = 7`)[0];
+      expect(row.closed).toBe(true);
+    });
+  });
 });

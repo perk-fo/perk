@@ -27,6 +27,7 @@ import {Actions} from "v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 import {IPerkLPGrantVault} from "../interfaces/IPerkLPGrantVault.sol";
+import {IPerkComposableHook} from "../interfaces/IPerkComposableHook.sol";
 import {IPerkLaunchFactory} from "../interfaces/IPerkLaunchFactory.sol";
 import {IPerkTemplateRegistry} from "../interfaces/IPerkTemplateRegistry.sol";
 import {IPerkReferralRegistry} from "../interfaces/IPerkReferralRegistry.sol";
@@ -306,6 +307,9 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         uint256 total = baseAmount + boostAmount + creditAmount;
         if (total == 0) revert ZeroAmount();
         if (total < _config.minActivation) revert BelowMinimumActivation();
+        // The grant meme is paired at the pool price, so a price crashed for the occasion pairs it with a fraction
+        // of the quote and then sells it to the attacker on the way back up.
+        _requireStablePrice(c);
 
         _consumeAllocation(meme, c, baseAmount, boostAmount, creditAmount);
 
@@ -339,6 +343,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
                 tickUpper: c.tickUpper,
                 // forge-lint: disable-next-line(unsafe-typecast)
                 activatedAt: uint64(block.timestamp),
+                entrySqrtPriceX96: _sqrtPrice(c),
                 incentiveDebt: Math.mulDiv(liquidity, c.accIncentivePerLiquidity, PRECISION),
                 incentiveSettled: 0,
                 exited: false
@@ -450,6 +455,11 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         uint64 exitableAt = p.activatedAt + _campaigns[p.meme].minLpSeconds;
         if (block.timestamp < exitableAt) revert MinLpNotElapsed(exitableAt);
 
+        // The settlement below is indifferent to the exit price, but the excess it routes to the incentive pool is
+        // not: a price pumped for the occasion turns the attacker's own swaps into "excess" that a second position
+        // of theirs collects.
+        _requireStablePrice(_campaigns[p.meme]);
+
         // fees first so principal and fees are accounted separately (PRD 6.8); both sides go to the beneficiary
         (uint256 quoteFees, uint256 memeFees) = _collect(p);
         emit GrantFeesCollected(positionId, quoteFees, memeFees, 0);
@@ -459,17 +469,22 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         p.exited = true;
         c.activeLiquidity -= p.liquidity;
 
-        // ADR-008 §5: entitlement is the original quote deposit, capped by what the position is still worth.
-        // Quote pays it first; the grant meme covers whatever quote can no longer cover, at the exit price.
-        uint256 value = quoteOut + _memeValueInQuote(c, memeOut);
-        uint256 entitled = Math.min(p.quoteDeposited, value);
-        quoteToUser = Math.min(quoteOut, entitled);
+        // ADR-008 §5: the beneficiary is owed their quote deposit. Quote pays it first; grant meme covers whatever
+        // the position's quote side no longer can, converted at the geometric mean of the entry and exit prices.
+        //
+        // That conversion price is not a free choice. The exit price is the exiting LP's to move, and every swap
+        // they make is partly a trade against their own position. Priced at spot, a crash before exiting bought the
+        // shortfall a multiple of the meme it was worth; priced at entry, a pump before exiting converted a meme
+        // top-up into quote. With liquidity l the round trip from the true price P to p and back costs exactly
+        // l(sqrt(P) - sqrt(p))^2 / sqrt(p), and meme = shortfall / sqrt(P_entry * P_exit) is the one payout whose
+        // change cancels that cost in both directions: moving the price around an exit gains nothing before swap
+        // fees and loses them after. It never asks for more meme than the position returns (the top-up is
+        // G(1-q)/q against G/q withdrawn, q = sqrt(P_exit / P_entry)); the clamp below only absorbs rounding.
+        quoteToUser = Math.min(quoteOut, p.quoteDeposited);
         excessQuote = quoteOut - quoteToUser;
-        uint256 shortfall = entitled - quoteToUser;
+        uint256 shortfall = p.quoteDeposited - quoteToUser;
         if (shortfall > 0) {
-            // When the position is worth less than the deposit the whole meme side is owed, so hand it over
-            // directly rather than converting back through the price and losing a few wei to rounding.
-            memeToUser = entitled == value ? memeOut : Math.min(_quoteValueInMeme(c, shortfall), memeOut);
+            memeToUser = Math.min(_shortfallInMeme(c, shortfall, p.entrySqrtPriceX96, _sqrtPrice(c)), memeOut);
         }
         memeBurned = memeOut - memeToUser;
         if (quoteToUser < minQuoteOut || memeToUser < minMemeOut) revert SlippageExceeded();
@@ -487,25 +502,33 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         emit GrantPositionExited(positionId, quoteToUser, memeToUser, excessQuote, memeBurned, incentivePaid);
     }
 
-    /// @dev Value of `memeAmount` expressed in quote at the pool's current price. Both sides are raw token units,
-    ///      so a quote with fewer than 18 decimals needs no special case.
-    function _memeValueInQuote(Campaign storage c, uint256 memeAmount) private view returns (uint256) {
-        if (memeAmount == 0) return 0;
-        (uint160 sqrtP,,,) = POOL_MANAGER.getSlot0(c.poolId);
-        if (c.memeIsCurrency0) {
-            return Math.mulDiv(Math.mulDiv(memeAmount, sqrtP, Q96), sqrtP, Q96);
+    /// @dev Reverts while the pool price is away from the hook's rate-limited reference, i.e. while it is a price
+    ///      that has not yet held long enough to be believed.
+    function _requireStablePrice(Campaign storage c) private view {
+        (int24 spotTick, int24 referenceTick) = IPerkComposableHook(address(c.key.hooks)).referencePrice(c.poolId);
+        int256 gap = int256(spotTick) - int256(referenceTick);
+        if ((gap < 0 ? uint256(-gap) : uint256(gap)) > _config.maxPriceDeviationTicks) {
+            revert PriceUnstable(spotTick, referenceTick);
         }
-        return Math.mulDiv(Math.mulDiv(memeAmount, Q96, sqrtP), Q96, sqrtP);
     }
 
-    /// @dev Meme units worth `quoteAmount` at the pool's current price; the inverse of `_memeValueInQuote`.
-    function _quoteValueInMeme(Campaign storage c, uint256 quoteAmount) private view returns (uint256) {
-        if (quoteAmount == 0) return 0;
-        (uint160 sqrtP,,,) = POOL_MANAGER.getSlot0(c.poolId);
+    function _sqrtPrice(Campaign storage c) private view returns (uint160 sqrtP) {
+        (sqrtP,,,) = POOL_MANAGER.getSlot0(c.poolId);
+    }
+
+    /// @dev Meme units worth `quoteAmount` at the geometric mean of two pool prices, given as v4 sqrt prices. The
+    ///      geometric mean of the prices is the product of their square roots, so no root is taken here. v4 quotes
+    ///      currency0 in currency1: the product is the meme price when meme is currency0 and its inverse otherwise.
+    ///      Both sides are raw token units, so a quote with fewer than 18 decimals needs no special case.
+    function _shortfallInMeme(Campaign storage c, uint256 quoteAmount, uint160 sqrtEntry, uint160 sqrtExit)
+        private
+        view
+        returns (uint256)
+    {
         if (c.memeIsCurrency0) {
-            return Math.mulDiv(Math.mulDiv(quoteAmount, Q96, sqrtP), Q96, sqrtP);
+            return Math.mulDiv(Math.mulDiv(quoteAmount, Q96, sqrtEntry), Q96, sqrtExit);
         }
-        return Math.mulDiv(Math.mulDiv(quoteAmount, sqrtP, Q96), sqrtP, Q96);
+        return Math.mulDiv(Math.mulDiv(quoteAmount, sqrtEntry, Q96), sqrtExit, Q96);
     }
 
     /// @dev ADR-008: exit excess is recycled to grant liquidity that is still working; the rest (or all of it once

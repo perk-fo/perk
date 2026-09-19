@@ -30,6 +30,7 @@ import {
   referralRegistryAbi,
   templateRegistryAbi,
   assetRegistryAbi,
+  positionManagerAbi,
 } from "../src/generated/abis";
 import { POOL_SWAP_EVENT, TRANSFER_EVENT } from "../src/chain/events";
 
@@ -60,6 +61,7 @@ export const TEST_DEPLOYMENT: Deployment = {
   templateRegistry: "0x00000000000000000000000000000000000000b1",
   assetRegistry: "0x00000000000000000000000000000000000000b2",
   poolManager: "0x00000000000000000000000000000000000000d4",
+    positionManager: "0x00000000000000000000000000000000000000d5",
 };
 
 export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
@@ -299,6 +301,7 @@ export const ABI_BY_CONTRACT = {
   referralRegistry: referralRegistryAbi,
   templateRegistry: templateRegistryAbi,
   assetRegistry: assetRegistryAbi,
+  positionManager: positionManagerAbi,
 } as const;
 
 export interface MakeLogInput {

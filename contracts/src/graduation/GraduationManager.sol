@@ -134,8 +134,14 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         // finishes every remaining stage in one `graduate` call.
         while (g.stage != Stage.DONE) {
             // forge-lint: disable-next-line(calls-loop)
-            (bool ok,) = address(this).call(abi.encodeCall(this.executeStage, (meme)));
-            if (!ok) break;
+            (bool ok, bytes memory reason) = address(this).call(abi.encodeCall(this.executeStage, (meme)));
+            if (!ok) {
+                // Swallowed so the earlier stages stay committed, but never silently: the transaction succeeds, and
+                // without this nothing on chain says that it stopped short or why.
+                // forge-lint: disable-next-line(reentrancy-events)
+                emit GraduationStageFailed(meme, g.stage, reason);
+                break;
+            }
         }
         if (g.stage != Stage.DONE && g.stage == Stage.NONE) {
             // Stage NONE failed: nothing committed; bubble a revert so callers see it.
@@ -180,6 +186,7 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         g.quoteToPool = quoteToPool;
         g.memeLeftover = m - memeToPool;
         g.quoteLeftover = q - quoteToPool;
+        g.quoteHeld = q;
         g.stage = Stage.FUNDED;
         // External pulls above are guarded by graduate's nonReentrant.
         // forge-lint: disable-next-line(reentrancy-events)
@@ -251,13 +258,18 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         uint256 nextId = IPositionManager(positionManager).nextTokenId();
         uint128 liquidity = _mainLiquidity(g, tmpl, rec.quote == g.key.currency0);
         bool mintQuoteOnly;
-        uint256 nativeValue = rec.quote.isAddressZero() ? address(this).balance : 0;
+        // Only this launch's own quote goes in. The manager's balance also holds whatever other launches have
+        // parked between stages, and none of that is this launch's to spend or to be refunded.
+        uint256 nativeValue = rec.quote.isAddressZero() ? g.quoteHeld : 0;
         bytes memory payload = _buildMintPayload(g, tmpl, rec.quote == g.key.currency0);
         mintQuoteOnly = g.quoteLeftover > 0 && _quoteOnlyLiq(g, tmpl, rec.quote == g.key.currency0) > 0;
 
+        uint256 quoteBefore = rec.quote.balanceOfSelf();
         // Deadline is the current block; the modifier is `>` so equality is valid.
         // forge-lint: disable-next-line(block-timestamp)
         IPositionManager(positionManager).modifyLiquidities{value: nativeValue}(payload, block.timestamp);
+        // checked: minting more than this launch holds would be spending another launch's funds, so it reverts
+        g.quoteHeld -= quoteBefore - rec.quote.balanceOfSelf();
 
         g.positionTokenId = nextId;
         g.liquidity = liquidity;
@@ -399,15 +411,18 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         // forge-lint: disable-next-line(reentrancy-events)
         emit LaunchGraduated(meme, rec.launchId, g.poolId, g.memeToPool, g.quoteToPool, g.liquidity);
 
-        _sweepDust(meme, rec.quote, rec.launchId);
+        _sweepDust(meme, rec.quote, rec.launchId, g);
     }
 
-    function _sweepDust(address meme, Currency quote, bytes32 launchId) private {
+    /// @dev The meme balance is this launch's alone. The quote balance is not: it is shared with every launch that
+    ///      is between stages, so only what this launch still holds is swept.
+    function _sweepDust(address meme, Currency quote, bytes32 launchId, Graduation storage g) private {
         uint256 memeDust = IERC20(meme).balanceOf(address(this));
         if (memeDust > 0) PerkMemeToken(meme).burn(memeDust);
 
-        uint256 quoteDust = quote.balanceOfSelf();
+        uint256 quoteDust = g.quoteHeld;
         if (quoteDust == 0) return;
+        g.quoteHeld = 0;
 
         address treasury = IPerkLaunchFactory(factory).treasury();
         if (quote.isAddressZero()) {

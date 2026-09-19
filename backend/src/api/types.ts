@@ -78,6 +78,9 @@ export interface Graduation {
   quoteToPool: Uint;
   liquidity: Uint;
   memeIsCurrency0: boolean;
+  /** Latest pool price, from the most recent Swap. Null until the pool has traded. Sizing a liquidity position
+   *  needs it, and the testnet deployment has no StateView to read slot0 from. */
+  sqrtPriceX96: Uint | null;
 }
 
 export type LaunchStatus = 0 | 1 | 2 | 3;
@@ -251,6 +254,22 @@ export interface GrantPosition {
   exitMemeToUser: Uint | null;
   exitExcessQuote: Uint | null;
   exitMemeBurned: Uint | null;
+}
+
+/**
+ * An ordinary liquidity position: one the wallet minted itself through the v4 PositionManager, as opposed to a
+ * subsidised grant position, which the vault holds on the beneficiary's behalf. The two are never merged.
+ */
+export interface LpPosition {
+  tokenId: Uint;
+  owner: Address;
+  /** null when the position is in a pool Perk did not create */
+  meme: Address | null;
+  poolId: Hex | null;
+  liquidity: Uint;
+  createdAt: number;
+  createdBlock: number;
+  closed: boolean;
 }
 
 export interface GrantAllocation {

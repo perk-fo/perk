@@ -145,6 +145,60 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
         _assertGraduated(meme, t.erc20Quote);
     }
 
+    /// @dev `graduate` succeeds even when a stage reverted, so the failure has to be visible on chain some other way.
+    function test_graduate_emitsStageFailed_withTheRevertData() public {
+        address meme = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.erc20Quote, keccak256("failed-event"));
+        vm.mockCallRevert(
+            address(t.positionManager), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "STALL"
+        );
+        vm.expectEmit(true, false, false, true, address(t.graduation));
+        emit IPerkGraduationManager.GraduationStageFailed(
+            meme, IPerkGraduationManager.Stage.POOL_INITIALIZED, bytes("STALL")
+        );
+        t.graduation.graduate(meme);
+    }
+
+    /// @dev Security: the manager holds the funds of every launch that is between stages, in one balance per quote
+    ///      currency. A launch that finishes must take only what is its own. It used to sweep the manager's whole
+    ///      quote balance to the treasury as "dust", which emptied every other launch parked at FUNDED or
+    ///      POOL_INITIALIZED and left it unable to ever add liquidity.
+    function test_graduate_doesNotTouchAnotherLaunchsParkedFunds_erc20() public {
+        _assertParkedFundsSurvive(t.erc20Quote);
+    }
+
+    function test_graduate_doesNotTouchAnotherLaunchsParkedFunds_native() public {
+        _assertParkedFundsSurvive(t.nativeQuote);
+    }
+
+    function _assertParkedFundsSurvive(Currency quote) internal {
+        address parked = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, quote, keccak256("parked"));
+        address other = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, quote, keccak256("other"));
+
+        // `parked` gets as far as POOL_INITIALIZED and stalls with its meme and quote sitting in the manager
+        vm.mockCallRevert(
+            address(t.positionManager), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "STALL"
+        );
+        t.graduation.graduate(parked);
+        vm.clearMockedCalls();
+        IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(parked);
+        assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.POOL_INITIALIZED));
+        uint256 parkedQuote = g.quoteReceived;
+        assertGe(quote.balanceOf(t.graduationManager), parkedQuote);
+
+        // another launch on the same quote graduates start to finish in the meantime
+        t.graduation.graduate(other);
+        assertEq(uint256(t.graduation.graduationOf(other).stage), uint256(IPerkGraduationManager.Stage.DONE));
+        assertEq(t.graduation.graduationOf(other).quoteHeld, 0);
+        assertGe(quote.balanceOf(t.graduationManager), parkedQuote, "the parked launch's quote was swept");
+
+        // and the parked launch can still finish, with everything it was owed
+        t.graduation.graduate(parked);
+        _assertGraduated(parked, quote);
+        g = t.graduation.graduationOf(parked);
+        assertGt(g.liquidity, 0);
+        assertEq(quote.balanceOf(t.graduationManager), 0); // nothing of anyone's is left behind either
+    }
+
     function test_graduate_swapTakesHookFee() public {
         address meme = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.erc20Quote, keccak256("swap-a"));
         t.graduation.graduate(meme);

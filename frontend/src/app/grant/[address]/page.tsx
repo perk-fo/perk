@@ -203,7 +203,7 @@ function PositionTicket({
             <Button
               variant="danger"
               tx={exitTx}
-              disabled={!isOwner || !canExit || exitTx.isPending || exitTx.isConfirming}
+              disabled={!isOwner || !canExit || exitTx.isPending || exitTx.isConfirming || exitTx.isSuccess}
               title={
                 !isOwner
                   ? t("grant.guard.notOwner")

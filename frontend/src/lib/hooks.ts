@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   useAccount,
@@ -30,6 +31,9 @@ export interface WriteParams {
   functionName: string;
   args?: readonly unknown[];
   value?: bigint;
+  /** Explicit gas limit, for calls whose estimate cannot be trusted (GraduationManager.graduate swallows a failing
+   *  stage, so estimation only covers the path up to the failure). */
+  gas?: bigint;
 }
 
 export interface WriteOptions {
@@ -142,6 +146,27 @@ export function useTx(): Tx {
     if (phase === "idle") return;
     txActivity.update(activityId, { phase, hash, error: failure ?? undefined });
   }, [activityId, phase, hash, failure]);
+
+  // A confirmed transaction changes what the page should show, and no flow should depend on the user reloading to
+  // see it. Chain reads and API views share one query cache, so refresh it all: at once for on-chain reads, again
+  // once the indexer has had time to see the block (it trails the head by its confirmations), and a last time for
+  // a load-balanced RPC node that was still behind on the first pass.
+  const queryClient = useQueryClient();
+  const refreshedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isSuccess || !hash || refreshedFor.current === hash) return;
+    refreshedFor.current = hash;
+    // Deliberately no cleanup. Callers reset() the flow a moment after success to clear their form, which flips
+    // isSuccess back to false; a cleanup here would cancel every pass still pending, leaving only the instant one —
+    // and that one can be answered by an RPC node a block or two behind. That is exactly how a balance stayed stale
+    // after a confirmed buy. The passes only touch the shared query cache, so outliving the component is harmless.
+    //
+    // Timings measured against the live testnet: the public RPC trails by ~2 blocks, and an indexer-backed list
+    // needs ~5s to show a new row.
+    for (const ms of [0, 1_200, 3_500, 6_500, 10_000]) {
+      setTimeout(() => void queryClient.invalidateQueries(), ms);
+    }
+  }, [isSuccess, hash, queryClient]);
 
   return {
     write,

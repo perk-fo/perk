@@ -36,6 +36,7 @@ const ARTIFACTS: Array<[string, string, string]> = [
   ["referralRegistryAbi", "ReferralRegistry.sol", "ReferralRegistry"],
   ["perkMemeTokenAbi", "PerkMemeToken.sol", "PerkMemeToken"],
   ["assetRegistryAbi", "AssetRegistry.sol", "AssetRegistry"],
+  ["positionManagerAbi", "PositionManager.sol", "PositionManager"], // v4-periphery: ordinary LP
   ["poolSwapTestAbi", "PoolSwapTest.sol", "PoolSwapTest"], // lib/v4-core test router artifact
 ];
 

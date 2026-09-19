@@ -11,6 +11,7 @@ import type {
   LaunchDetail,
   LaunchStatus,
   LaunchSummary,
+  LpPosition,
   MarketStats,
   TokenMetadataView,
   Trade,
@@ -72,6 +73,7 @@ export interface LaunchRow {
   first_pm: string | bigint | null;
   last_pq: string | bigint | null;
   last_pm: string | bigint | null;
+  last_sqrt_price_x96?: string | bigint | null;
   token_uri?: string | null;
   metadata?: unknown;
   metadata_status?: string | null;
@@ -250,6 +252,7 @@ export function mapGraduation(row: LaunchRow): Graduation | null {
     quoteToPool: uint(row.quote_to_pool),
     liquidity: uint(row.pool_liquidity),
     memeIsCurrency0: Boolean(row.meme_is_currency0),
+    sqrtPriceX96: uintNull(row.last_sqrt_price_x96),
   };
 }
 
@@ -267,6 +270,28 @@ export function mapTokenMetadata(row: LaunchRow): TokenMetadataView | null {
     image: typeof o.image === "string" ? o.image : null,
     description: typeof o.description === "string" && o.description.length > 0 ? o.description : null,
     links,
+  };
+}
+
+export function mapLpPosition(row: {
+  token_id: string | bigint;
+  owner: string;
+  meme: string | null;
+  pool_id: string | null;
+  liquidity: string | bigint;
+  created_at: string | number;
+  created_block: string | number;
+  closed: boolean;
+}): LpPosition {
+  return {
+    tokenId: uint(row.token_id),
+    owner: addr(row.owner),
+    meme: row.meme === null ? null : addr(row.meme),
+    poolId: hexNull(row.pool_id),
+    liquidity: uint(row.liquidity),
+    createdAt: num(row.created_at),
+    createdBlock: num(row.created_block),
+    closed: row.closed,
   };
 }
 

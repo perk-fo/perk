@@ -133,7 +133,8 @@ abstract contract ForkBase is PerkDeployer {
                 rootDelaySeconds: 1 days,
                 rootDeadlineSeconds: 14 days,
                 minActivation: 1e18,
-                excessToIncentiveBps: 10_000
+                excessToIncentiveBps: 10_000,
+                maxPriceDeviationTicks: 500
             })
         );
 

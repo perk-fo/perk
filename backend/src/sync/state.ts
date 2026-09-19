@@ -36,6 +36,24 @@ export async function initSyncState(db: Db, chainId: number, startBlock: bigint)
   return (await readSyncState(db, chainId))!;
 }
 
+/**
+ * Empty everything the indexer has written. The index is derived from one deployment's logs, so when the
+ * contracts are redeployed none of it describes the chain any more: old launches, cursors and balances would sit
+ * next to the new ones. Every table in the schema goes except the migration ledger; the caller re-creates
+ * sync_state for the new deployment.
+ */
+export async function resetIndex(db: Db): Promise<string[]> {
+  const rows = await db<{ table_name: string }[]>`
+    select table_name from information_schema.tables
+    where table_schema = current_schema() and table_type = 'BASE TABLE' and table_name <> 'schema_migrations'
+    order by table_name`;
+  const tables = rows.map((r) => r.table_name);
+  if (tables.length === 0) return tables;
+  const list = tables.map((t) => `"${t.replace(/"/g, '""')}"`).join(", ");
+  await db.unsafe(`truncate table ${list} restart identity cascade`);
+  return tables;
+}
+
 /** Advance the cursor inside the same transaction that applied the range's logs. */
 export async function advanceCursor(tx: Tx, chainId: number, block: bigint, hash: string | null): Promise<void> {
   await tx`update sync_state set cursor_block = ${block}, cursor_hash = ${hash}, updated_at = now(), last_error = null

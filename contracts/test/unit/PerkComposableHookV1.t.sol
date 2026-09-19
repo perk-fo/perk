@@ -231,6 +231,99 @@ contract PerkComposableHookV1Test is Test, Deployers, HookDeployer {
     }
 
     // ---------------------------------------------------------------------
+    // Reference price
+    // ---------------------------------------------------------------------
+
+    function test_referencePrice_startsAtTheInitialTick() public {
+        (PoolKey memory poolKey,,) = _setupErc20(false);
+        (int24 spot, int24 ref) = hook.referencePrice(poolKey.toId());
+        assertEq(ref, spot);
+    }
+
+    /// @dev Everything inside one timestamp is invisible to the reference: a swap, a second swap, and a read after
+    ///      them all leave it on the price the pool held before the block's first swap.
+    function test_referencePrice_ignoresSwapsWithinTheSameTimestamp() public {
+        (PoolKey memory poolKey,,) = _setupErc20(false);
+        (int24 spotBefore,) = hook.referencePrice(poolKey.toId());
+        vm.warp(block.timestamp + 1 hours);
+
+        _swap(poolKey, true, -50e18, 0);
+        _swap(poolKey, true, -50e18, 0);
+        (int24 spot, int24 ref) = hook.referencePrice(poolKey.toId());
+        assertLt(spot, spotBefore - 500); // the price really moved
+        assertEq(ref, spotBefore);
+    }
+
+    /// @dev Across timestamps the reference moves, but never faster than its limit, whether it is a swap or a read
+    ///      that applies the elapsed time.
+    function test_referencePrice_followsNoFasterThanTheLimit() public {
+        (PoolKey memory poolKey,,) = _setupErc20(false);
+        PoolId id = poolKey.toId();
+        (int24 start,) = hook.referencePrice(id);
+        uint24 speed = hook.REFERENCE_MAX_TICKS_PER_SECOND();
+        vm.warp(block.timestamp + 1 hours);
+        _swap(poolKey, true, -100e18, 0);
+        (int24 spot,) = hook.referencePrice(id);
+
+        vm.warp(block.timestamp + 10); // a read applies the elapsed time without any swap
+        (, int24 ref) = hook.referencePrice(id);
+        assertEq(ref, start - int24(speed) * 10);
+
+        _swap(poolKey, true, -1e15, 0); // a swap persists the same step
+        (, ref) = hook.referencePrice(id);
+        assertEq(ref, start - int24(speed) * 10);
+
+        vm.warp(block.timestamp + 5);
+        _swap(poolKey, false, -1e15, 0);
+        (, ref) = hook.referencePrice(id);
+        assertEq(ref, start - int24(speed) * 15);
+
+        vm.warp(block.timestamp + 1 days); // given time it arrives, and stops there
+        (spot, ref) = hook.referencePrice(id);
+        assertEq(ref, spot);
+    }
+
+    function test_referencePrice_followsUpwardsToo() public {
+        (PoolKey memory poolKey,,) = _setupErc20(false);
+        PoolId id = poolKey.toId();
+        (int24 start,) = hook.referencePrice(id);
+        vm.warp(block.timestamp + 1 hours);
+        _swap(poolKey, false, -100e18, 0);
+        (int24 spot,) = hook.referencePrice(id);
+        assertGt(spot, start + 500);
+        vm.warp(block.timestamp + 7);
+        (, int24 ref) = hook.referencePrice(id);
+        assertEq(ref, start + int24(hook.REFERENCE_MAX_TICKS_PER_SECOND()) * 7);
+    }
+
+    /// @dev The reference is kept for every official pool, fee module or not.
+    function test_referencePrice_trackedWithFeeModuleDisabled() public {
+        MockERC20 extra = new MockERC20("Meme2", "M2", 18);
+        extra.mint(address(this), 1e30);
+        extra.mint(swapper, 1e24);
+        extra.approve(address(modifyLiquidityRouter), type(uint256).max);
+        vm.prank(swapper);
+        extra.approve(address(swapRouter), type(uint256).max);
+        Currency memeC = Currency.wrap(address(extra));
+        (Currency c0, Currency c1) = memeC < currency0 ? (memeC, currency0) : (currency0, memeC);
+        PoolKey memory poolKey = _hookKey(c0, c1, LP_FEE);
+        _registerLaunch(address(extra), currency0);
+        uint256 bitmap = PerkConstants.CORE_MODULES_V1 & ~PerkConstants.MODULE_QUOTE_FEE_ROUTER_V1;
+        hook.registerPool(poolKey, keccak256("disabled-ref"), address(extra), configHash, bitmap, HOOK_FEE_BPS);
+        manager.initialize(poolKey, SQRT_PRICE_1_1);
+        _addLiquidity(poolKey);
+
+        PoolId id = poolKey.toId();
+        (int24 start,) = hook.referencePrice(id);
+        vm.warp(block.timestamp + 1 hours);
+        _swap(poolKey, true, -100e18, 0);
+        vm.warp(block.timestamp + 3);
+        _swap(poolKey, true, -1e15, 0);
+        (, int24 ref) = hook.referencePrice(id);
+        assertEq(ref, start - int24(hook.REFERENCE_MAX_TICKS_PER_SECOND()) * 3);
+    }
+
+    // ---------------------------------------------------------------------
     // Fees — ERC-20 quote, meme = currency0
     // ---------------------------------------------------------------------
 

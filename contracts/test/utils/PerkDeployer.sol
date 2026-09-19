@@ -69,6 +69,16 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer {
         internal
         returns (Topology memory t)
     {
+        return deployPerkV1(owner, poolManager_, excessToIncentiveBps, 500);
+    }
+
+    /// @notice As above with a custom grant price guard; `type(uint24).max` switches it off.
+    function deployPerkV1(
+        address owner,
+        address poolManager_,
+        uint16 excessToIncentiveBps,
+        uint24 maxPriceDeviationTicks
+    ) internal returns (Topology memory t) {
         t.owner = owner;
         t.poolManager = poolManager_;
         t.nativeQuote = Currency.wrap(address(0));
@@ -116,7 +126,8 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer {
                 rootDelaySeconds: 1 days,
                 rootDeadlineSeconds: 14 days,
                 minActivation: 1e18,
-                excessToIncentiveBps: excessToIncentiveBps
+                excessToIncentiveBps: excessToIncentiveBps,
+                maxPriceDeviationTicks: maxPriceDeviationTicks
             })
         );
 

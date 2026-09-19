@@ -9,6 +9,7 @@
     "api": "pnpm --filter @perk/api run",
     "web": "pnpm --filter @perk/web run",
     "sim": "pnpm --filter @perk/sim run",
-    "indexer": "pnpm --filter @perk/indexer run"
+    "indexer": "pnpm --filter @perk/indexer run",
+    "contracts:verify": "cd contracts && forge clean && forge build && forge test"
   }
 }

@@ -13,6 +13,7 @@ import type {
   TradesPage,
   WalletRoles,
   WalletSummary,
+  LpPosition,
 } from "./api-types";
 
 /** Base URL of @perk/api. The browser talks only to this service plus the public RPC; never to Alchemy. */
@@ -72,6 +73,7 @@ export const api = {
     get<{ positions: GrantPosition[] }>(`/v1/grants/${meme}/positions`, { beneficiary }),
   walletRoles: (address: string) => get<WalletRoles>(`/v1/wallets/${address}/roles`),
   wallet: (address: string) => get<WalletSummary>(`/v1/wallets/${address}`),
+  lpPositions: (address: string) => get<{ positions: LpPosition[] }>(`/v1/wallets/${address}/lp-positions`),
   grantProof: (meme: string, account: string) => get<GrantAllocationProof>(`/v1/grants/${meme}/proof/${account}`),
 };
 

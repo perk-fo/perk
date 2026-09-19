@@ -16,7 +16,7 @@ import { Panel } from "@/components/ui/Panel";
 import { ChoiceCard } from "@/components/ui/ChoiceCard";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/Button";
-import { Field } from "@/components/ui/Field";
+import { Field, FieldRow } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/Notice";
 import { Kv } from "@/components/ui/Kv";
 import { ModuleBlocks } from "@/components/ui/ModuleBlocks";
@@ -247,26 +247,23 @@ export default function CreatePage() {
             <div className="space-y-4">
               <Field label={t("create.field.name")} value={name} onChange={(e) => setName(e.target.value)} placeholder="Perk Smoke" />
               <Field label="Symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="SMOKE" mono />
-              <ImageDrop
-                previewUrl={image.upload?.url ?? null}
-                status={image.status}
-                error={image.error}
-                onPick={pickImage}
-                onClear={() => setImage({ upload: null, status: "idle", error: null })}
-              />
-              <label className="block">
-                <span className="label">{t("launch.desc.label")}</span>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value.slice(0, DESCRIPTION_MAX))}
-                  rows={3}
-                  placeholder={t("launch.desc.placeholder")}
-                  className="mt-2 w-full resize-none rounded-[14px] border border-bone/15 bg-transparent px-4 py-3 text-sm outline-none transition-colors duration-fast placeholder:text-bone/30 focus:border-bone/40"
+              <FieldRow label={t("launch.image.title")}>
+                <ImageDrop
+                  previewUrl={image.upload?.url ?? null}
+                  status={image.status}
+                  error={image.error}
+                  onPick={pickImage}
+                  onClear={() => setImage({ upload: null, status: "idle", error: null })}
                 />
-                <span className="num mt-1 block text-right text-[11px] text-bone/40">
-                  {description.length}/{DESCRIPTION_MAX}
-                </span>
-              </label>
+              </FieldRow>
+              <Field
+                label={t("launch.desc.label")}
+                textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, DESCRIPTION_MAX))}
+                placeholder={t("launch.desc.placeholder")}
+                hint={`${description.length}/${DESCRIPTION_MAX}`}
+              />
               <div className="grid gap-3 sm:grid-cols-3">
                 {(["x", "telegram", "website"] as const).map((k) => {
                   const v = links[k] ?? "";

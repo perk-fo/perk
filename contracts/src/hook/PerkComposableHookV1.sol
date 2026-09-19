@@ -7,6 +7,7 @@ import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {SafeCast} from "v4-core/src/libraries/SafeCast.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "v4-core/src/types/BeforeSwapDelta.sol";
@@ -24,8 +25,15 @@ import {PerkConstants} from "../libraries/PerkConstants.sol";
 contract PerkComposableHookV1 is IPerkComposableHook {
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
+    using StateLibrary for IPoolManager;
 
     uint32 public constant HOOK_VERSION = PerkConstants.HOOK_VERSION_V1;
+
+    /// @inheritdoc IPerkComposableHook
+    /// @dev 8 ticks is about 0.08%: the reference covers a 5% move in a minute and a halving or doubling in roughly
+    ///      a quarter of an hour. Fast enough that an honest user waits minutes after a sharp move, slow enough that
+    ///      steering it means carrying an off-market price through hundreds of blocks.
+    uint24 public constant REFERENCE_MAX_TICKS_PER_SECOND = 8;
 
     IPoolManager internal immutable POOL_MANAGER;
     address public immutable feeRouter;
@@ -33,6 +41,7 @@ contract PerkComposableHookV1 is IPerkComposableHook {
 
     mapping(PoolId => PoolInfo) internal _pools;
     mapping(address meme => PoolId) internal _poolIdOf;
+    mapping(PoolId => PriceReference) internal _references;
 
     error ZeroAddress();
 
@@ -145,10 +154,16 @@ contract PerkComposableHookV1 is IPerkComposableHook {
     }
 
     /// @inheritdoc IHooks
-    function afterInitialize(address, PoolKey calldata key, uint160, int24) external onlyPoolManager returns (bytes4) {
+    function afterInitialize(address, PoolKey calldata key, uint160, int24 tick)
+        external
+        onlyPoolManager
+        returns (bytes4)
+    {
         PoolId id = key.toId();
         PoolInfo storage p = _pools[id];
         p.initialized = true;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        _references[id] = PriceReference({tick: tick, updatedAt: uint40(block.timestamp)});
         emit OfficialPoolRegistered(p.launchId, id, p.configHash, p.moduleBitmap);
         return IHooks.afterInitialize.selector;
     }
@@ -165,6 +180,7 @@ contract PerkComposableHookV1 is IPerkComposableHook {
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         PoolId id = key.toId();
+        _followPrice(id); // before the swap moves it: the reference only ever learns prices that survived a block
         PoolInfo storage p = _pools[id];
         if (p.moduleBitmap & PerkConstants.MODULE_QUOTE_FEE_ROUTER_V1 == 0) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
@@ -220,6 +236,40 @@ contract PerkComposableHookV1 is IPerkComposableHook {
         emit HookFeeTaken(id, p.quote, fee, inBeforeSwap);
         POOL_MANAGER.take(p.quote, feeRouter, fee);
         IPerkFeeRouter(feeRouter).collectFee(p.meme, PerkTypes.FeeSource.HOOK, fee);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reference price
+    // ---------------------------------------------------------------------
+
+    /// @inheritdoc IPerkComposableHook
+    function referencePrice(PoolId poolId) external view returns (int24 spotTick, int24 referenceTick) {
+        PriceReference storage r = _references[poolId];
+        (, spotTick,,) = POOL_MANAGER.getSlot0(poolId);
+        referenceTick = _follow(r.tick, spotTick, block.timestamp - r.updatedAt);
+    }
+
+    /// @dev Once per timestamp, ahead of the first swap: step the reference towards the price the pool closed the
+    ///      previous activity at. Later swaps in the same timestamp find `updatedAt` current and change nothing, so
+    ///      nothing done inside a block can reach the reference before the block is over.
+    function _followPrice(PoolId id) internal {
+        PriceReference storage r = _references[id];
+        if (r.updatedAt == block.timestamp) return;
+        (, int24 spotTick,,) = POOL_MANAGER.getSlot0(id);
+        r.tick = _follow(r.tick, spotTick, block.timestamp - r.updatedAt);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        r.updatedAt = uint40(block.timestamp);
+    }
+
+    /// @dev `refTick` moved towards `spotTick` by at most `elapsed * REFERENCE_MAX_TICKS_PER_SECOND` ticks.
+    function _follow(int24 refTick, int24 spotTick, uint256 elapsed) internal pure returns (int24) {
+        // ticks span +-887272, so the gap fits 24 bits with room to spare
+        int256 gap = int256(spotTick) - int256(refTick);
+        uint256 distance = gap < 0 ? uint256(-gap) : uint256(gap);
+        uint256 reach = elapsed * REFERENCE_MAX_TICKS_PER_SECOND;
+        if (reach >= distance) return spotTick;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return gap < 0 ? refTick - int24(uint24(reach)) : refTick + int24(uint24(reach));
     }
 
     // ---------------------------------------------------------------------

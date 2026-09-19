@@ -81,9 +81,8 @@ export function ImageDrop({
           </span>
         )}
       </button>
-      <div className="min-w-0 pt-1 text-[12px] leading-relaxed text-bone/50">
-        <p className="text-sm text-bone/80">{t("launch.image.title")}</p>
-        <p className="mt-1">{t("launch.image.rules")}</p>
+      <div className="min-w-0 pt-2 text-[12px] leading-relaxed text-bone/50">
+        <p>{t("launch.image.rules")}</p>
         {status === "uploading" && <p className="mt-1 text-flare">{t("launch.image.uploading")}</p>}
         {status === "error" && <p className="mt-1 text-rose">{error ?? t("launch.image.failed")}</p>}
         {shown && status !== "uploading" && (

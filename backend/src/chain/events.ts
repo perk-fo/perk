@@ -9,6 +9,7 @@ import {
   referralRegistryAbi,
   templateRegistryAbi,
   assetRegistryAbi,
+  positionManagerAbi,
 } from "../generated/abis";
 import type { Deployment } from "../config";
 
@@ -30,6 +31,8 @@ export function perkContracts(d: Deployment): Array<{ name: PerkContract; addres
     { name: "distributor", address: d.distributor, abi: holderRewardDistributorAbi },
     { name: "lpGrantVault", address: d.lpGrantVault, abi: lpGrantVaultAbi },
     { name: "referralRegistry", address: d.referralRegistry, abi: referralRegistryAbi },
+    // ERC-721 Transfers here are ordinary LP positions being minted, moved or burnt (ADR-010 §4).
+    { name: "positionManager", address: d.positionManager, abi: positionManagerAbi },
     { name: "templateRegistry", address: d.templateRegistry, abi: templateRegistryAbi },
   ];
   if (d.assetRegistry) list.push({ name: "assetRegistry", address: d.assetRegistry, abi: assetRegistryAbi });
@@ -43,6 +46,7 @@ export type PerkContract =
   | "feeRouter"
   | "distributor"
   | "lpGrantVault"
+  | "positionManager"
   | "referralRegistry"
   | "templateRegistry"
   | "assetRegistry"

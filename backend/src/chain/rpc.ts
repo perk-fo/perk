@@ -1,7 +1,9 @@
 import {
   createPublicClient,
+  encodeAbiParameters,
   erc20Abi,
   http,
+  keccak256,
   type Address,
   type Hex,
   type PublicClient,
@@ -152,4 +154,81 @@ export async function getErc20Meta(client: Client, token: Address): Promise<Erc2
       .then((s) => s, () => ""),
   ]);
   return { name, symbol, decimals: Number(decimals), totalSupply, tokenURI };
+}
+
+const POSITION_MANAGER_ABI = [
+  {
+    type: "function",
+    name: "getPoolAndPositionInfo",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      {
+        name: "poolKey",
+        type: "tuple",
+        components: [
+          { name: "currency0", type: "address" },
+          { name: "currency1", type: "address" },
+          { name: "fee", type: "uint24" },
+          { name: "tickSpacing", type: "int24" },
+          { name: "hooks", type: "address" },
+        ],
+      },
+      { name: "info", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "getPositionLiquidity",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint128" }],
+  },
+] as const;
+
+/**
+ * The pool a PositionManager token belongs to, as a pool id matching `launches.pool_id`. v4 derives the id by
+ * hashing the encoded PoolKey, which is what `PoolId.toId()` does on chain.
+ */
+export async function getPositionPool(
+  client: Client,
+  positionManager: Address,
+  tokenId: bigint,
+): Promise<[{ poolId: Hex; liquidity: bigint }]> {
+  const [key, liquidity] = await Promise.all([
+    client.readContract({
+      address: positionManager,
+      abi: POSITION_MANAGER_ABI,
+      functionName: "getPoolAndPositionInfo",
+      args: [tokenId],
+    }),
+    client
+      .readContract({
+        address: positionManager,
+        abi: POSITION_MANAGER_ABI,
+        functionName: "getPositionLiquidity",
+        args: [tokenId],
+      })
+      .then((l) => l as bigint, () => 0n),
+  ]);
+  const k = (key as readonly unknown[])[0] as {
+    currency0: Address;
+    currency1: Address;
+    fee: number;
+    tickSpacing: number;
+    hooks: Address;
+  };
+  const poolId = keccak256(
+    encodeAbiParameters(
+      [
+        { type: "address" },
+        { type: "address" },
+        { type: "uint24" },
+        { type: "int24" },
+        { type: "address" },
+      ],
+      [k.currency0, k.currency1, k.fee, k.tickSpacing, k.hooks],
+    ),
+  );
+  return [{ poolId: poolId.toLowerCase() as Hex, liquidity }];
 }
