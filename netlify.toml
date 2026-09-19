@@ -1,0 +1,30 @@
+# Netlify builds only the frontend out of this monorepo; the base directory scopes the build to the web app.
+[build]
+  base = "frontend"
+  # The frontend is a bun workspace; Netlify picks bun up from frontend/bun.lock.
+  command = "bun run build"
+  publish = ".next"
+
+# Next.js needs Netlify's runtime adapter: it turns the .next build into edge/serverless functions plus static
+# assets. Without it the publish directory is served as plain files and every route 404s.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Nothing secret belongs here. NEXT_PUBLIC_API_URL is set per-context in the Netlify UI (or by `netlify env:set`)
+  # so preview builds can point at a different API than production.
+  NEXT_TELEMETRY_DISABLED = "1"
+  # contracts/lib/* are submodules the web app does not need; skipping them keeps builds fast and avoids
+  # a clone failure if one of them is ever made private.
+  GIT_LFS_ENABLED = "false"
+
+# The app reads lists, charts and history from the indexer API over CORS, so no proxy redirect is needed.
+# SPA-style fallbacks are handled by the Next runtime.
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"

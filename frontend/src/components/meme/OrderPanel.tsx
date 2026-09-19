@@ -1,0 +1,587 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useAccount,
+  useBalance,
+  useConnect,
+  usePublicClient,
+  useReadContract,
+  useSwitchChain,
+} from "wagmi";
+import { erc20Abi, formatUnits, parseUnits, type Address, type Hex } from "viem";
+import { bondingCurveAbi, poolSwapTestAbi } from "@/generated/abis";
+import { useTabVisible, useTx } from "@/lib/hooks";
+import { decodeErrorMessage } from "@/lib/errors";
+import {
+  MAX_SQRT_PRICE_MINUS_ONE,
+  MIN_SQRT_PRICE_PLUS_ONE,
+  TESTNET_SWAP_ROUTER,
+} from "@/lib/deployments";
+import type { QuoteInfo } from "@/lib/quotes";
+import { unpackBalanceDelta } from "@/lib/trades";
+import { formatAmount, fmtBps, signedPct } from "@/lib/format";
+import { Button } from "@/components/ui/Button";
+import { Notice } from "@/components/ui/Notice";
+import { Sparkle } from "@/components/art/Sparkle";
+import { useT } from "@/i18n/provider";
+
+const NATIVE_GAS_HEADROOM = 1_000_000_000_000_000n; // 0.001 OKB
+const SLIP_PRESETS = [50, 100, 200] as const;
+
+export interface PoolKeyShape {
+  currency0: Address;
+  currency1: Address;
+  fee: number;
+  tickSpacing: number;
+  hooks: Address;
+}
+
+function minOut(amount: bigint | undefined, slipBps: bigint): bigint {
+  if (amount === undefined) return 0n;
+  const bps = slipBps > 10_000n ? 10_000n : slipBps;
+  return (amount * (10_000n - bps)) / 10_000n;
+}
+
+function impactBps(spotQ: bigint, spotM: bigint, execQ: bigint, execM: bigint): bigint {
+  if (spotQ === 0n || spotM === 0n || execM === 0n) return 0n;
+  const exec = execQ * spotM;
+  const spot = execM * spotQ;
+  if (spot === 0n) return 0n;
+  return ((exec - spot) * 10_000n) / spot;
+}
+
+function formatInput(amount: bigint, decimals: number): string {
+  const s = formatUnits(amount, decimals);
+  if (!s.includes(".")) return s;
+  return s.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+}
+
+export function OrderPanel({
+  meme,
+  memeSymbol,
+  memeDecimals,
+  quoteMeta,
+  curve,
+  status,
+  chainId,
+  poolKey,
+  virtualQuote,
+  virtualMeme,
+  totalFeeBps,
+  lastPriceQuote,
+  lastPriceMeme,
+}: {
+  meme: Address;
+  memeSymbol: string;
+  memeDecimals: number;
+  quoteMeta: QuoteInfo;
+  curve: Address;
+  status: number;
+  chainId: number;
+  poolKey?: PoolKeyShape;
+  virtualQuote?: bigint;
+  virtualMeme?: bigint;
+  totalFeeBps: number;
+  lastPriceQuote: bigint;
+  lastPriceMeme: bigint;
+}) {
+  const { t, locale } = useT();
+  const { address, isConnected, chainId: walletChainId } = useAccount(); // real wallet chain, see Header
+  const { connect, connectors, isPending: connecting } = useConnect();
+  const { switchChain } = useSwitchChain();
+  const client = usePublicClient({ chainId });
+  const visible = useTabVisible();
+
+  const [mode, setMode] = useState<"buy" | "sell">("buy");
+  const [input, setInput] = useState("");
+  const [slipBps, setSlipBps] = useState(100);
+  const [customSlip, setCustomSlip] = useState("");
+  const [slipCustom, setSlipCustom] = useState(false);
+  const [flash, setFlash] = useState(false);
+
+  const parsed = useMemo(() => {
+    if (!input.trim()) return 0n;
+    try {
+      return parseUnits(input, mode === "buy" ? quoteMeta.decimals : memeDecimals);
+    } catch {
+      return null;
+    }
+  }, [input, mode, quoteMeta.decimals, memeDecimals]);
+
+  const quoteBal = useBalance({
+    address,
+    token: quoteMeta.isNative ? undefined : quoteMeta.address,
+    query: { enabled: !!address, refetchInterval: visible ? 12_000 : false },
+  });
+  const memeBal = useBalance({
+    address,
+    token: meme,
+    query: { enabled: !!address, refetchInterval: visible ? 12_000 : false },
+  });
+
+  const spendBal = mode === "buy" ? quoteBal.data?.value : memeBal.data?.value;
+  const spendDecimals = mode === "buy" ? quoteMeta.decimals : memeDecimals;
+  const spendSymbol = mode === "buy" ? quoteMeta.symbol : memeSymbol;
+
+  const quoteBuy = useReadContract({
+    address: curve,
+    abi: bondingCurveAbi,
+    functionName: "quoteBuy",
+    args: [meme, parsed ?? 0n],
+    query: {
+      enabled: status === 1 && mode === "buy" && !!parsed && parsed > 0n,
+      refetchInterval: visible ? 12_000 : false,
+    },
+  });
+  const quoteSell = useReadContract({
+    address: curve,
+    abi: bondingCurveAbi,
+    functionName: "quoteSell",
+    args: [meme, parsed ?? 0n],
+    query: {
+      enabled: status === 1 && mode === "sell" && !!parsed && parsed > 0n,
+      refetchInterval: visible ? 12_000 : false,
+    },
+  });
+
+  const quoteIsCurrency0 =
+    poolKey !== undefined && quoteMeta.address.toLowerCase() === poolKey.currency0.toLowerCase();
+  const zeroForOne = mode === "buy" ? quoteIsCurrency0 : !quoteIsCurrency0;
+
+  const poolSim = useQuery({
+    queryKey: [
+      "pool-sim",
+      chainId,
+      meme,
+      mode,
+      parsed?.toString(),
+      address,
+      poolKey?.currency0,
+      poolKey?.currency1,
+    ],
+    enabled:
+      status === 3 &&
+      chainId === 1952 &&
+      !!TESTNET_SWAP_ROUTER &&
+      !!client &&
+      !!poolKey &&
+      !!address &&
+      !!parsed &&
+      parsed > 0n,
+    refetchInterval: visible ? 12_000 : false,
+    retry: false,
+    queryFn: async () => {
+      if (!client || !poolKey || !parsed || !address) return null;
+      const { result } = await client.simulateContract({
+        address: TESTNET_SWAP_ROUTER,
+        abi: poolSwapTestAbi,
+        functionName: "swap",
+        args: [
+          poolKey,
+          {
+            zeroForOne,
+            amountSpecified: -parsed,
+            sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE_PLUS_ONE : MAX_SQRT_PRICE_MINUS_ONE,
+          },
+          { takeClaims: false, settleUsingBurn: false },
+          "0x" as Hex,
+        ],
+        value: mode === "buy" && quoteMeta.isNative ? parsed : 0n,
+        account: address,
+      });
+      return unpackBalanceDelta(result as bigint);
+    },
+  });
+
+  const spender: Address = status === 3 ? TESTNET_SWAP_ROUTER : curve;
+  const needToken: Address | undefined =
+    mode === "buy" ? (quoteMeta.isNative ? undefined : quoteMeta.address) : meme;
+  const allowance = useReadContract({
+    address: needToken,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: address && needToken ? [address, spender] : undefined,
+    query: { enabled: !!address && !!needToken && !!spender && parsed !== null && (parsed ?? 0n) > 0n },
+  });
+
+  const approveTx = useTx();
+  const tradeTx = useTx();
+
+  const refetchAllowance = allowance.refetch;
+  const resetApprove = approveTx.reset;
+  useEffect(() => {
+    if (!approveTx.isSuccess) return;
+    void refetchAllowance();
+    resetApprove();
+  }, [approveTx.isSuccess, refetchAllowance, resetApprove]);
+
+  const resetTrade = tradeTx.reset;
+  const queryClient = useQueryClient();
+  const refetchQuoteBal = quoteBal.refetch;
+  const refetchMemeBal = memeBal.refetch;
+  useEffect(() => {
+    if (!tradeTx.isSuccess) return;
+    // done: clear the amount, refresh both balances now, and pull the indexer-backed views (trades, chart,
+    // holders, stats) once the indexer has had time to see the block, instead of waiting for the next poll
+    setFlash(true);
+    setInput("");
+    void refetchQuoteBal();
+    void refetchMemeBal();
+    const refresh = () => void queryClient.invalidateQueries({ queryKey: ["api"] });
+    const ids = [
+      setTimeout(() => {
+        setFlash(false);
+        resetTrade();
+      }, 1500),
+      setTimeout(refresh, 2500),
+      setTimeout(refresh, 6000),
+    ];
+    return () => ids.forEach(clearTimeout);
+  }, [tradeTx.isSuccess, resetTrade, refetchQuoteBal, refetchMemeBal, queryClient]);
+
+  const activeSlip = slipCustom
+    ? Math.min(10_000, Math.max(0, Math.round(Number.parseFloat(customSlip || "0") * 100))) || 0
+    : slipBps;
+  const slipBig = BigInt(Number.isFinite(activeSlip) ? activeSlip : 0);
+
+  const curveOut = mode === "buy" ? quoteBuy.data?.[0] : quoteSell.data?.[0];
+  const curveFee = mode === "buy" ? quoteBuy.data?.[2] : quoteSell.data?.[1];
+
+  const poolOut = useMemo(() => {
+    const delta = poolSim.data;
+    if (!delta || !poolKey) return undefined;
+    const memeDelta = quoteIsCurrency0 ? delta.amount1 : delta.amount0;
+    const quoteDelta = quoteIsCurrency0 ? delta.amount0 : delta.amount1;
+    if (mode === "buy") return memeDelta < 0n ? -memeDelta : memeDelta;
+    return quoteDelta < 0n ? -quoteDelta : quoteDelta;
+  }, [poolSim.data, poolKey, quoteIsCurrency0, mode]);
+
+  const expectedOut = status === 1 ? curveOut : poolOut;
+  const expectedDecimals = mode === "buy" ? memeDecimals : quoteMeta.decimals;
+  const expectedSymbol = mode === "buy" ? memeSymbol : quoteMeta.symbol;
+
+  const feeAmount = useMemo(() => {
+    if (status === 1 && curveFee !== undefined) return curveFee;
+    if (parsed && parsed > 0n) {
+      const feeBps = BigInt(totalFeeBps);
+      if (mode === "buy") return (parsed * feeBps) / 10_000n;
+      if (expectedOut !== undefined) return (expectedOut * feeBps) / 10_000n;
+    }
+    return undefined;
+  }, [status, curveFee, parsed, totalFeeBps, mode, expectedOut]);
+
+  const impact = useMemo(() => {
+    if (!parsed || parsed <= 0n || expectedOut === undefined || expectedOut === 0n) return undefined;
+    const spotQ = status === 1 ? (virtualQuote ?? 0n) : lastPriceQuote;
+    const spotM = status === 1 ? (virtualMeme ?? 0n) : lastPriceMeme;
+    if (spotQ === 0n || spotM === 0n) return undefined;
+    const execQ = mode === "buy" ? parsed : expectedOut;
+    const execM = mode === "buy" ? expectedOut : parsed;
+    return impactBps(spotQ, spotM, execQ, execM);
+  }, [parsed, expectedOut, status, virtualQuote, virtualMeme, lastPriceQuote, lastPriceMeme, mode]);
+
+  const minReceived = expectedOut !== undefined ? minOut(expectedOut, slipBig) : undefined;
+
+  const wrongChain = isConnected && walletChainId !== chainId;
+  const needsApprove =
+    !!needToken &&
+    !!parsed &&
+    parsed > 0n &&
+    allowance.data !== undefined &&
+    allowance.data < parsed;
+  const insufficient = parsed !== null && parsed > 0n && spendBal !== undefined && parsed > spendBal;
+  const pending = tradeTx.isPending || tradeTx.isConfirming || approveTx.isPending || approveTx.isConfirming || connecting;
+
+  const onSubmit = () => {
+    if (!isConnected) {
+      const c = connectors[0];
+      if (c) connect({ connector: c, chainId: 1952 });
+      return;
+    }
+    if (wrongChain) {
+      switchChain({ chainId });
+      return;
+    }
+    if (!address || parsed === null || parsed <= 0n || insufficient) return;
+    if (needsApprove && needToken) {
+      approveTx.write({
+        address: needToken,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [spender, parsed],
+      });
+      return;
+    }
+    if (status === 1) {
+      if (mode === "buy") {
+        tradeTx.write({
+          address: curve,
+          abi: bondingCurveAbi,
+          functionName: "buy",
+          args: [meme, parsed, minOut(quoteBuy.data?.[0], slipBig), address],
+          value: quoteMeta.isNative ? parsed : 0n,
+        });
+      } else {
+        tradeTx.write({
+          address: curve,
+          abi: bondingCurveAbi,
+          functionName: "sell",
+          args: [meme, parsed, minOut(quoteSell.data?.[0], slipBig), address],
+        });
+      }
+      return;
+    }
+    if (status === 3 && poolKey && TESTNET_SWAP_ROUTER) {
+      tradeTx.write({
+        address: TESTNET_SWAP_ROUTER,
+        abi: poolSwapTestAbi,
+        functionName: "swap",
+        args: [
+          poolKey,
+          {
+            zeroForOne,
+            amountSpecified: -parsed,
+            sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE_PLUS_ONE : MAX_SQRT_PRICE_MINUS_ONE,
+          },
+          { takeClaims: false, settleUsingBurn: false },
+          "0x" as Hex,
+        ],
+        value: mode === "buy" && quoteMeta.isNative ? parsed : 0n,
+      });
+    }
+  };
+
+  let cta = mode === "buy" ? t("meme.trade.buy") : t("meme.trade.sell");
+  let ctaDisabled = false;
+  if (flash) cta = t("meme.order.confirmed");
+  else if (pending) cta = t("meme.order.pending");
+  else if (!isConnected) cta = t("meme.order.connect");
+  else if (wrongChain) {
+    cta = t("meme.order.wrongNetwork");
+    ctaDisabled = true;
+  } else if (parsed === null || parsed === 0n) {
+    cta = t("meme.order.needAmount");
+    ctaDisabled = true;
+  } else if (insufficient) {
+    cta = t("meme.order.insufficient");
+    ctaDisabled = true;
+  } else if (needsApprove) cta = t("meme.order.approve", { symbol: spendSymbol });
+
+  const validTrade =
+    isConnected &&
+    !wrongChain &&
+    parsed !== null &&
+    parsed > 0n &&
+    !insufficient &&
+    !needsApprove &&
+    !pending &&
+    !flash;
+
+  const setPct = (pct: bigint, isMax: boolean) => {
+    if (spendBal === undefined) return;
+    let raw = (spendBal * pct) / 100n;
+    if (isMax && mode === "buy" && quoteMeta.isNative) {
+      raw = spendBal > NATIVE_GAS_HEADROOM ? spendBal - NATIVE_GAS_HEADROOM : 0n;
+    }
+    setInput(formatInput(raw, spendDecimals));
+  };
+
+  const impactFmt = impact !== undefined ? signedPct(impact, locale) : undefined;
+  const error = approveTx.error ?? tradeTx.error;
+
+  if (status === 3 && chainId === 196) {
+    return (
+      <section className="panel p-6 lg:sticky lg:top-20">
+        <h2 className="label mb-4">{t("meme.swap.title")}</h2>
+        <Notice tone="amber">{t("meme.swap.mainnet")}</Notice>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel flex h-full flex-col p-6 lg:sticky lg:top-20">
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded-full border border-bone/10 p-0.5">
+        <button
+          type="button"
+          onClick={() => {
+            setMode("buy");
+            setInput("");
+          }}
+          className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors duration-fast ${
+            mode === "buy"
+              ? "bg-flare text-[rgb(var(--on-flare))]"
+              : "text-bone/60 hover:text-bone"
+          }`}
+        >
+          {t("meme.trade.buy")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode("sell");
+            setInput("");
+          }}
+          className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors duration-fast ${
+            mode === "sell" ? "border border-rose text-rose" : "text-bone/60 hover:text-bone"
+          }`}
+        >
+          {t("meme.trade.sell")}
+        </button>
+      </div>
+
+      <div className="relative">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && validTrade) onSubmit();
+          }}
+          inputMode="decimal"
+          placeholder="0"
+          className="num w-full rounded-full border border-bone/15 bg-transparent py-3 pl-4 pr-20 text-[22px] outline-none transition-colors duration-fast placeholder:text-bone/30 focus:border-flare/60"
+        />
+        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 num text-sm text-bone/50">
+          {spendSymbol}
+        </span>
+      </div>
+      {parsed === null && <p className="mt-1 text-xs text-rose">{t("common.invalidAmount")}</p>}
+
+      <div className="mt-2 flex gap-1">
+        {([25n, 50n, 75n] as const).map((p) => (
+          <button
+            key={p.toString()}
+            type="button"
+            onClick={() => setPct(p, false)}
+            className="num flex-1 rounded-full border border-bone/10 py-1 text-[11px] text-bone/60 transition-colors duration-fast hover:border-bone/30 hover:text-bone"
+          >
+            {p.toString()}%
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setPct(100n, true)}
+          className="num flex-1 rounded-full border border-bone/10 py-1 text-[11px] text-bone/60 transition-colors duration-fast hover:border-bone/30 hover:text-bone"
+        >
+          {t("meme.order.chipMax")}
+        </button>
+      </div>
+      {/* both sides of the pair; the side being spent is brighter */}
+      <div className="mt-2 flex items-baseline justify-between gap-3 text-[12px]">
+        <span className="label">{t("meme.order.wallet")}</span>
+        <span className="num text-right text-bone/45">
+          <span className={mode === "buy" ? "text-bone/85" : undefined}>
+            {formatAmount(quoteBal.data?.value, quoteMeta.decimals, { locale, maxFrac: 6 })} {quoteMeta.symbol}
+          </span>
+          <span className="mx-1.5 text-bone/25">·</span>
+          <span className={mode === "sell" ? "text-bone/85" : undefined}>
+            {formatAmount(memeBal.data?.value, memeDecimals, { locale, maxFrac: 2 })} {memeSymbol}
+          </span>
+        </span>
+      </div>
+
+      <dl className="mt-4 divide-y divide-bone/8 border-y border-bone/8">
+        <div className="flex items-baseline justify-between gap-3 py-1.5">
+          <dt className="label">{t("meme.order.expect")}</dt>
+          <dd className="num text-[13px]">
+            {expectedOut !== undefined
+              ? `${formatAmount(expectedOut, expectedDecimals, { locale })} ${expectedSymbol}`
+              : "—"}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 py-1.5">
+          <dt className="label">{t("meme.order.fee", { pct: fmtBps(totalFeeBps, locale) })}</dt>
+          <dd className="num text-[13px]">
+            {feeAmount !== undefined
+              ? `${formatAmount(feeAmount, quoteMeta.decimals, { locale })} ${quoteMeta.symbol}`
+              : "—"}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 py-1.5">
+          <dt className="label">{t("meme.order.impact")}</dt>
+          <dd
+            className={`num text-[13px] ${
+              impactFmt?.tone === "flare" ? "text-flare" : impactFmt?.tone === "rose" ? "text-rose" : ""
+            }`}
+          >
+            {impactFmt?.text ?? "—"}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 py-1.5">
+          <dt className="label">{t("meme.order.minOut")}</dt>
+          <dd className="num text-[13px]">
+            {minReceived !== undefined
+              ? `${formatAmount(minReceived, expectedDecimals, { locale })} ${expectedSymbol}`
+              : "—"}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <span className="label mr-1">{t("meme.order.slippage")}</span>
+        {SLIP_PRESETS.map((bps) => (
+          <button
+            key={bps}
+            type="button"
+            onClick={() => {
+              setSlipCustom(false);
+              setSlipBps(bps);
+            }}
+            className={`num rounded-full border px-2 py-0.5 text-[11px] transition-colors duration-fast ${
+              !slipCustom && slipBps === bps
+                ? "border-flare/50 bg-flare/10 text-flare"
+                : "border-bone/10 text-bone/60 hover:text-bone"
+            }`}
+          >
+            {bps / 100}%
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setSlipCustom(true)}
+          className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors duration-fast ${
+            slipCustom ? "border-flare/50 bg-flare/10 text-flare" : "border-bone/10 text-bone/60 hover:text-bone"
+          }`}
+        >
+          {t("meme.order.slippageCustom")}
+        </button>
+        {slipCustom && (
+          <input
+            value={customSlip}
+            onChange={(e) => setCustomSlip(e.target.value)}
+            inputMode="decimal"
+            placeholder="1.5"
+            className="num w-14 rounded-full border border-bone/15 bg-transparent px-2 py-0.5 text-[11px] outline-none focus:border-flare/60"
+          />
+        )}
+      </div>
+
+      {status === 3 && chainId === 1952 && (
+        <Notice tone="amber" className="mt-3 text-xs">
+          {t("meme.swap.notice")}
+        </Notice>
+      )}
+
+      <div className="mt-auto pt-4">
+        <Button
+          // shows the phase of whichever write is running: the approval first, then the trade
+          tx={approveTx.phase === "preparing" || approveTx.phase === "signing" || approveTx.phase === "confirming" ? approveTx : tradeTx}
+          pending={connecting}
+          disabled={ctaDisabled || pending || flash || (isConnected && !wrongChain && status === 3 && !TESTNET_SWAP_ROUTER)}
+          onClick={onSubmit}
+        >
+          <span className="inline-flex items-center justify-center gap-1.5">
+            {flash && <Sparkle size={12} tone="flare" twinkle />}
+            {cta}
+          </span>
+        </Button>
+        {error && (
+          <Notice tone="rose" className="mt-3 break-all">
+            {decodeErrorMessage(error, t)}
+          </Notice>
+        )}
+      </div>
+    </section>
+  );
+}

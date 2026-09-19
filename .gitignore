@@ -1,0 +1,57 @@
+# node / build output
+# no trailing slash: a workspace package may link node_modules rather than hold a real directory
+node_modules
+dist/
+.turbo/
+.next/
+coverage/
+*.tsbuildinfo
+*.log
+tmp/
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+# simulations only; real runs stay tracked as the deployment trail (no keys in them, deployments/*.json is canonical)
+contracts/broadcast/**/dry-run/
+contracts/lcov.info
+
+# env & secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+keystore/
+
+# Local working material that is not part of the product: agent instructions, task specs, decision notes, run
+# transcripts and the scripts that drive coding agents. Kept on disk, never committed.
+.workbench/
+.cursor/
+.cursor-runs/
+.claude/
+.aider*
+.github/copilot-instructions.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.mcp.json
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+.vercel/
+
+# testnet lifecycle scratch (datasets / proofs)
+contracts/deployments/*.lifecycle-*.json
+
+# local media store: content-addressed uploads referenced by on-chain tokenURIs
+backend/data/
+
+# local stack pids and logs
+.run/

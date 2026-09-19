@@ -1,0 +1,32 @@
+{
+  "name": "@perk/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Perk indexer + read API: syncs X Layer logs into Postgres from a start block and serves the web app",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/main.ts",
+    "start": "bun run src/main.ts",
+    "sync": "bun run src/main.ts --sync-only",
+    "serve": "bun run src/main.ts --serve-only",
+    "migrate": "bun run src/db/migrate.ts",
+    "sync-abis": "bun run scripts/sync-abis.ts",
+    "typecheck": "bun x tsc --noEmit -p .",
+    "test": "bun test",
+    "test:api": "PERK_TEST_DATABASE_URL=postgres://localhost:5432/perk_test_api bun test test/api.test.ts",
+    "test:all": "bun test && bun run test:api"
+  },
+  "dependencies": {
+    "@openzeppelin/merkle-tree": "^1.0.8",
+    "hono": "^4.6.0",
+    "postgres": "^3.4.5",
+    "viem": "^2.23.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.2",
+    "typescript": "^5.7.2"
+  },
+  "patchedDependencies": {
+    "postgres@3.4.9": "patches/postgres@3.4.9.patch"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@perk/sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Graduation math and LP Grant payoff simulations for Perk. Pure TypeScript, runs on bun, no dependencies.",
+  "scripts": {
+    "test": "bun test",
+    "graduation": "bun run src/cli/graduation.ts",
+    "grant": "bun run src/cli/grant.ts"
+  }
+}

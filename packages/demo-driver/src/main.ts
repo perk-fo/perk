@@ -1,0 +1,348 @@
+/**
+ * Testnet content driver.
+ *
+ *   bun run src/main.ts              run the scheduler until stopped
+ *   bun run src/main.ts --plan-only  write the plan and print the schedule, send nothing
+ *   bun run src/main.ts --status     print where every token has got to
+ *
+ * It launches tokens on a fixed cadence, trades each one to graduation over its trading window, and then walks the
+ * campaign through the grant cadence. All progress is persisted after every action, so stopping the process and
+ * starting it again — here or on the server — picks the schedule back up without repeating anything.
+ */
+import { getAddress, type Address } from "viem";
+import { buildConfig, type DriverConfig } from "./config";
+import { buildPlan, DEFAULTS, rng, type TokenSpec } from "./plan";
+import { emptyState, loadState, saveState, type DriverState, type TokenState } from "./state";
+import {
+  campaign,
+  curveTrade,
+  finalizeGrant,
+  fundQuoteAssets,
+  fundWallets,
+  graduate,
+  launchToken,
+  optInParticipants,
+  poolSwap,
+  launchStatus,
+  proposeRoot,
+  templateThreshold,
+  activateRoot,
+  quoteAddress,
+} from "./actions";
+import { buildSnapshot, exitFirstPosition, readDataset, registerAndActivate } from "./grants";
+import { uploadTokenMetadata } from "./media";
+
+const TICK_MS = Number(process.env.DRIVER_TICK_MS ?? 15_000);
+const WALLET_TARGET = BigInt(process.env.DRIVER_WALLET_TARGET_WEI ?? 40_000_000_000_000_000n); // 0.04 OKB
+/** Creator dev buy, as a fraction of the launch threshold — the two quote assets have different decimals. */
+const DEV_BUY_DIVISOR = BigInt(process.env.DRIVER_DEV_BUY_DIVISOR ?? 25n);
+const POOL_SWAP_INTERVAL_S = Number(process.env.DRIVER_POOL_SWAP_INTERVAL_S ?? 600);
+const POOL_SWAP_WEI = BigInt(process.env.DRIVER_POOL_SWAP_WEI ?? 200_000_000_000_000n); // 0.0002 OKB
+
+const now = () => Math.floor(Date.now() / 1000);
+
+function log(msg: string, fields: Record<string, unknown> = {}): void {
+  console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...fields }));
+}
+
+function apiUrl(): string {
+  return process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 8787}`;
+}
+
+/** Fresh plan, or the persisted one when it still matches the deployment we are pointed at. */
+function initState(cfg: DriverConfig): DriverState {
+  const existing = loadState(cfg.stateFile);
+  if (existing) {
+    if (existing.deploymentBlock === cfg.deployment.blockNumber && existing.chainId === cfg.chainId) return existing;
+    log("deployment changed since the last run; starting a fresh plan", {
+      was: existing.deploymentBlock,
+      now: cfg.deployment.blockNumber,
+    });
+  }
+  // DRIVER_QUOTES pins which quote assets new plans rotate through ("native", or a comma-separated list of keys
+  // from the deployment's quoteAssets). Useful to steer launches away from a quote whose graduation is broken.
+  const available = ["native", ...Object.keys(cfg.deployment.quoteAssets ?? {})];
+  const wanted = (process.env.DRIVER_QUOTES ?? "").split(",").map((q) => q.trim()).filter(Boolean);
+  const quoteAssets = wanted.length > 0 ? wanted.filter((q) => available.includes(q)) : available;
+  if (quoteAssets.length === 0) throw new Error(`DRIVER_QUOTES matched none of: ${available.join(", ")}`);
+  const plan = buildPlan({ ...DEFAULTS, startAt: now(), quoteAssets });
+  const state = emptyState(cfg.chainId, cfg.deployment.blockNumber, plan);
+  saveState(cfg.stateFile, state);
+  return state;
+}
+
+/** Where a token should be on its way to graduation at time `t`, in basis points. */
+function targetProgress(spec: TokenSpec, t: number): number {
+  const start = spec.tradeAt[0] ?? spec.launchAt;
+  const end = spec.tradeAt[spec.tradeAt.length - 1] ?? start + DEFAULTS.tradeWindowSeconds;
+  if (t <= start) return 0;
+  if (t >= end) return 10_000;
+  return Math.round((10_000 * (t - start)) / (end - start));
+}
+
+async function stepToken(
+  cfg: DriverConfig,
+  state: DriverState,
+  spec: TokenSpec,
+  ts: TokenState,
+  rand: () => number,
+): Promise<boolean> {
+  const t = now();
+  if (ts.error) return false;
+
+  // --- launch ---------------------------------------------------------------
+  if (ts.stage === "planned") {
+    if (t < spec.launchAt) return false;
+    const uri =
+      (await uploadTokenMetadata(apiUrl(), {
+        name: spec.name,
+        symbol: spec.symbol,
+        description: spec.description,
+        seed: spec.index + 1,
+      })) ?? `perk://demo/${spec.symbol}`;
+    const devBuy = (await templateThreshold(cfg, spec.quote)) / DEV_BUY_DIVISOR;
+    const { meme, tx } = await launchToken(cfg, spec, uri, devBuy);
+    ts.meme = meme;
+    ts.launchTx = tx;
+    ts.stage = "trading";
+    log("launched", { symbol: spec.symbol, meme, quote: spec.quote });
+    return true;
+  }
+
+  const meme = ts.meme as Address | undefined;
+  if (!meme) return false;
+
+  // --- curve trading until the threshold is reached --------------------------
+  if (ts.stage === "trading") {
+    const due = spec.tradeAt
+      .map((at, i) => ({ at, i }))
+      .filter(({ at, i }) => at <= t && !ts.tradesDone.includes(i));
+    if (due.length > 0) {
+      const { i } = due[0]!;
+      const trader = cfg.traders[i % cfg.traders.length]!;
+      await curveTrade(cfg, meme, spec.quote, trader, targetProgress(spec, t), rand, (m) => log(m));
+      ts.tradesDone.push(i);
+      return true;
+    }
+    // The launch status is the authoritative signal here. `progressBps` drops back to 0 the moment the curve
+    // graduates, so gating on it means a token whose graduation did not complete first time can never be retried:
+    // it reads 0, decides it is behind, and tries to buy a curve that no longer accepts buys, for ever.
+    const status = await launchStatus(cfg, meme);
+    if (status >= 2) {
+      try {
+        await graduate(cfg, meme, (m) => log(m));
+      } catch (err) {
+        // A launch whose graduation cannot complete is not going to fix itself, and retrying every tick just
+        // buries the log. Park it with the reason so `--status` shows what happened.
+        ts.error = String(err).slice(0, 200);
+        log("graduation stalled; parking this launch", { symbol: spec.symbol, meme, error: ts.error });
+        return true;
+      }
+      ts.stage = "graduated";
+      ts.graduatedAt = now();
+      log("graduated", { symbol: spec.symbol, meme });
+      return true;
+    }
+    const windowOver = t > (spec.tradeAt[spec.tradeAt.length - 1] ?? 0);
+    if (windowOver) {
+      // the window closed without crossing the threshold: push it over with one more buy
+      const trader = cfg.traders[spec.index % cfg.traders.length]!;
+      await curveTrade(cfg, meme, spec.quote, trader, 10_000, rand, (m) => log(m));
+      return true;
+    }
+    return false;
+  }
+
+  // --- post-graduation: keep the pool chart alive ---------------------------
+  {
+    if ((ts.lastPoolSwapAt ?? 0) + POOL_SWAP_INTERVAL_S < t) {
+      const trader = cfg.traders[(spec.index + ts.tradesDone.length) % cfg.traders.length]!;
+      try {
+        await poolSwap(cfg, meme, trader, rand() < 0.6, POOL_SWAP_WEI, (m) => log(m));
+      } catch (err) {
+        log("pool swap failed", { meme, error: String(err).slice(0, 200) });
+      }
+      ts.lastPoolSwapAt = now();
+      return true;
+    }
+  }
+
+  // --- grant cadence --------------------------------------------------------
+  const c = await campaign(cfg, meme);
+  const status = Number(c.status);
+  if (status === 0) return false; // this launch has no campaign (standard template)
+
+  if (ts.stage === "graduated" && status === 1 /* AWAITING_ROOT */) {
+    const path = await buildSnapshot(cfg, meme, (m) => log(m));
+    const dataset = readDataset(path);
+    if (BigInt(dataset.totals.base) === 0n) {
+      ts.error = "no eligible accounts in the snapshot";
+      log("grant skipped: empty snapshot", { meme });
+      return true;
+    }
+    await proposeRoot(
+      cfg,
+      meme,
+      dataset.root,
+      `file://${path}`,
+      BigInt(dataset.totals.base),
+      BigInt(dataset.totals.boost),
+    );
+    ts.datasetPath = path;
+    ts.stage = "root_proposed";
+    ts.rootProposedAt = now();
+    log("root proposed", { meme, root: dataset.root });
+    return true;
+  }
+
+  if (ts.stage === "root_proposed" && status === 2 /* ROOT_PROPOSED */) {
+    const activatableAt = Number(c.rootProposedAt) + Number((await vaultConfig(cfg)).rootDelaySeconds);
+    if (t < activatableAt) return false;
+    await activateRoot(cfg, meme);
+    ts.stage = "root_active";
+    ts.rootActivatedAt = now();
+    log("root activated", { meme });
+    return true;
+  }
+
+  if ((ts.stage === "root_active" || ts.stage === "grant_open") && status === 3 /* ACTIVE */) {
+    ts.grantEndsAt = Number(c.endTime);
+    const activated = new Set(ts.participantsActivated ?? []);
+    const datasetPath = ts.datasetPath ?? null;
+    if (datasetPath) {
+      for (const p of cfg.participants) {
+        if (activated.has(p.address)) continue;
+        try {
+          const ok = await registerAndActivate(cfg, meme, datasetPath, p, (m) => log(m));
+          activated.add(p.address);
+          ts.participantsActivated = [...activated];
+          if (ok) return true;
+        } catch (err) {
+          log("activate failed", { meme, who: p.address, error: String(err).slice(0, 200) });
+          activated.add(p.address);
+          ts.participantsActivated = [...activated];
+          return true;
+        }
+      }
+    }
+    ts.stage = "grant_open";
+    // let one participant exit once the minimum LP time has passed, so exits appear in the UI too
+    const exits = new Set(ts.exitsDone ?? []);
+    const exiter = cfg.participants[0]!;
+    if (!exits.has(exiter.address)) {
+      try {
+        if (await exitFirstPosition(cfg, meme, exiter, (m) => log(m))) {
+          exits.add(exiter.address);
+          ts.exitsDone = [...exits];
+          return true;
+        }
+      } catch (err) {
+        log("exit failed", { meme, error: String(err).slice(0, 200) });
+        exits.add(exiter.address);
+        ts.exitsDone = [...exits];
+      }
+    }
+    if (t >= Number(c.endTime)) {
+      await finalizeGrant(cfg, meme);
+      ts.stage = "finalized";
+      log("grant finalized", { meme });
+      return true;
+    }
+    return false;
+  }
+
+  if (status === 4 /* EXPIRED */ || status === 5 /* CANCELLED */) {
+    ts.stage = "finalized";
+    return true;
+  }
+  return false;
+}
+
+let cachedVaultConfig: { rootDelaySeconds: bigint; rootDeadlineSeconds: bigint } | null = null;
+async function vaultConfig(cfg: DriverConfig) {
+  if (cachedVaultConfig) return cachedVaultConfig;
+  const { lpGrantVaultAbi } = await import("../../../backend/src/generated/abis");
+  const c = await cfg.publicClient.readContract({
+    address: cfg.deployment.lpGrantVault,
+    abi: lpGrantVaultAbi,
+    functionName: "config",
+  });
+  cachedVaultConfig = { rootDelaySeconds: BigInt(c.rootDelaySeconds), rootDeadlineSeconds: BigInt(c.rootDeadlineSeconds) };
+  return cachedVaultConfig;
+}
+
+function printStatus(state: DriverState): void {
+  const byStage: Record<string, number> = {};
+  for (const ts of Object.values(state.tokens)) byStage[ts.stage] = (byStage[ts.stage] ?? 0) + 1;
+  console.log(`plan: ${state.plan.length} tokens, deployment block ${state.deploymentBlock}`);
+  console.log(`stages: ${JSON.stringify(byStage)}`);
+  for (const spec of state.plan) {
+    const ts = state.tokens[spec.index]!;
+    const when = new Date(spec.launchAt * 1000).toISOString().slice(5, 16).replace("T", " ");
+    console.log(
+      `  #${String(spec.index).padStart(2)} ${spec.symbol.padEnd(7)} ${spec.quote.padEnd(6)} launch ${when}  ` +
+        `${ts.stage.padEnd(13)} trades ${String(ts.tradesDone.length).padStart(2)}/${spec.tradeAt.length}` +
+        `${ts.meme ? `  ${ts.meme}` : ""}${ts.error ? `  ERROR ${ts.error}` : ""}`,
+    );
+  }
+}
+
+async function main(): Promise<void> {
+  const args = new Set(process.argv.slice(2));
+  const cfg = buildConfig();
+  const state = initState(cfg);
+
+  if (args.has("--status")) {
+    printStatus(state);
+    return;
+  }
+  if (args.has("--plan-only")) {
+    printStatus(state);
+    log("plan written", { file: cfg.stateFile });
+    return;
+  }
+
+  log("driver starting", {
+    chainId: cfg.chainId,
+    tokens: state.plan.length,
+    creator: cfg.creator.address,
+    traders: cfg.traders.length,
+    participants: cfg.participants.length,
+    state: cfg.stateFile,
+  });
+
+  if (!state.funded) {
+    await fundWallets(cfg, WALLET_TARGET, (m) => log(m));
+    await fundQuoteAssets(cfg, (m) => log(m));
+    state.optedIn = await optInParticipants(cfg, (m) => log(m));
+    state.funded = true;
+    saveState(cfg.stateFile, state);
+  }
+
+  const rand = rng(DEFAULTS.seed ^ 0x9e37);
+  for (;;) {
+    try {
+      // top the wallets up periodically; trading drains them slowly
+      await fundWallets(cfg, WALLET_TARGET, () => {});
+      await fundQuoteAssets(cfg, () => {});
+      for (const spec of state.plan) {
+        const ts = state.tokens[spec.index]!;
+        try {
+          const changed = await stepToken(cfg, state, spec, ts, rand);
+          if (changed) saveState(cfg.stateFile, state);
+        } catch (err) {
+          log("token step failed", { symbol: spec.symbol, error: String(err).slice(0, 300) });
+          saveState(cfg.stateFile, state);
+        }
+      }
+    } catch (err) {
+      log("tick failed", { error: String(err).slice(0, 300) });
+    }
+    await Bun.sleep(TICK_MS);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

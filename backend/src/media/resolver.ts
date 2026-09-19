@@ -1,0 +1,243 @@
+import type { Db } from "../db/client";
+import type { AppConfig } from "../config";
+import type { TokenMetadataView } from "../api/types";
+import { ipfsToHttps, localMediaFilename, type FetchLike, type MediaStore } from "./store";
+import { parseTokenMetadata } from "./metadata";
+
+const FETCH_TIMEOUT_MS = 5_000;
+const FETCH_MAX_BYTES = 64 * 1024;
+const RETRY_AFTER_SEC = 10 * 60;
+const GC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const GC_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface MetadataResolverDeps {
+  db: Db;
+  config: AppConfig;
+  media: MediaStore;
+  log?: (msg: string, fields?: Record<string, unknown>) => void;
+  sleep?: (ms: number) => Promise<void>;
+  fetch?: FetchLike;
+  now?: () => number;
+}
+
+interface PendingLaunch {
+  chain_id: number;
+  meme: string;
+  token_uri: string | null;
+  metadata_status: string;
+  metadata_checked_at: number | string | bigint | null;
+}
+
+function unixNow(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+async function readHttpBody(res: Response, maxBytes: number): Promise<Uint8Array> {
+  const declared = res.headers.get("content-length");
+  if (declared !== null && declared !== "") {
+    const n = Number(declared);
+    if (Number.isFinite(n) && n > maxBytes) throw new Error(`body exceeds ${maxBytes} bytes`);
+  }
+  if (!res.body) {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > maxBytes) throw new Error(`body exceeds ${maxBytes} bytes`);
+    return buf;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`body exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    buf.set(c, offset);
+    offset += c.byteLength;
+  }
+  return buf;
+}
+
+async function loadMetadataBytes(
+  uri: string,
+  deps: MetadataResolverDeps,
+): Promise<{ kind: "ok"; bytes: Uint8Array } | { kind: "invalid" } | { kind: "unreachable"; error: string }> {
+  const local = localMediaFilename(uri, deps.config.publicApiUrl);
+  if (local) {
+    const hit = deps.media.get(local);
+    if (!hit) return { kind: "unreachable", error: "local media missing" };
+    return { kind: "ok", bytes: hit.bytes };
+  }
+
+  let url: string;
+  if (uri.startsWith("ipfs://")) {
+    url = ipfsToHttps(uri, deps.config.ipfsGateway);
+  } else if (uri.startsWith("https://")) {
+    url = uri;
+  } else {
+    return { kind: "invalid" };
+  }
+
+  const fetchImpl = deps.fetch ?? globalThis.fetch;
+  try {
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) return { kind: "unreachable", error: `HTTP ${res.status}` };
+    const bytes = await readHttpBody(res, FETCH_MAX_BYTES);
+    return { kind: "ok", bytes };
+  } catch (err) {
+    return { kind: "unreachable", error: errMessage(err) };
+  }
+}
+
+async function mark(
+  db: Db,
+  chainId: number,
+  meme: string,
+  status: "ok" | "invalid" | "unreachable",
+  metadata: TokenMetadataView | null,
+  checkedAt: number,
+): Promise<void> {
+  const payload =
+    metadata === null
+      ? null
+      : {
+          image: metadata.image,
+          description: metadata.description,
+          links: { ...metadata.links },
+        };
+  await db`
+    update launches set
+      metadata_status = ${status},
+      metadata = ${payload === null ? null : db.json(payload)},
+      metadata_checked_at = ${checkedAt},
+      updated_at = now()
+    where chain_id = ${chainId} and meme = ${meme}
+  `;
+}
+
+/**
+ * One resolver pass: launches in `pending`, plus `unreachable` whose last check is at least 10 minutes ago.
+ */
+export async function resolvePendingMetadata(deps: MetadataResolverDeps): Promise<void> {
+  const now = (deps.now ?? unixNow)();
+  const retryBefore = now - RETRY_AFTER_SEC;
+  const rows = await deps.db<PendingLaunch[]>`
+    select chain_id, meme, token_uri, metadata_status, metadata_checked_at
+    from launches
+    where metadata_status = 'pending'
+       or (metadata_status = 'unreachable' and coalesce(metadata_checked_at, 0) <= ${retryBefore})
+    order by created_block asc
+    limit 50
+  `;
+
+  for (const row of rows) {
+    const uri = row.token_uri?.trim() ?? "";
+    if (!uri) {
+      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+      continue;
+    }
+    const loaded = await loadMetadataBytes(uri, deps);
+    if (loaded.kind === "unreachable") {
+      await mark(deps.db, row.chain_id, row.meme, "unreachable", null, now);
+      continue;
+    }
+    if (loaded.kind === "invalid") {
+      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+      continue;
+    }
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(new TextDecoder().decode(loaded.bytes)) as unknown;
+    } catch {
+      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+      continue;
+    }
+    const parsed = parseTokenMetadata(parsedJson, {
+      imageRule: "resolved",
+      publicApiUrl: deps.config.publicApiUrl,
+      ipfsGateway: deps.config.ipfsGateway,
+    });
+    if (!parsed) {
+      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+      continue;
+    }
+    await mark(deps.db, row.chain_id, row.meme, "ok", parsed.view, now);
+  }
+}
+
+function referencedFilenames(
+  rows: Array<{ token_uri: string | null; metadata: unknown }>,
+  publicApiUrl: string,
+): Set<string> {
+  const out = new Set<string>();
+  const consider = (uri: unknown) => {
+    if (typeof uri !== "string") return;
+    const file = localMediaFilename(uri, publicApiUrl);
+    if (file) out.add(file);
+  };
+  for (const row of rows) {
+    consider(row.token_uri);
+    const meta = row.metadata;
+    if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+      consider((meta as { image?: unknown }).image);
+    }
+  }
+  return out;
+}
+
+/** Delete local files older than 7 days that no launch token_uri / metadata.image points at. */
+export async function gcLocalMedia(deps: MetadataResolverDeps, nowMs = Date.now()): Promise<number> {
+  const rows = await deps.db<{ token_uri: string | null; metadata: unknown }[]>`
+    select token_uri, metadata from launches
+    where token_uri is not null or metadata is not null
+  `;
+  const refs = referencedFilenames(rows, deps.config.publicApiUrl);
+  return deps.media.gc(refs, GC_MAX_AGE_MS, nowMs);
+}
+
+/**
+ * Background loop: resolve pending/unreachable launch metadata every `everyMs` (default 15 s).
+ * Local-store GC runs at most once a day. Never throws out of the loop. Serve-side only.
+ */
+export async function runMetadataResolver(
+  deps: MetadataResolverDeps,
+  opts: { everyMs?: number } = {},
+): Promise<void> {
+  const everyMs = opts.everyMs ?? 15_000;
+  const sleep = deps.sleep ?? ((ms: number) => Bun.sleep(ms));
+  const log = deps.log ?? (() => {});
+  let lastGc = 0;
+  for (;;) {
+    try {
+      await resolvePendingMetadata(deps);
+    } catch (err) {
+      log("metadata-resolver", { error: errMessage(err) });
+    }
+    const t = Date.now();
+    if (t - lastGc >= GC_INTERVAL_MS) {
+      try {
+        await gcLocalMedia(deps, t);
+      } catch (err) {
+        log("metadata-gc", { error: errMessage(err) });
+      }
+      lastGc = t;
+    }
+    await sleep(everyMs);
+  }
+}

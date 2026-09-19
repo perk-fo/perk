@@ -1,0 +1,21 @@
+{
+  "name": "@perk/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Perk LP grant snapshot dataset + Merkle tooling (registration-based TWAB snapshot)",
+  "type": "module",
+  "scripts": {
+    "snapshot": "bun run src/cli/snapshot.ts",
+    "verify": "bun run src/cli/verify.ts",
+    "proof": "bun run src/cli/proof.ts",
+    "propose": "bun run src/cli/propose.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@openzeppelin/merkle-tree": "^1.0.8",
+    "viem": "^2.56.7"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.2"
+  }
+}

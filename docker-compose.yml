@@ -1,0 +1,45 @@
+# Local/DigitalOcean-shaped stack: Postgres + one indexer/API process. The web app runs separately (Vercel or
+# `bun run build && bun run start`) and points NEXT_PUBLIC_API_URL at the api service.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: perk
+      POSTGRES_USER: perk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-perk}
+    volumes:
+      - perk-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perk -d perk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://perk:${POSTGRES_PASSWORD:-perk}@db:5432/perk
+      CHAIN_ID: ${CHAIN_ID:-1952}
+      RPC_URL: ${RPC_URL}                 # server-side only; never reaches the browser
+      CONFIRMATIONS: ${CONFIRMATIONS:-2}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      PORT: 8787
+      # Local media store. These files are referenced by on-chain tokenURIs, so they live on a named volume and the
+      # public origin must match what was baked into them — changing PUBLIC_API_URL orphans everything already issued.
+      MEDIA_DRIVER: ${MEDIA_DRIVER:-local}
+      MEDIA_DIR: /data/media
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8787}
+      PINATA_JWT: ${PINATA_JWT:-}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    volumes:
+      - perk-media:/data/media
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+volumes:
+  perk-pg:
+  perk-media:

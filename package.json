@@ -1,0 +1,14 @@
+{
+  "name": "perk-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test -vvv",
+    "contracts:fmt": "cd contracts && forge fmt",
+    "api": "pnpm --filter @perk/api run",
+    "web": "pnpm --filter @perk/web run",
+    "sim": "pnpm --filter @perk/sim run",
+    "indexer": "pnpm --filter @perk/indexer run"
+  }
+}

@@ -1,0 +1,26 @@
+diff --git a/cjs/src/types.js b/cjs/src/types.js
+index 0578284c5a691d0cb535cda8dc40177d87cd62a1..04609ba11a3a6fdb1555f1f52072e842169261e4 100644
+--- a/cjs/src/types.js
++++ b/cjs/src/types.js
+@@ -223,7 +223,7 @@ const inferType = module.exports.inferType = function inferType(x) {
+     x instanceof Date ? 1184 :
+     x instanceof Uint8Array ? 17 :
+     (x === true || x === false) ? 16 :
+-    typeof x === 'bigint' ? 20 :
++    typeof x === 'bigint' ? 0 : // perk patch: send bigint as unknown-typed text so uint256 values fit numeric(78,0) columns (int8 would overflow)
+     Array.isArray(x) ? inferType(x[0]) :
+     0
+   )
+diff --git a/src/types.js b/src/types.js
+index 7c7c2b93094a1bced2b9dc387edc5c403e2c5864..581453b98ecb34eca7011f3076d2d6d65ef42564 100644
+--- a/src/types.js
++++ b/src/types.js
+@@ -223,7 +223,7 @@ export const inferType = function inferType(x) {
+     x instanceof Date ? 1184 :
+     x instanceof Uint8Array ? 17 :
+     (x === true || x === false) ? 16 :
+-    typeof x === 'bigint' ? 20 :
++    typeof x === 'bigint' ? 0 : // perk patch: send bigint as unknown-typed text so uint256 values fit numeric(78,0) columns (int8 would overflow)
+     Array.isArray(x) ? inferType(x[0]) :
+     0
+   )
