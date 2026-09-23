@@ -9,6 +9,9 @@ import { grantRoutes } from "./routes/grants";
 import { walletRoutes } from "./routes/wallets";
 import { statsRoutes } from "./routes/stats";
 import { mediaRoutes } from "./routes/media";
+import { adminRoutes } from "./routes/admin";
+import { quoteAssetRoutes } from "./routes/quoteAssets";
+import type { Client } from "../chain/rpc";
 import { createMediaStore, type FetchLike, type MediaStore } from "../media/store";
 import { TokenBucketLimiter } from "../media/rateLimit";
 
@@ -18,6 +21,10 @@ export interface ApiDeps {
   media?: MediaStore;
   fetch?: FetchLike;
   limiter?: TokenBucketLimiter;
+  /** Admin sign-in attempts per IP. */
+  authLimiter?: TokenBucketLimiter;
+  /** Chain access for admin sign-in from contract wallets (EIP-1271); plain wallets need none. */
+  client?: Client;
 }
 
 export interface ResolvedApiDeps {
@@ -25,6 +32,8 @@ export interface ResolvedApiDeps {
   config: AppConfig;
   media: MediaStore;
   limiter: TokenBucketLimiter;
+  authLimiter: TokenBucketLimiter;
+  client: Client | undefined;
 }
 
 /** `ip` is the socket peer address, passed in by main.ts; routes prefer it over client-supplied headers. */
@@ -33,9 +42,10 @@ export type AppEnv = { Variables: { deps: ResolvedApiDeps }; Bindings: { ip?: st
 const MEDIA_POST = new Set(["/v1/media/image", "/v1/media/metadata"]);
 
 /**
- * Read-only JSON API (POST is open only for /v1/media/image and /v1/media/metadata). Every route lives
- * under /v1 except /health. Errors are { error, message } with 400 for bad input, 404 for unknown
- * launches/positions, 413/429 for media abuse, 500 otherwise (message never leaks SQL).
+ * JSON API, read-only except POST /v1/media/image and /v1/media/metadata and the admin routes under /v1/admin
+ * (signed-in admins only). Every route lives under /v1 except /health. Errors are { error, message } with 400 for bad
+ * input, 401/403 for admin sign-in and roles, 404 for unknown launches/positions, 413/429 for abuse, 500 otherwise
+ * (message never leaks SQL).
  * Responses carry `Cache-Control: public, max-age=N` where N is the route's freshness budget (see routes).
  */
 export function createApp(deps: ApiDeps): Hono<AppEnv> {
@@ -45,12 +55,19 @@ export function createApp(deps: ApiDeps): Hono<AppEnv> {
     config: deps.config,
     media: deps.media ?? createMediaStore(deps.config, deps.fetch),
     limiter: deps.limiter ?? new TokenBucketLimiter(deps.config.mediaRateLimit, deps.config.mediaRateWindowMs),
+    authLimiter: deps.authLimiter ?? new TokenBucketLimiter(30, 600_000),
+    client: deps.client,
   };
   app.use(
     "*",
     cors({
       origin: deps.config.corsOrigins,
-      allowMethods: (_origin, c) => (MEDIA_POST.has(c.req.path) ? ["GET", "POST", "OPTIONS"] : ["GET", "OPTIONS"]),
+      allowMethods: (_origin, c) =>
+        c.req.path.startsWith("/v1/admin/")
+          ? ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+          : MEDIA_POST.has(c.req.path)
+            ? ["GET", "POST", "OPTIONS"]
+            : ["GET", "OPTIONS"],
       maxAge: 600,
     }),
   );
@@ -73,12 +90,14 @@ export function createApp(deps: ApiDeps): Hono<AppEnv> {
   app.route("/v1/wallets", walletRoutes());
   app.route("/v1/stats", statsRoutes());
   app.route("/v1/media", mediaRoutes());
+  app.route("/v1/quote-assets", quoteAssetRoutes());
+  app.route("/v1/admin", adminRoutes());
   return app;
 }
 
 export class HttpError extends Error {
   constructor(
-    readonly status: 400 | 404 | 409 | 413 | 422 | 429,
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429,
     readonly code: string,
     message: string,
   ) {

@@ -128,21 +128,32 @@ by the same pre-paint script as the theme.
 - `PauseBanner`: an amber bar under the header while the core admin has paused any area, naming what is paused and
   saying that selling, withdrawing and claiming still work. Buttons for a paused action say so and are disabled
   (`lib/pause`); exits never need this, because the contracts cannot pause them.
+- Header menus (theme, language, account) are transient: a press anywhere outside, Escape, or moving keyboard focus
+  away closes them (`lib/use-dismiss`). The theme menu stays open while choosing so palettes can be compared; the
+  others close on a choice. They listen on the document rather than laying a full-screen backdrop under the popup,
+  because a fixed backdrop inside the blurred sticky header is only as large as the header.
+- `NotFoundView`: the site's not-found page, also shown for admin pages to anyone without the role.
 - `meme/RefundPanel`: replaces the order panel on a REFUNDING launch; approve, then redeem the whole balance for its
   pro-rata share of the launch's quote.
 
 ## Pages
 
 - **Home** - the tagline on the left, four live figures on the right (launches, graduated, active grants, 24h
-  volume). Below, launch cards in three columns, one on mobile: seal, name and symbol, quote-asset pill, status
-  pill, and either a small curve while bonding or the pool id once graduated.
+  volume). Below, a Featured row when General Admins have picked launches, then the most traded: launch cards in
+  three columns, one on mobile: seal, name and symbol, quote-asset pill, status pill, and either a small curve while
+  bonding or the pool id once graduated.
 - **Launch** - two columns. Left, the form grouped into basics, quote asset, template and an optional dev buy. The
-  quote asset is a card selector built from the deployment's `quoteAssets` plus native OKB, showing symbol, decimals
-  and category, with a disclosure on tokenised-equity cards. Templates are filtered by quote, and Perk Launch is
+  quote asset is a card selector built from the API's quote assets (falling back to the deployment's `quoteAssets`
+  plus native OKB while the API is unreachable): the ones allowed on-chain, with active templates, and offered by the
+  admins, showing display name or symbol, decimals, category and icon, with the admins' risk notice in the reader's
+  language (tokenised stocks get the standard one when none is written). Templates are filtered by quote, and Perk Launch is
   marked Recommended with a summary of what LP Grant on or off means. Right, a sticky preview: the seal updating
   live with the form, then the predicted address, hook, module blocks, the fee rate and its split, and the config
   hash. Signing is enabled only while the preview hash still matches the chain.
-- **Token** - header seal, name, status pill and the immutable facts. While bonding the main area is the curve with
+- **Token** - header seal, name, status pill and the immutable facts. When the token's metadata has an image it takes
+  the seal's place at 72px with the seal as a small badge on its corner (`meme/TokenAvatar`, back to the seal alone if
+  the image fails to load); the description (three lines) and link
+  pills sit under the pills. A launch the admins hid shows a notice saying it is still on-chain and can be sold. While bonding the main area is the curve with
   the order panel beside it; after graduation it is pool information and the swap panel. Below sit quote rewards,
   creator revenue, and where fees go.
 - **Grant** - the decay ring as the headline number, with remaining allocation and countdown; a timeline from
@@ -150,11 +161,21 @@ by the same pre-paint script as the theme.
   boost and credit; the activation form; positions as ticket stubs; and risk disclosures itemised in a Notice.
 - Empty and loading states use the seal's outline as a skeleton rather than flashing grey blocks.
 
-- **Admin** (`/admin`) - the core admin's on-chain controls: the emergency pause (entry points only), the grant
-  publisher, allocation lists under review (cancel), stuck graduations (propose, cancel or execute a rescue) and
-  refunds in progress, and who holds each role. Anyone can open it and read the state; the navigation entry and the
-  working buttons appear only for the wallet that owns the contracts (read on-chain, `lib/admin`), and the contracts
-  reject everyone else anyway.
+- **Admin** (`/admin`) - only for wallets holding an admin role (`lib/admin`: the Core Admin and Grant Admin read
+  from the chain, General Admins from the API); everyone else, including a visitor with no wallet connected, gets
+  the not-found page and no navigation entry. A pill row links the sections the wallet's roles open, and each
+  section is itself not found for other roles:
+  - Protocol (Core Admin): the emergency pause, stuck graduations (propose, cancel or execute a rescue), refunds.
+  - Roles (Core Admin): who holds each role, appointing or revoking the Grant Admin, adding or removing General
+    Admins, and the log of off-chain admin changes.
+  - Quote assets (Core Admin, General Admins): each asset's on-chain state and display settings (name, icon,
+    category, risk notice per language, order, offered or not); the Core Admin can also stop or allow new launches
+    and list a new asset, a checklist of transactions that resumes where it stopped.
+  - LP Grant (Grant Admin, Core Admin): lists under review with their dataset check (cancel, or activate once due)
+    and graduated launches still waiting for a list.
+  - Moderation and Featured (General Admins, Core Admin): search, hide a launch or only its media, and order the
+    home page's featured row.
+  Off-chain sections ask for a wallet signature first (EIP-4361, no gas); the session lives in sessionStorage.
 
 ## Copy
 

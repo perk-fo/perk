@@ -18,6 +18,7 @@ import { findReorgPoint, rollbackTo } from "./reorg";
 import { notifySync } from "./notify";
 import {
   advanceCursor,
+  INDEX_VERSION,
   initSyncState,
   readSyncState,
   recordError,
@@ -93,6 +94,15 @@ export class Indexer {
       this.log("deployment changed; index rebuilt from scratch", {
         previousStartBlock: state.startBlock.toString(),
         startBlock: startBlock.toString(),
+        tablesCleared: tables.length,
+      });
+      state = null;
+    } else if (state && state.indexVersion < INDEX_VERSION) {
+      // This release derives something new from logs the index has already passed; read them again.
+      const tables = await resetIndex(this.db);
+      this.log("index version changed; index rebuilt from scratch", {
+        previousVersion: state.indexVersion,
+        version: INDEX_VERSION,
         tablesCleared: tables.length,
       });
       state = null;

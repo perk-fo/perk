@@ -13,7 +13,8 @@ import {
 import { selectGrantDataset, selectGrantLeaf } from "../../grants/datasets";
 
 /**
- * GET /v1/grants?status=1,2,3 → { campaigns: GrantCampaign[] } newest initialized first — max-age 5.
+ * GET /v1/grants?status=1,2,3[&include=hidden] → { campaigns: GrantCampaign[] } newest initialized first — max-age 5.
+ *   Campaigns of launches that moderation hid are left out unless `include=hidden` (the admin page's view).
  * GET /v1/grants/:meme → GrantDetail (positions newest first, allocations by base desc, 404 if no campaign) — max-age 3.
  * GET /v1/grants/:meme/proof/:account → GrantAllocationProof for the current root — max-age 60.
  * GET /v1/grants/:meme/positions?beneficiary=0x.. → { positions: GrantPosition[] } — max-age 3.
@@ -23,7 +24,8 @@ export function grantRoutes(): Hono<AppEnv> {
   r.get("/", async (c) => {
     const { db, config } = c.get("deps");
     const statuses = parseStatusList(c.req.query("status"), 0, 5);
-    const rows = await selectGrantCampaigns(db, config.chainId, statuses);
+    const includeHidden = c.req.query("include") === "hidden";
+    const rows = await selectGrantCampaigns(db, config.chainId, statuses, { includeHidden });
     c.header("Cache-Control", "public, max-age=5");
     return c.json<{ campaigns: GrantCampaign[] }>({ campaigns: rows.map(mapGrantCampaign) });
   });

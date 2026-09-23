@@ -90,6 +90,25 @@ The testnet templates use accelerated timings (a short grant window, a ten-minut
 graduation threshold) so a full lifecycle can be observed in hours rather than weeks. Those live in deployment
 configuration, never in contract logic.
 
+## Admin roles
+
+Three roles run the protocol, and only wallets holding one of them see the admin pages (`/admin`); for everyone else
+the address does not exist.
+
+| Role | Where it lives | Appointed by | Does |
+|---|---|---|---|
+| Core Admin | On-chain: owner of every Perk contract | Contract ownership (one wallet now, a Safe later) | Emergency pause, graduation rescue, quote assets and templates, appointing the other roles |
+| Grant Admin | On-chain: the LP Grant vault's `publisher` | The Core Admin (`setPublisher`) | Publishes and cancels LP Grant allocation lists, usually as a bot |
+| General Admin | Off-chain: a list the API keeps | The Core Admin, on the admin page | Hides launches or their media from the site, picks featured launches, sets how quote assets are shown |
+
+The API learns the two on-chain roles from the contracts' events, so it never has to trust a configured list.
+General Admins sign in by signing a message with their wallet (EIP-4361); the API checks the wallet's role again on
+every call. Moderation only changes what this site shows: a hidden token stays on-chain and tradable, and its page
+stays reachable so holders can sell.
+
+A new quote asset (a newly listed tokenised stock, say) can be listed from the admin page, one transaction per step,
+or with `contracts/script/ConfigureQuoteAsset.s.sol`. Both register the same templates.
+
 ## Testnet content
 
 `packages/demo-driver` keeps a testnet deployment populated so the app is never demonstrated against an empty

@@ -32,7 +32,7 @@ import {
   signedPct,
 } from "@/lib/format";
 import { explorerAddressUrl } from "@/lib/chains";
-import { HashSeal } from "@/components/art/HashSeal";
+import { TokenAvatar } from "@/components/meme/TokenAvatar";
 import { CurveChart } from "@/components/art/CurveChart";
 import { PriceChart } from "@/components/art/PriceChart";
 import { Panel } from "@/components/ui/Panel";
@@ -205,6 +205,11 @@ export default function MemePage() {
       enabled: true,
       rewardCompatible: true,
       category: isNative ? "native" : "rwa",
+      displayName: null,
+      iconUrl: null,
+      notice: {},
+      listed: true,
+      activeTemplates: null,
     };
   }, [quotes, launch]);
 
@@ -298,12 +303,15 @@ export default function MemePage() {
       ? t("meme.market.graduatedPool", { id: shortHash(launch.poolId) })
       : fmtBps(progressBps ?? 0n, locale);
   const totalFeeBps = curveConfig?.totalFeeBps ?? 100;
+  // withheld by the API while admins hide it (d.moderation)
+  const media = d.metadata;
+  const mediaLinks = media ? (Object.entries(media.links).filter(([, v]) => !!v) as Array<[string, string]>) : [];
 
   return (
     <div className="space-y-12 pt-6">
       <header className="flex flex-col gap-5 lg:flex-row lg:items-start">
         <div className="flex min-w-0 items-start gap-5 lg:max-w-[42%]">
-          <HashSeal hash={launch.configHash} moduleBitmap={launch.moduleBitmap} size={72} className="shrink-0" />
+          <TokenAvatar image={media?.image} configHash={launch.configHash} moduleBitmap={launch.moduleBitmap} />
           <div className="min-w-0">
             <h1 className="font-display text-3xl leading-tight sm:text-4xl">{memeName ?? "…"}</h1>
             <div className="num mt-1 text-[13px] text-subtle">{memeSymbol}</div>
@@ -319,6 +327,26 @@ export default function MemePage() {
                 </Link>
               )}
             </div>
+            {media?.description && (
+              <p className="mt-3 line-clamp-3 max-w-prose break-words text-sm leading-relaxed text-muted" title={media.description}>
+                {media.description}
+              </p>
+            )}
+            {mediaLinks.length > 0 && (
+              <p className="mt-2 flex flex-wrap gap-1.5">
+                {mediaLinks.map(([k, v]) => (
+                  <a
+                    key={k}
+                    href={v}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow ugc"
+                    className="rounded-full bg-raised px-2.5 py-0.5 text-xs font-medium leading-5 text-muted transition-colors duration-fast hover:text-bone"
+                  >
+                    {t(`meme.link.${k}`)} ↗
+                  </a>
+                ))}
+              </p>
+            )}
           </div>
         </div>
         <div className="panel grid min-w-0 flex-1 grid-cols-2 overflow-hidden sm:grid-cols-3 lg:grid-cols-6 [&>*:last-child]:border-r-0">
@@ -349,6 +377,10 @@ export default function MemePage() {
           <Tile label={t("meme.market.progress")} value={progressLabel} wrap />
         </div>
       </header>
+
+      {d.moderation && (
+        <Notice tone="amber">{t(d.moderation.hidden ? "meme.moderation.hidden" : "meme.moderation.media")}</Notice>
+      )}
 
       {status === 2 && rescueAt > 0 && (
         <Notice tone="amber">

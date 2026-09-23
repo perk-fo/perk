@@ -1,4 +1,5 @@
 import type {
+  AdminRole,
   Candle,
   CurveState,
   FeeTotals,
@@ -77,6 +78,9 @@ export interface LaunchRow {
   token_uri?: string | null;
   metadata?: unknown;
   metadata_status?: string | null;
+  /** launch_moderation, joined by launchFrom */
+  mod_hidden?: boolean | null;
+  mod_media_hidden?: boolean | null;
 }
 
 export interface TradeRow {
@@ -297,6 +301,8 @@ export function mapLpPosition(row: {
 
 export function mapLaunchSummary(row: LaunchRow): LaunchSummary {
   const pool = hexNull(row.pool_id);
+  const hidden = Boolean(row.mod_hidden);
+  const mediaHidden = hidden || Boolean(row.mod_media_hidden);
   return {
     meme: addr(row.meme),
     launchId: (row.launch_id.toLowerCase() || ZERO_HASH) as `0x${string}`,
@@ -321,7 +327,8 @@ export function mapLaunchSummary(row: LaunchRow): LaunchSummary {
     curve: mapCurve(row),
     market: mapMarket(row),
     grantStatus: row.grant_status === null || row.grant_status === undefined ? null : (num(row.grant_status) as GrantStatus),
-    metadata: mapTokenMetadata(row),
+    metadata: mediaHidden ? null : mapTokenMetadata(row),
+    moderation: hidden || mediaHidden ? { hidden, mediaHidden } : null,
   };
 }
 
@@ -469,7 +476,7 @@ export function mapFeeTotals(row: FeeTotalsRow | undefined): FeeTotals {
 
 export function mapWalletRoles(
   address: `0x${string}`,
-  isAdmin: boolean,
+  adminRoles: AdminRole[],
   creatorOf: string[],
   lpOf: string[],
   allocatedIn: string[],
@@ -478,7 +485,8 @@ export function mapWalletRoles(
 ): WalletRoles {
   return {
     address: addr(address),
-    isAdmin,
+    isAdmin: adminRoles.length > 0,
+    adminRoles,
     creatorOf: creatorOf.map((a) => addr(a)),
     lpOf: lpOf.map((a) => addr(a)),
     allocatedIn: allocatedIn.map((a) => addr(a)),

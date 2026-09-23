@@ -48,7 +48,7 @@ function detectImageExt(bytes: Uint8Array): "png" | "jpg" | "webp" | "gif" | nul
  * Rate-limit identity. Forwarded headers are only believed when TRUST_PROXY says a reverse proxy overwrites them —
  * otherwise any client could rotate the header and give itself an unlimited number of fresh buckets.
  */
-function clientIp(c: Context<AppEnv>, trustProxy: boolean): string {
+export function clientIp(c: Context<AppEnv>, trustProxy: boolean): string {
   if (trustProxy) {
     const xff = c.req.header("x-forwarded-for");
     const first = xff?.split(",")[0]?.trim();

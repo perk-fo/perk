@@ -73,6 +73,11 @@ export async function seed(db: Db): Promise<SeedMeta> {
     insert into blocks (chain_id, number, hash, ts)
     values (${CHAIN}, ${CURSOR_BLOCK}, ${h32(CURSOR_BLOCK)}, ${cursorTs})
   `;
+  // what the indexer records from the factory's OwnershipTransferred at deployment
+  await db`
+    insert into chain_role_events (chain_id, role, address, block_number, log_index)
+    values (${CHAIN}, 'core', ${ADMIN}, ${START_BLOCK}, 0)
+  `;
 
   await db`
     insert into quote_assets (chain_id, quote, symbol, name, decimals, kind, allowed)

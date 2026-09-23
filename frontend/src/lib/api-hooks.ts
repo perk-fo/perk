@@ -178,6 +178,17 @@ export function useLpPositions(address: Address | undefined) {
   });
 }
 
+/** Quote currencies from the indexer: on-chain status plus how the site shows them. */
+export function useQuoteAssets() {
+  return useQuery({ queryKey: ["api", "quote-assets"], queryFn: api.quoteAssets, staleTime: 15_000, refetchInterval: 60_000 });
+}
+
+/** The home page's featured launches, in the order General Admins set. */
+export function useFeatured() {
+  const visible = useTabVisible();
+  return useQuery({ queryKey: ["api", "featured"], queryFn: api.featured, refetchInterval: live(visible, 30_000) });
+}
+
 export function useWalletRoles(address: Address | undefined) {
   return useQuery({
     queryKey: ["api", "roles", address?.toLowerCase()],

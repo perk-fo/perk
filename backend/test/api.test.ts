@@ -614,6 +614,7 @@ describe("GET /v1/wallets/:address/roles", () => {
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=5");
     expectRoles(body);
     expect(body.isAdmin).toBe(true);
+    expect(body.adminRoles).toEqual(["core"]);
     expect(body.creatorOf).toEqual([]);
     expect(body.lpOf).toEqual([]);
   });

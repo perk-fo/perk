@@ -1,0 +1,235 @@
+{
+ "chainId": 1952,
+ "quote": "0x7F9a46E6Be91ad215E4000FDb697bf2b1c079F96",
+ "decimals": 6,
+ "PERK_GRANT_V1": {
+  "id": "0x76fd47d862ca3c8456a11b5473286e8b66601350707de1792fcda247b6385ad8",
+  "template": {
+   "hookVersion": 1,
+   "moduleBitmap": "31",
+   "totalFeeBps": 100,
+   "feeSplit": {
+    "devBps": 5000,
+    "rewardsBps": 2500,
+    "lpBps": 1500,
+    "treasuryBps": 500,
+    "protocolBps": 500
+   },
+   "supply": {
+    "totalSupply": "1000000000000000000000000000",
+    "curveSupply": "674200000000000000000000000",
+    "poolReserveSupply": "175800000000000000000000000",
+    "grantReserveSupply": "150000000000000000000000000"
+   },
+   "curve": {
+    "virtualQuoteReserve": "30000000",
+    "virtualMemeReserve": "912050000000000000000000000",
+    "graduationQuoteThreshold": "85000000"
+   },
+   "pool": {
+    "lpFee": 1500,
+    "tickSpacing": 60,
+    "tickLower": -887220,
+    "tickUpper": 887220,
+    "leftoverPolicy": 0
+   },
+   "grant": {
+    "enabled": true,
+    "reserveBps": 1500,
+    "baseGrantPoolBps": 8000,
+    "referralBudgetBps": 2000,
+    "windowSeconds": "1209600",
+    "minLpSeconds": "86400",
+    "referralBoostEnabled": true
+   },
+   "minEligibleBalance": "1000000000000000000000",
+   "status": 2,
+   "anyQuote": false,
+   "quote": "0x7F9a46E6Be91ad215E4000FDb697bf2b1c079F96"
+  }
+ },
+ "STANDARD_CURVE_V1": {
+  "id": "0xe25163af5bbf283968bf0986d193279b6ff08a714487f7cb611e6a194b5fc3ac",
+  "template": {
+   "hookVersion": 1,
+   "moduleBitmap": "7",
+   "totalFeeBps": 100,
+   "feeSplit": {
+    "devBps": 5000,
+    "rewardsBps": 2500,
+    "lpBps": 1500,
+    "treasuryBps": 500,
+    "protocolBps": 500
+   },
+   "supply": {
+    "totalSupply": "1000000000000000000000000000",
+    "curveSupply": "674200000000000000000000000",
+    "poolReserveSupply": "325800000000000000000000000",
+    "grantReserveSupply": "0"
+   },
+   "curve": {
+    "virtualQuoteReserve": "30000000",
+    "virtualMemeReserve": "912050000000000000000000000",
+    "graduationQuoteThreshold": "85000000"
+   },
+   "pool": {
+    "lpFee": 1500,
+    "tickSpacing": 60,
+    "tickLower": -887220,
+    "tickUpper": 887220,
+    "leftoverPolicy": 0
+   },
+   "grant": {
+    "enabled": false,
+    "reserveBps": 0,
+    "baseGrantPoolBps": 0,
+    "referralBudgetBps": 0,
+    "windowSeconds": "0",
+    "minLpSeconds": "0",
+    "referralBoostEnabled": false
+   },
+   "minEligibleBalance": "1000000000000000000000",
+   "status": 2,
+   "anyQuote": false,
+   "quote": "0x7F9a46E6Be91ad215E4000FDb697bf2b1c079F96"
+  }
+ },
+ "TEST_FAST_V1": {
+  "id": "0x247865dfd233556ca096c440c6738324892a5b2dd3405882bbda21e4ba0786b2",
+  "template": {
+   "hookVersion": 1,
+   "moduleBitmap": "31",
+   "totalFeeBps": 100,
+   "feeSplit": {
+    "devBps": 5000,
+    "rewardsBps": 2500,
+    "lpBps": 1500,
+    "treasuryBps": 500,
+    "protocolBps": 500
+   },
+   "supply": {
+    "totalSupply": "1000000000000000000000000000",
+    "curveSupply": "674200000000000000000000000",
+    "poolReserveSupply": "175800000000000000000000000",
+    "grantReserveSupply": "150000000000000000000000000"
+   },
+   "curve": {
+    "virtualQuoteReserve": "3000",
+    "virtualMemeReserve": "912050000000000000000000000",
+    "graduationQuoteThreshold": "8500"
+   },
+   "pool": {
+    "lpFee": 1500,
+    "tickSpacing": 60,
+    "tickLower": -887220,
+    "tickUpper": 887220,
+    "leftoverPolicy": 0
+   },
+   "grant": {
+    "enabled": true,
+    "reserveBps": 1500,
+    "baseGrantPoolBps": 8000,
+    "referralBudgetBps": 2000,
+    "windowSeconds": "7200",
+    "minLpSeconds": "600",
+    "referralBoostEnabled": true
+   },
+   "minEligibleBalance": "1000000000000000000000",
+   "status": 2,
+   "anyQuote": false,
+   "quote": "0x7F9a46E6Be91ad215E4000FDb697bf2b1c079F96"
+  }
+ },
+ "native.PERK_GRANT_V1": {
+  "id": "0x39dbe5a1e11f4882262358efaf9b85c814bfbc0014a87671ff2e646c8b7c0391",
+  "template": {
+   "hookVersion": 1,
+   "moduleBitmap": "31",
+   "totalFeeBps": 100,
+   "feeSplit": {
+    "devBps": 5000,
+    "rewardsBps": 2500,
+    "lpBps": 1500,
+    "treasuryBps": 500,
+    "protocolBps": 500
+   },
+   "supply": {
+    "totalSupply": "1000000000000000000000000000",
+    "curveSupply": "674200000000000000000000000",
+    "poolReserveSupply": "175800000000000000000000000",
+    "grantReserveSupply": "150000000000000000000000000"
+   },
+   "curve": {
+    "virtualQuoteReserve": "30000000000000000000",
+    "virtualMemeReserve": "912050000000000000000000000",
+    "graduationQuoteThreshold": "85000000000000000000"
+   },
+   "pool": {
+    "lpFee": 1500,
+    "tickSpacing": 60,
+    "tickLower": -887220,
+    "tickUpper": 887220,
+    "leftoverPolicy": 0
+   },
+   "grant": {
+    "enabled": true,
+    "reserveBps": 1500,
+    "baseGrantPoolBps": 8000,
+    "referralBudgetBps": 2000,
+    "windowSeconds": "1209600",
+    "minLpSeconds": "86400",
+    "referralBoostEnabled": true
+   },
+   "minEligibleBalance": "1000000000000000000000",
+   "status": 2,
+   "anyQuote": false,
+   "quote": "0x0000000000000000000000000000000000000000"
+  }
+ },
+ "native.STANDARD_CURVE_V1": {
+  "id": "0x1bbe19f14859da0b9fa9eac4d25915e87881675df4fdd5d7d4b6e6a5b937cecd",
+  "template": {
+   "hookVersion": 1,
+   "moduleBitmap": "7",
+   "totalFeeBps": 100,
+   "feeSplit": {
+    "devBps": 5000,
+    "rewardsBps": 2500,
+    "lpBps": 1500,
+    "treasuryBps": 500,
+    "protocolBps": 500
+   },
+   "supply": {
+    "totalSupply": "1000000000000000000000000000",
+    "curveSupply": "674200000000000000000000000",
+    "poolReserveSupply": "325800000000000000000000000",
+    "grantReserveSupply": "0"
+   },
+   "curve": {
+    "virtualQuoteReserve": "30000000000000000000",
+    "virtualMemeReserve": "912050000000000000000000000",
+    "graduationQuoteThreshold": "85000000000000000000"
+   },
+   "pool": {
+    "lpFee": 1500,
+    "tickSpacing": 60,
+    "tickLower": -887220,
+    "tickUpper": 887220,
+    "leftoverPolicy": 0
+   },
+   "grant": {
+    "enabled": false,
+    "reserveBps": 0,
+    "baseGrantPoolBps": 0,
+    "referralBudgetBps": 0,
+    "windowSeconds": "0",
+    "minLpSeconds": "0",
+    "referralBoostEnabled": false
+   },
+   "minEligibleBalance": "1000000000000000000000",
+   "status": 2,
+   "anyQuote": false,
+   "quote": "0x0000000000000000000000000000000000000000"
+  }
+ }
+}

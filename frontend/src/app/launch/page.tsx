@@ -9,7 +9,7 @@ import { useDeployment, useTx } from "@/lib/hooks";
 import { decodeErrorMessage } from "@/lib/errors";
 import { NATIVE_QUOTE } from "@/lib/deployments";
 import { TEMPLATE_BASES, templateIdFor } from "@/lib/templates";
-import { findQuote, useQuotes } from "@/lib/quotes";
+import { findQuote, isLaunchable, quoteNotice, useQuotes } from "@/lib/quotes";
 import { formatAmount } from "@/lib/format";
 import { HashSeal } from "@/components/art/HashSeal";
 import { Panel } from "@/components/ui/Panel";
@@ -290,8 +290,9 @@ export default function CreatePage() {
 
           <Panel title={t("create.section.quote")}>
             <div role="radiogroup" aria-label={t("create.section.quote")} className="grid gap-3 sm:grid-cols-2">
-              {quotes.map((q) => {
+              {quotes.filter(isLaunchable).map((q) => {
                 const selected = q.address.toLowerCase() === quoteAddress.toLowerCase();
+                const notice = quoteNotice(q, locale, t("create.quote.rwaNotice"));
                 return (
                   <ChoiceCard
                     key={q.address}
@@ -301,16 +302,23 @@ export default function CreatePage() {
                   >
                     <div className="block w-full text-left">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-display text-lg">{q.symbol}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          {q.iconUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={q.iconUrl} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                          )}
+                          <span className="truncate font-display text-lg">{q.displayName ?? q.symbol}</span>
+                        </span>
                         <Pill tone={q.category === "rwa" ? "amber" : "muted"}>{t(`quote.category.${q.category}`)}</Pill>
                       </div>
                       <div className="num mt-2 text-xs text-subtle">
+                        {q.displayName ? `${q.symbol} · ` : ""}
                         {q.isNative ? t("create.quote.native") : t("create.quote.decimals", { n: q.decimals })}
                       </div>
                     </div>
-                    {q.category === "rwa" && (
+                    {notice && (
                       <div onClick={(e) => e.stopPropagation()}>
-                        <RwaNotice text={t("create.quote.rwaNotice")} />
+                        <RwaNotice text={notice} />
                       </div>
                     )}
                   </ChoiceCard>

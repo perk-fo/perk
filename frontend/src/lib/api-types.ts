@@ -31,6 +31,9 @@ export interface Health {
   mode: "catchup" | "live";
 }
 
+export type QuoteCategory = "native" | "ecosystem" | "rwa" | "stablecoin" | "other";
+
+/** GET /v1/quote-assets. Whether a quote can be used is on-chain; how the site shows it is `display`. */
 export interface QuoteAsset {
   address: Address;
   symbol: string;
@@ -38,7 +41,31 @@ export interface QuoteAsset {
   decimals: number;
   isNative: boolean;
   kind: number | null;
+  /** AssetRegistry `enabled`. */
+  enabled: boolean;
+  /** AssetRegistry `rewardCompatible`. The factory accepts a quote only when both flags are true. */
+  rewardCompatible: boolean;
+  /** Templates bound to this quote that are ACTIVE on-chain. Zero: no launch can use it yet. */
+  activeTemplates: number;
+  display: QuoteDisplay;
 }
+
+/** How the site presents a quote currency, set by General Admins. Null fields fall back to the site's defaults. */
+export interface QuoteDisplay {
+  displayName: string | null;
+  /** http(s) URL a browser can load. */
+  iconUrl: string | null;
+  category: QuoteCategory | null;
+  /** Risk notice per locale; empty when none is set. */
+  notice: QuoteNotice;
+  /** Ascending order in the Launch page's picker. */
+  sortOrder: number;
+  /** false keeps the asset out of the Launch page's picker; launches that already use it are unaffected. */
+  listed: boolean;
+  updatedAt: number | null;
+}
+
+export type QuoteNotice = Partial<Record<"en" | "zh-CN" | "ja", string>>;
 
 export interface MarketStats {
   /** Last trade price in raw units: priceQuote / priceMeme. Null before the first trade. */
@@ -111,8 +138,20 @@ export interface LaunchSummary {
   curve: CurveState | null;
   market: MarketStats;
   grantStatus: GrantStatus | null;
-  /** Resolved token metadata (image, description, links); null until resolved or when the tokenURI is unusable. */
+  /**
+   * Resolved token metadata (image, description, links); null until resolved, when the tokenURI is unusable, or
+   * while admins withhold it (`moderation.mediaHidden`).
+   */
   metadata: TokenMetadataView | null;
+  /** Set when admins limited how this site shows the launch. The launch itself stays on-chain and tradable. */
+  moderation: LaunchModeration | null;
+}
+
+export interface LaunchModeration {
+  /** Out of every list on this site. Its page still opens, so holders can sell. */
+  hidden: boolean;
+  /** Image, description and links withheld (always true when hidden). */
+  mediaHidden: boolean;
 }
 
 /**
@@ -313,9 +352,17 @@ export interface GrantDetail {
   dataset: GrantDataset;
 }
 
+/**
+ * "core" owns the contracts and "grant" publishes LP Grant allocation lists (both read from the chain); "operator"
+ * is a General Admin, appointed by the Core Admin and known only to this API.
+ */
+export type AdminRole = "core" | "grant" | "operator";
+
 export interface WalletRoles {
   address: Address;
+  /** adminRoles is not empty. */
   isAdmin: boolean;
+  adminRoles: AdminRole[];
   /** memes created by this wallet */
   creatorOf: Address[];
   /** memes where this wallet holds a grant position (active or exited) */
@@ -349,6 +396,68 @@ export interface Stats {
   quotes: number;
   trades24h: number;
   volume24hByQuote: Array<{ quote: Address; symbol: string; volume: Uint }>;
+}
+
+// ---------------------------------------------------------------- admin (/v1/admin, bearer session)
+
+/** POST /v1/admin/auth/nonce → a sign-in message (EIP-4361) for the wallet to sign. */
+export interface AdminNonce {
+  message: string;
+  expiresAt: number;
+}
+
+/** POST /v1/admin/auth/login. `token` goes in `Authorization: Bearer <token>`. */
+export interface AdminSession {
+  token: string;
+  address: Address;
+  roles: AdminRole[];
+  expiresAt: number;
+}
+
+/** GET /v1/admin/me */
+export interface AdminMe {
+  address: Address;
+  roles: AdminRole[];
+  expiresAt: number;
+}
+
+export interface AdminOperator {
+  address: Address;
+  addedBy: Address;
+  addedAt: number;
+}
+
+/** A launch as the admin pages see it: the public view plus what moderation withholds from it. */
+export interface AdminLaunch {
+  launch: LaunchSummary;
+  /** The metadata as resolved, even while withheld from the public. */
+  metadata: TokenMetadataView | null;
+  hidden: boolean;
+  mediaHidden: boolean;
+  reason: string | null;
+  /** 1-based slot on the home page's featured row, or null. */
+  featuredPosition: number | null;
+  updatedBy: Address | null;
+  updatedAt: number | null;
+}
+
+/** PUT /v1/admin/moderation/:meme */
+export interface ModerationUpdate {
+  hidden: boolean;
+  mediaHidden: boolean;
+  reason: string | null;
+}
+
+/** PUT /v1/admin/quote-assets/:quote */
+export type QuoteDisplayUpdate = Omit<QuoteDisplay, "updatedAt">;
+
+export interface AdminAuditEntry {
+  id: number;
+  at: number;
+  address: Address;
+  action: string;
+  target: string | null;
+  detail: unknown;
 }
 
 export interface ApiError {

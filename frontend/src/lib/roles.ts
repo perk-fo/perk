@@ -11,7 +11,7 @@ import { useWalletRoles } from "./api-hooks";
  *  user    — connected
  *  creator — created ≥ 1 launch (per-launch: `isCreatorOf`)
  *  lp      — holds ≥ 1 grant position (per-launch: `isLpOf`)
- *  admin   — protocol owner / deployer / configured admin
+ *  admin   — holds an admin role: Core Admin, Grant Admin or General Admin (see lib/admin)
  */
 export type Role = "guest" | "user" | "creator" | "lp" | "admin";
 

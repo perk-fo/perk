@@ -42,7 +42,7 @@ export async function findReorgPoint(
  * Roll every table back to `block` (inclusive of that block's state) inside one transaction, then set the
  * cursor to `block`. Strategy:
  *  - delete rows with block_number > block from: trades, token_transfers, fee_events, reward_claims,
- *    referral_credits, applied_logs, blocks;
+ *    referral_credits, applied_logs, blocks, chain_role_events;
  *  - launches created after `block` are deleted; surviving launches get their fold columns recomputed from
  *    trades/token_transfers ≤ block (real_quote, meme_sold, market cache, holder_count);
  *  - holder_balances recomputed from token_transfers for affected memes;
@@ -60,6 +60,7 @@ export async function rollbackTo(tx: Tx, chainId: number, block: bigint, newCurs
   await tx`delete from referral_credits where chain_id = ${chainId} and block_number > ${block}`;
   await tx`delete from applied_logs where chain_id = ${chainId} and block_number > ${block}`;
   await tx`delete from blocks where chain_id = ${chainId} and number > ${block}`;
+  await tx`delete from chain_role_events where chain_id = ${chainId} and block_number > ${block}`;
 
   await tx`delete from grant_positions where chain_id = ${chainId} and activated_block > ${block}`;
   await tx`delete from grant_allocations where chain_id = ${chainId} and registered_block > ${block}`;

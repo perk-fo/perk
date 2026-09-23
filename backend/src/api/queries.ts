@@ -14,7 +14,7 @@ import { asBigInt } from "./serialize";
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-const LAUNCH_24H_SELECT = `
+export const LAUNCH_24H_SELECT = `
   coalesce(vol.volume_24h, 0) as volume_24h,
   coalesce(vol.n_24h, 0) as n_24h,
   vol.first_pq,
@@ -23,11 +23,12 @@ const LAUNCH_24H_SELECT = `
   vol.last_pm
 `;
 
-function launchFrom(cutoff: number) {
+export function launchFrom(cutoff: number) {
   return `
     from launches l
     left join quote_assets qa on qa.chain_id = l.chain_id and qa.quote = l.quote
     left join grant_campaigns gc on gc.chain_id = l.chain_id and gc.meme = l.meme
+    left join launch_moderation lm on lm.chain_id = l.chain_id and lm.meme = l.meme
     left join lateral (
       select
         sum(t.quote_amount) as volume_24h,
@@ -42,7 +43,7 @@ function launchFrom(cutoff: number) {
   `;
 }
 
-const LAUNCH_COLUMNS = `
+export const LAUNCH_COLUMNS = `
   l.meme, l.launch_id, l.creator, l.quote,
   coalesce(qa.symbol, '?') as quote_symbol,
   l.quote_decimals,
@@ -56,7 +57,8 @@ const LAUNCH_COLUMNS = `
   l.last_price_quote, l.last_price_meme, l.last_price, l.last_trade_at,
   l.trade_count, l.volume_quote_total, l.holder_count,
   gc.status as grant_status,
-  l.token_uri, l.metadata, l.metadata_status, l.last_sqrt_price_x96
+  l.token_uri, l.metadata, l.metadata_status, l.last_sqrt_price_x96,
+  coalesce(lm.hidden, false) as mod_hidden, coalesce(lm.media_hidden, false) as mod_media_hidden
 `;
 
 export function parseStatusList(raw: string | undefined, min: number, max: number, name = "status"): number[] | undefined {
@@ -107,24 +109,29 @@ export async function selectLaunchList(
     limit: number;
     offset: number;
     now: number;
+    /** Admin views only: keep launches that moderation hid from the site's lists. */
+    includeHidden?: boolean;
   },
 ): Promise<{ rows: LaunchRow[]; total: number }> {
   const cutoff = opts.now - 86_400;
   const statuses = opts.statuses ?? [];
   const order = launchOrderSql(opts.sort);
+  const shown = opts.includeHidden ? "" : "and not coalesce(lm.hidden, false)";
   const countRows = await db<{ n: number | bigint | string }[]>`
     select count(*)::int as n
     from launches l
+    left join launch_moderation lm on lm.chain_id = l.chain_id and lm.meme = l.meme
     where l.chain_id = ${chainId}
       ${statuses.length ? db`and l.status in ${db(statuses)}` : db``}
       ${opts.quote ? db`and l.quote = ${opts.quote}` : db``}
       ${opts.creator ? db`and l.creator = ${opts.creator}` : db``}
+      ${opts.includeHidden ? db`` : db`and not coalesce(lm.hidden, false)`}
   `;
   const total = Number(countRows[0]?.n ?? 0);
   const rows = await db.unsafe<LaunchRow[]>(
     `select ${LAUNCH_COLUMNS}, ${LAUNCH_24H_SELECT}
      ${launchFrom(cutoff)}
-     where l.chain_id = $1
+     where l.chain_id = $1 ${shown}
        ${statuses.length ? `and l.status in (${statuses.map((_, i) => `$${i + 2}`).join(",")})` : ""}
        ${opts.quote ? `and l.quote = $${2 + statuses.length}` : ""}
        ${opts.creator ? `and l.creator = $${2 + statuses.length + (opts.quote ? 1 : 0)}` : ""}
@@ -370,16 +377,28 @@ export async function selectHolders(
   return { cachedCount, liveCount, circulating, holders };
 }
 
-export async function selectGrantCampaigns(db: Db, chainId: number, statuses?: number[]): Promise<GrantCampaignRow[]> {
+export async function selectGrantCampaigns(
+  db: Db,
+  chainId: number,
+  statuses?: number[],
+  opts: { includeHidden?: boolean } = {},
+): Promise<GrantCampaignRow[]> {
   const list = statuses ?? [];
   return db<GrantCampaignRow[]>`
     select meme, pool_id, status, reserve, base_pool, referral_budget, root, root_uri,
            root_total_base, root_total_invitee_boost, root_proposed_at, activatable_at,
            start_time, end_time, total_activated, burned, excess_to_incentive, excess_to_treasury,
            incentive_swept, positions_count, active_positions, initialized_at, finalized_at, cancelled_at
-    from grant_campaigns
+    from grant_campaigns gc
     where chain_id = ${chainId}
       ${list.length ? db`and status in ${db(list)}` : db``}
+      ${
+        opts.includeHidden
+          ? db``
+          : db`and not exists (
+              select 1 from launch_moderation lm where lm.chain_id = gc.chain_id and lm.meme = gc.meme and lm.hidden
+            )`
+      }
     order by initialized_block desc, initialized_at desc
   `;
 }

@@ -892,11 +892,13 @@ export async function onOptedIn(tx: Tx, ctx: ApplyContext, log: DecodedLog): Pro
 
 /** TemplateRegistered(templateId, template) → templates row (status PROPOSED unless already present), template jsonb with bigints as strings. */
 export async function onTemplateRegistered(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
-  const a = log.args as { templateId: Hex; template: unknown };
+  const a = log.args as { templateId: Hex; template: { status?: number } };
   const tid = hex32(a.templateId);
   const body = jsonSafe(a.template);
+  // registration emits no TemplateStatusUpdated: the status it starts in is the one inside the struct
+  const status = Number(a.template.status ?? 0);
   await tx`insert into templates (chain_id, template_id, status, registered_block, template)
-    values (${ctx.chainId}, ${tid}, ${0}, ${log.blockNumber}, ${tx.json(body as never)})
+    values (${ctx.chainId}, ${tid}, ${status}, ${log.blockNumber}, ${tx.json(body as never)})
     on conflict (chain_id, template_id) do update set
       template = ${tx.json(body as never)},
       registered_block = coalesce(templates.registered_block, ${log.blockNumber})`;
@@ -926,6 +928,29 @@ export async function onAssetUpdated(tx: Tx, ctx: ApplyContext, log: DecodedLog)
       info = ${tx.json(jsonSafe(info) as never)}
     where chain_id = ${ctx.chainId} and quote = ${addr(q)}`;
   ctx.quoteDecimals.set(addr(q), decimals);
+}
+
+/**
+ * Admin roles held on-chain. The factory's owner is the Core Admin (every contract has the same owner; the factory is
+ * the one the site reads), and the grant vault's publisher is the Grant Admin. Each change is kept as a row so a
+ * reorg only deletes rows; the current holder is the latest one.
+ */
+async function recordChainRole(tx: Tx, ctx: ApplyContext, log: DecodedLog, role: "core" | "grant", holder: string) {
+  await tx`insert into chain_role_events (chain_id, role, address, block_number, log_index)
+    values (${ctx.chainId}, ${role}, ${lower(holder)}, ${log.blockNumber}, ${log.logIndex})
+    on conflict do nothing`;
+}
+
+/** OwnershipTransferred(previousOwner, newOwner) on the factory. */
+export async function onCoreAdminChanged(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
+  const a = log.args as { previousOwner: Address; newOwner: Address };
+  await recordChainRole(tx, ctx, log, "core", a.newOwner);
+}
+
+/** PublisherUpdated(previous, current) on the grant vault. */
+export async function onGrantAdminChanged(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
+  const a = log.args as { previous: Address; current: Address };
+  await recordChainRole(tx, ctx, log, "grant", a.current);
 }
 
 /**
@@ -978,6 +1003,7 @@ export const HANDLERS: Record<string, Handler> = {
   "factory.LaunchCreated": onLaunchCreated,
   "factory.LaunchTemplateSelected": onLaunchTemplateSelected,
   "factory.LaunchStatusUpdated": onLaunchStatusUpdated,
+  "factory.OwnershipTransferred": onCoreAdminChanged,
   "curve.CurveInitialized": onCurveInitialized,
   "curve.CurveBuy": onCurveBuy,
   "curve.CurveSell": onCurveSell,
@@ -1004,6 +1030,7 @@ export const HANDLERS: Record<string, Handler> = {
   "lpGrantVault.GrantMemeBurned": onGrantMemeBurned,
   "lpGrantVault.GrantFinalized": onGrantFinalized,
   "lpGrantVault.IncentiveSwept": onIncentiveSwept,
+  "lpGrantVault.PublisherUpdated": onGrantAdminChanged,
   "positionManager.Transfer": onLpPositionTransfer as unknown as Handler,
   "referralRegistry.InviterBound": onInviterBound,
   "referralRegistry.OptedIn": onOptedIn,

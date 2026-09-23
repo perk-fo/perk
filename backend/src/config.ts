@@ -46,7 +46,6 @@ export interface AppConfig {
   logPage: number;
   port: number;
   corsOrigins: string[];
-  adminAddresses: Address[];
   deployment: Deployment;
   /** `local` writes to MEDIA_DIR; `pinata` pins via PINATA_JWT. */
   mediaDriver: "local" | "pinata";
@@ -99,9 +98,6 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   if (!rpcUrl) throw new Error("RPC_URL is not set");
   const databaseUrl = overrides.databaseUrl ?? process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
-  const admins = new Set<string>([deployment.protocolOwner, deployment.deployer].map((a) => a.toLowerCase()));
-  for (const a of listEnv("ADMIN_ADDRESSES")) admins.add(a.toLowerCase());
-  for (const a of overrides.adminAddresses ?? []) admins.add(a.toLowerCase());
   const port = overrides.port ?? intEnv("PORT", 8787);
   const mediaDriverRaw = (overrides.mediaDriver ?? process.env.MEDIA_DRIVER ?? "local").trim() || "local";
   if (mediaDriverRaw !== "local" && mediaDriverRaw !== "pinata") {
@@ -123,7 +119,6 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     logPage: overrides.logPage ?? intEnv("LOG_PAGE", 1000),
     port,
     corsOrigins: overrides.corsOrigins ?? (listEnv("CORS_ORIGINS").length ? listEnv("CORS_ORIGINS") : ["http://localhost:3000"]),
-    adminAddresses: [...admins] as Address[],
     deployment,
     mediaDriver: mediaDriverRaw,
     mediaDir: overrides.mediaDir ?? process.env.MEDIA_DIR ?? "./data/media",

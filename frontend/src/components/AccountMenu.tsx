@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAccount, useDisconnect } from "wagmi";
 import { ROLE_ORDER, useRoles, type Role } from "@/lib/roles";
 import { shortAddress } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { InviteLinkRow } from "@/components/InviteLinkRow";
+import { useDismiss } from "@/lib/use-dismiss";
 
 const ROLE_TONE: Record<Role, string> = {
   admin: "bg-flare text-on-flare",
@@ -28,6 +29,8 @@ export function AccountMenu() {
   const roles = useRoles();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const wrapper = useRef<HTMLSpanElement>(null);
+  useDismiss(wrapper, open, () => setOpen(false));
   if (!address) return null;
 
   const tier = roles.tier;
@@ -45,7 +48,7 @@ export function AccountMenu() {
   };
 
   return (
-    <span className="relative">
+    <span ref={wrapper} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -65,13 +68,6 @@ export function AccountMenu() {
       </button>
       {open && (
         <>
-          <button
-            type="button"
-            aria-hidden
-            tabIndex={-1}
-            className="fixed inset-0 z-20 cursor-default"
-            onClick={() => setOpen(false)}
-          />
           <span role="menu" className="popover absolute right-0 z-30 mt-2 flex w-72 flex-col gap-3 p-4">
             <Link
               href="/me"

@@ -4,10 +4,12 @@ import { useMemo } from "react";
 import { useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import { assetRegistryAbi } from "@/generated/abis";
+import type { QuoteAsset, QuoteCategory, QuoteNotice } from "./api-types";
+import { useQuoteAssets } from "./api-hooks";
 import { NATIVE_QUOTE, type Deployment } from "./deployments";
 import { useDeployment } from "./hooks";
 
-export type QuoteCategory = "native" | "ecosystem" | "rwa";
+export type { QuoteCategory };
 
 export interface QuoteInfo {
   address: Address;
@@ -16,11 +18,20 @@ export interface QuoteInfo {
   decimals: number;
   enabled: boolean;
   rewardCompatible: boolean;
-  /** Display label and RWA notice resolve via `quote.category.*` / `create.quote.rwaNotice` messages. */
+  /** Display label and default notice resolve via `quote.category.*` / `create.quote.rwaNotice` messages. */
   category: QuoteCategory;
+  /** A name General Admins chose; the symbol is shown when null. */
+  displayName: string | null;
+  iconUrl: string | null;
+  /** Risk notice General Admins wrote, per locale; see `quoteNotice`. */
+  notice: QuoteNotice;
+  /** false keeps it out of the Launch page's picker. */
+  listed: boolean;
+  /** ACTIVE templates bound to it on-chain; null when the API is unreachable and nobody knows. */
+  activeTemplates: number | null;
 }
 
-/** Static quote list: native OKB plus every entry of deployments.quoteAssets. */
+/** Static quote list: native OKB plus every entry of deployments.quoteAssets (the fallback when the API is down). */
 export function quoteEntries(deployment: Deployment | null): Array<{ address: Address; symbol: string }> {
   if (!deployment) return [];
   return [
@@ -32,21 +43,41 @@ export function quoteEntries(deployment: Deployment | null): Array<{ address: Ad
   ];
 }
 
-function classify(address: Address, symbol: string, deployment: Deployment): QuoteCategory {
+/**
+ * The category when General Admins have not set one. Unknown ERC-20s are treated as tokenised stocks, which shows
+ * the risk notice: showing it for a token that does not need it is the safer mistake.
+ */
+function defaultCategory(address: Address, symbol: string, deployment: Deployment): QuoteCategory {
   const a = address.toLowerCase();
   if (a === NATIVE_QUOTE.toLowerCase()) return "native";
   if (a === deployment.xdogToken.toLowerCase() || symbol === "XDOG") return "ecosystem";
   return "rwa";
 }
 
-function buildQuote(
+function fromApi(a: QuoteAsset, deployment: Deployment): QuoteInfo {
+  return {
+    address: a.address,
+    isNative: a.isNative,
+    symbol: a.symbol,
+    decimals: a.isNative ? 18 : a.decimals,
+    enabled: a.enabled,
+    rewardCompatible: a.rewardCompatible,
+    category: a.display.category ?? defaultCategory(a.address, a.symbol, deployment),
+    displayName: a.display.displayName,
+    iconUrl: a.display.iconUrl,
+    notice: a.display.notice,
+    listed: a.display.listed,
+    activeTemplates: a.activeTemplates,
+  };
+}
+
+function fromChain(
   entry: { address: Address; symbol: string },
   deployment: Deployment,
   info?: { enabled: boolean; rewardCompatible: boolean; isNative: boolean; decimals: number; symbol: string },
 ): QuoteInfo {
   const isNative = entry.address.toLowerCase() === NATIVE_QUOTE.toLowerCase();
   const symbol = info?.symbol || entry.symbol;
-  const category = classify(entry.address, symbol, deployment);
   return {
     address: entry.address,
     isNative,
@@ -54,16 +85,23 @@ function buildQuote(
     decimals: isNative ? 18 : (info?.decimals ?? 18),
     enabled: isNative ? true : (info?.enabled ?? true),
     rewardCompatible: isNative ? true : (info?.rewardCompatible ?? true),
-    category,
+    category: defaultCategory(entry.address, symbol, deployment),
+    displayName: null,
+    iconUrl: null,
+    notice: {},
+    listed: true,
+    activeTemplates: null,
   };
 }
 
 /**
- * Quote list for the current chain, with decimals/symbol/flags read through
- * AssetRegistry.assetInfo for every ERC-20 quote asset.
+ * Quote currencies for the current chain. The indexer's list comes first: it includes assets listed after this
+ * build and the display settings General Admins chose. The deployment file's list, read through
+ * AssetRegistry.assetInfo, fills in whatever the API does not return (or everything, while it is unreachable).
  */
 export function useQuotes(): { quotes: QuoteInfo[]; isLoading: boolean } {
   const { deployment } = useDeployment();
+  const apiAssets = useQuoteAssets();
   const entries = useMemo(() => quoteEntries(deployment), [deployment]);
   const erc20Entries = useMemo(
     () => entries.filter((e) => e.address.toLowerCase() !== NATIVE_QUOTE.toLowerCase()),
@@ -85,16 +123,17 @@ export function useQuotes(): { quotes: QuoteInfo[]; isLoading: boolean } {
 
   const quotes = useMemo(() => {
     if (!deployment) return [];
-    const byAddress = new Map<string, QuoteInfo>();
+    const out: QuoteInfo[] = (apiAssets.data?.assets ?? []).map((a) => fromApi(a, deployment));
+    const seen = new Set(out.map((q) => q.address.toLowerCase()));
     for (const e of entries) {
+      if (seen.has(e.address.toLowerCase())) continue;
       const i = erc20Entries.findIndex((x) => x.address === e.address);
-      const raw = i >= 0 ? data?.[i]?.result : undefined;
-      byAddress.set(e.address.toLowerCase(), buildQuote(e, deployment, raw));
+      out.push(fromChain(e, deployment, i >= 0 ? data?.[i]?.result : undefined));
     }
-    return entries.map((e) => byAddress.get(e.address.toLowerCase())!);
-  }, [deployment, entries, erc20Entries, data]);
+    return out;
+  }, [deployment, apiAssets.data, entries, erc20Entries, data]);
 
-  return { quotes, isLoading: isLoading && erc20Entries.length > 0 };
+  return { quotes, isLoading: apiAssets.isLoading || (isLoading && erc20Entries.length > 0) };
 }
 
 /** Find a known quote by address; undefined for unknown quotes. */
@@ -102,4 +141,19 @@ export function findQuote(quotes: readonly QuoteInfo[], address: Address | undef
   if (!address) return undefined;
   const a = address.toLowerCase();
   return quotes.find((q) => q.address.toLowerCase() === a);
+}
+
+/** Can a new launch use this quote: allowed on-chain, listed by admins, and with templates to launch from. */
+export function isLaunchable(q: QuoteInfo): boolean {
+  return q.enabled && q.rewardCompatible && q.listed && q.activeTemplates !== 0;
+}
+
+/**
+ * The risk notice to show for a quote: what General Admins wrote for this locale (or in English), else the
+ * category's standard text, which only tokenised stocks have.
+ */
+export function quoteNotice(q: QuoteInfo, locale: string, rwaDefault: string): string | null {
+  const own = q.notice[locale as keyof QuoteNotice] ?? q.notice.en;
+  if (own) return own;
+  return q.category === "rwa" ? rwaDefault : null;
 }

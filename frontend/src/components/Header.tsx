@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { DEFAULT_CHAIN } from "@/lib/chains";
 import { shortAddress } from "@/lib/format";
@@ -14,7 +14,8 @@ import { Sparkle } from "@/components/art/Sparkle";
 import { CheckIcon, ChevronDownIcon, GlobeIcon, MoonIcon, SunIcon, SystemIcon } from "@/components/ui/Icon";
 import { SyncStatus } from "@/components/SyncStatus";
 import { AccountMenu } from "@/components/AccountMenu";
-import { useCoreAdmin } from "@/lib/admin";
+import { useAdminRoles } from "@/lib/admin";
+import { useDismiss } from "@/lib/use-dismiss";
 
 const THEME_KEY = "perk-theme";
 const PALETTE_KEY = "perk-palette";
@@ -48,16 +49,6 @@ function applyPalette(palette: PaletteChoice) {
   else root.dataset.palette = palette;
 }
 
-/** Close a header menu on Escape. */
-function useEscape(open: boolean, close: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
-}
-
 // No horizontal padding in the base: a `px-0` added on top would lose to `px-3` in Tailwind's generated order and
 // squeeze the icon. Each chip sets its own width or padding.
 const CHIP_BASE =
@@ -74,7 +65,8 @@ function ThemeMenu() {
   const [choice, setChoice] = useState<ThemeChoice>("system");
   const [palette, setPalette] = useState<PaletteChoice>("graphite");
   const [open, setOpen] = useState(false);
-  useEscape(open, () => setOpen(false));
+  const wrapper = useRef<HTMLSpanElement>(null);
+  useDismiss(wrapper, open, () => setOpen(false));
 
   useEffect(() => {
     let stored: string | null = null;
@@ -125,7 +117,7 @@ function ThemeMenu() {
   const Current = modes.find((o) => o.key === choice)!.Icon;
 
   return (
-    <span className="relative">
+    <span ref={wrapper} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -139,7 +131,6 @@ function ThemeMenu() {
       </button>
       {open && (
         <>
-          <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} />
           <span role="menu" aria-label={t("header.theme.title")} className="popover absolute right-0 z-30 mt-2 flex w-48 flex-col p-1.5">
             <span role="group" aria-label={t("header.theme.mode")} className="flex flex-col gap-0.5">
               <span className="px-2.5 pb-0.5 pt-1 text-xs text-subtle" aria-hidden>
@@ -194,7 +185,8 @@ function ThemeMenu() {
 function LanguageMenu() {
   const { locale, setLocale, t } = useT();
   const [open, setOpen] = useState(false);
-  useEscape(open, () => setOpen(false));
+  const wrapper = useRef<HTMLSpanElement>(null);
+  useDismiss(wrapper, open, () => setOpen(false));
 
   function pick(next: Locale) {
     setLocale(next);
@@ -202,7 +194,7 @@ function LanguageMenu() {
   }
 
   return (
-    <span className="relative">
+    <span ref={wrapper} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -218,7 +210,6 @@ function LanguageMenu() {
       </button>
       {open && (
         <>
-          <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} />
           <span role="listbox" className="popover absolute right-0 z-30 mt-2 flex min-w-36 flex-col gap-0.5 p-1.5">
             {LOCALES.map((l) => (
               <button
@@ -249,7 +240,7 @@ export function Header() {
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
-  const coreAdmin = useCoreAdmin();
+  const adminRoles = useAdminRoles();
 
   const configured = DEFAULT_CHAIN;
   const configuredName = configured.testnet ? t("header.network.testnet") : configured.name;
@@ -265,7 +256,7 @@ export function Header() {
     // launching is rare next to trading / LP: a plain entry, not a highlighted button
     { href: "/launch", label: t("nav.launch"), match: (p: string) => p.startsWith("/launch") },
     // only the wallet that owns the contracts sees the admin entry (the page itself is open, read-only)
-    ...(coreAdmin.isCoreAdmin
+    ...(adminRoles.isAdmin
       ? [{ href: "/admin", label: t("nav.admin"), match: (p: string) => p.startsWith("/admin") }]
       : []),
   ];

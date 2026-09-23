@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   let hub: ReturnType<typeof createWsHub> | null = null;
   if (!args.has("--sync-only")) {
     const media = createMediaStore(cfg);
-    const app = createApp({ db, config: cfg, media });
+    const app = createApp({ db, config: cfg, media, client: createClient(cfg.rpcUrl) });
     hub = createWsHub({ db, config: cfg });
     const server = Bun.serve({
       port: cfg.port,

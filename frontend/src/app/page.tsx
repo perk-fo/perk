@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import { useDeployment } from "@/lib/hooks";
-import { useLaunchList, useStats } from "@/lib/api-hooks";
+import { useFeatured, useLaunchList, useStats } from "@/lib/api-hooks";
 import { API_URL, isApiUnreachable } from "@/lib/api";
 import { Sparkle } from "@/components/art/Sparkle";
 import { Panel } from "@/components/ui/Panel";
@@ -34,7 +34,9 @@ export default function HomePage() {
   // trending: the six most traded in the last 24 h; the full market lives on /trade
   const list = useLaunchList({ sort: "volume", limit: 6 });
   const stats = useStats();
+  const featured = useFeatured();
   const items = useMemo(() => list.data?.launches ?? [], [list.data]);
+  const featuredItems = featured.data?.launches ?? [];
   const apiDown = isApiUnreachable(list.error) || isApiUnreachable(stats.error);
 
   if (!deployment) {
@@ -107,6 +109,18 @@ export default function HomePage() {
           </Link>
         ))}
       </section>
+
+      {/* featured: picked by the site's admins; absent until they pick something */}
+      {featuredItems.length > 0 && (
+        <section className="pb-12 pt-2">
+          <h2 className="label mb-5">{t("home.featured")}</h2>
+          <div className="fade-up-stagger grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {featuredItems.map((item) => (
+              <LaunchCard key={item.meme} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* trending */}
       <section className="pt-2">

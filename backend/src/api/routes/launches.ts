@@ -15,6 +15,7 @@ import {
   selectTrades,
 } from "../queries";
 import { uint } from "../serialize";
+import { selectFeatured } from "../../admin/queries";
 
 export const CANDLE_SECONDS: Record<CandleInterval, number> = {
   "1m": 60,
@@ -29,7 +30,8 @@ const INTERVALS = new Set<string>(Object.keys(CANDLE_SECONDS));
 
 /**
  * GET /v1/launches?status=1,2,3,4&quote=0x..&creator=0x..&sort=newest|volume|progress|trades&limit=50&offset=0
- *   → { launches: LaunchSummary[], total } — max-age 5.
+ *   → { launches: LaunchSummary[], total } — max-age 5. Launches that moderation hid are left out.
+ * GET /v1/launches/featured → { launches: LaunchSummary[] } in the order General Admins set — max-age 15.
  * GET /v1/launches/:meme → LaunchDetail (404 if unknown) — max-age 3.
  * GET /v1/launches/:meme/trades?limit=50&before=<block>:<logIndex> → TradesPage (newest first) — max-age 3.
  * GET /v1/launches/:meme/candles?interval=1m|5m|15m|1h|4h|1d&from=<ts>&to=<ts>&limit=500 → { candles: Candle[] }
@@ -63,6 +65,13 @@ export function launchRoutes(): Hono<AppEnv> {
     });
     c.header("Cache-Control", "public, max-age=5");
     return c.json({ launches: rows.map(mapLaunchSummary) as LaunchSummary[], total });
+  });
+
+  r.get("/featured", async (c) => {
+    const { db, config } = c.get("deps");
+    const rows = await selectFeatured(db, config.chainId, Math.floor(Date.now() / 1000));
+    c.header("Cache-Control", "public, max-age=15");
+    return c.json<{ launches: LaunchSummary[] }>({ launches: rows.map(mapLaunchSummary) });
   });
 
   r.get("/:meme", async (c) => {

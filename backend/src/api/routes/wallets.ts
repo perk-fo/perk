@@ -5,6 +5,7 @@ import type { WalletRoles,
 import { mapGrantPosition, mapLaunchSummary, mapTrade, mapWalletRoles,
   mapLpPosition } from "../mappers";
 import { addr, num, uint } from "../serialize";
+import { selectAdminRoles } from "../../admin/roles";
 import {
   selectLaunchesByMemes,
   selectPositionsForWallet,
@@ -17,7 +18,8 @@ import {
 
 /**
  * GET /v1/wallets/:address/roles → WalletRoles — max-age 5.
- *   isAdmin = address ∈ config.adminAddresses; creatorOf from launches.creator; lpOf from grant_positions;
+ *   adminRoles: "core" / "grant" from the indexed contract owner and grant publisher, "operator" from the General
+ *   Admins the Core Admin appointed; isAdmin = any of them. creatorOf from launches.creator; lpOf from grant_positions;
  *   allocatedIn from grant_allocations; inviter/optInBlock from referrals/opt_ins.
  * GET /v1/wallets/:address → WalletSummary (roles + launches + positions + last 20 trades + claims + holdings) — max-age 5.
  */
@@ -26,11 +28,13 @@ export function walletRoutes(): Hono<AppEnv> {
   r.get("/:address/roles", async (c) => {
     const { db, config } = c.get("deps");
     const address = addressParam(c.req.param("address"));
-    const bits = await selectWalletRoleBits(db, config.chainId, address);
-    const isAdmin = config.adminAddresses.some((a) => a.toLowerCase() === address);
+    const [bits, adminRoles] = await Promise.all([
+      selectWalletRoleBits(db, config.chainId, address),
+      selectAdminRoles(db, config.chainId, address),
+    ]);
     c.header("Cache-Control", "public, max-age=5");
     return c.json<WalletRoles>(
-      mapWalletRoles(address, isAdmin, bits.creatorOf, bits.lpOf, bits.allocatedIn, bits.inviter, bits.optInBlock),
+      mapWalletRoles(address, adminRoles, bits.creatorOf, bits.lpOf, bits.allocatedIn, bits.inviter, bits.optInBlock),
     );
   });
   // Ordinary LP positions, kept on their own path so a client can ask for them without the whole wallet payload.
@@ -46,11 +50,13 @@ export function walletRoutes(): Hono<AppEnv> {
     const { db, config } = c.get("deps");
     const address = addressParam(c.req.param("address"));
     const now = Math.floor(Date.now() / 1000);
-    const bits = await selectWalletRoleBits(db, config.chainId, address);
-    const isAdmin = config.adminAddresses.some((a) => a.toLowerCase() === address);
+    const [bits, adminRoles] = await Promise.all([
+      selectWalletRoleBits(db, config.chainId, address),
+      selectAdminRoles(db, config.chainId, address),
+    ]);
     const roles = mapWalletRoles(
       address,
-      isAdmin,
+      adminRoles,
       bits.creatorOf,
       bits.lpOf,
       bits.allocatedIn,
