@@ -8,6 +8,7 @@ import { HashSeal } from "@/components/art/HashSeal";
 import { Pill, launchStatusPill } from "@/components/ui/Pill";
 import { formatAmount, formatNumber, formatPrice, signedPct } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 /**
  * The market as a dense table (DEX-style): one row per launch, whole row clickable to its trading page.
@@ -21,7 +22,7 @@ export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; 
       <div className="overflow-x-auto">
         <table className="w-full whitespace-nowrap text-[13px]">
           <thead>
-            <tr className="label border-b border-bone/8 text-left">
+            <tr className="label border-b border-line text-left">
               <th className="w-10 py-3 pl-5 pr-2 font-normal">#</th>
               <th className="px-2 py-3 font-normal">{t("trade.col.token")}</th>
               <th className="px-2 py-3 text-right font-normal">{t("trade.col.price")}</th>
@@ -43,57 +44,57 @@ export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; 
                 <tr
                   key={item.meme}
                   onClick={() => router.push(href)}
-                  className="cursor-pointer border-b border-bone/6 transition-colors duration-fast last:border-0 hover:bg-bone/[0.03]"
+                  className="cursor-pointer border-b border-line transition-colors duration-fast last:border-0 hover:bg-raised"
                 >
-                  <td className="num py-3 pl-5 pr-2 text-bone/40">{startRank + i}</td>
+                  <td className="num py-3 pl-5 pr-2 text-subtle">{startRank + i}</td>
                   <td className="px-2 py-3">
                     <Link href={href} className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                       <HashSeal hash={item.configHash} moduleBitmap={BigInt(item.moduleBitmap)} size={30} className="shrink-0" />
                       <span className="min-w-0">
                         <span className="block max-w-[180px] truncate text-[14px] text-bone">{item.name || "…"}</span>
-                        <span className="num flex items-center gap-1.5 text-[11px] text-bone/45">
+                        <span className="num flex items-center gap-1.5 text-xs text-subtle">
                           {item.symbol}
-                          <span className="text-bone/25">/</span>
+                          <span className="text-faint">/</span>
                           {item.quoteSymbol}
-                          {item.lpGrantEnabled && <span className="rounded-full bg-amber/15 px-1.5 text-[10px] text-amber">LP Grant</span>}
+                          {item.lpGrantEnabled && <span className="rounded-full bg-amber/15 px-1.5 text-[11px] text-amber">LP Grant</span>}
                         </span>
                       </span>
                     </Link>
                   </td>
                   <td className="num px-2 py-3 text-right">
-                    {m.lastPrice !== null && m.lastPrice > 0 ? formatPrice(m.lastPrice, locale) : <span className="text-bone/30">—</span>}
+                    {m.lastPrice !== null && m.lastPrice > 0 ? <Subscripted text={formatPrice(m.lastPrice, locale)} /> : <span className="text-faint">—</span>}
                   </td>
                   <td
                     className={`num px-2 py-3 text-right ${
-                      change.tone === "flare" ? "text-flare" : change.tone === "rose" ? "text-rose" : "text-bone/40"
+                      change.tone === "verdigris" ? "text-verdigris" : change.tone === "rose" ? "text-rose" : "text-subtle"
                     }`}
                   >
                     {m.tradeCount > 0 ? change.text : "—"}
                   </td>
-                  <td className="num hidden px-2 py-3 text-right text-bone/80 md:table-cell">
+                  <td className="num hidden px-2 py-3 text-right text-bone md:table-cell">
                     {formatAmount(BigInt(m.volume24hQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
-                    <span className="ml-1 text-[11px] text-bone/40">{item.quoteSymbol}</span>
+                    <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
                   </td>
-                  <td className="num hidden px-2 py-3 text-right text-bone/80 lg:table-cell">
+                  <td className="num hidden px-2 py-3 text-right text-bone lg:table-cell">
                     {m.marketCapQuote ? (
                       <>
                         {formatAmount(BigInt(m.marketCapQuote), item.quoteDecimals, { locale, maxFrac: 2 })}
-                        <span className="ml-1 text-[11px] text-bone/40">{item.quoteSymbol}</span>
+                        <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
                       </>
                     ) : (
-                      <span className="text-bone/30">—</span>
+                      <span className="text-faint">—</span>
                     )}
                   </td>
-                  <td className="num hidden px-2 py-3 text-right text-bone/70 lg:table-cell">
+                  <td className="num hidden px-2 py-3 text-right text-muted lg:table-cell">
                     {formatNumber(m.holderCount, locale)}
                   </td>
                   <td className="hidden py-3 pl-2 pr-5 text-right sm:table-cell">
                     {item.status === 1 ? (
                       <span className="inline-flex items-center gap-2">
-                        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-bone/10">
+                        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-raised">
                           <span className="block h-full rounded-full bg-flare/80" style={{ width: `${Math.min(100, progress)}%` }} />
                         </span>
-                        <span className="num w-10 text-right text-[12px] text-bone/60">{progress.toFixed(0)}%</span>
+                        <span className="num w-10 text-right text-[13px] text-muted">{progress.toFixed(0)}%</span>
                       </span>
                     ) : (
                       <Pill tone={pill.tone}>{pill.label}</Pill>

@@ -123,8 +123,8 @@ export function PerkPass() {
           <ul className="mt-5 grid gap-2.5 sm:grid-cols-3">
             {(["snapshot", "grant", "invite"] as const).map((k) => (
               <li key={k} className="pass-perk">
-                <span className="num text-[11px] text-flare">{t(`pass.perk.${k}.tag`)}</span>
-                <span className="mt-1 block text-[13px] leading-snug text-bone/85">{t(`pass.perk.${k}`)}</span>
+                <span className="num text-xs text-flare">{t(`pass.perk.${k}.tag`)}</span>
+                <span className="mt-1 block text-[13px] leading-snug text-bone">{t(`pass.perk.${k}`)}</span>
               </li>
             ))}
           </ul>
@@ -138,9 +138,9 @@ export function PerkPass() {
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
             {!address ? (
-              <p className="text-sm text-bone/60">{t("pass.connect")}</p>
+              <p className="text-sm text-muted">{t("pass.connect")}</p>
             ) : !loaded ? (
-              <span className="text-sm text-bone/40">…</span>
+              <span className="text-sm text-subtle">…</span>
             ) : !issued ? (
               <button type="button" onClick={claim} disabled={busy} className="btn-primary pass-cta px-7 py-3 text-[15px]">
                 {busy ? (
@@ -160,14 +160,14 @@ export function PerkPass() {
               </button>
             ) : null}
             {address && loaded && !issued && (
-              <span className="text-[11px] text-bone/45">
+              <span className="text-xs text-subtle">
                 {invite.canBind && !hasInviter ? t("pass.twoTx") : t("pass.gasOnly")}
               </span>
             )}
           </div>
           <TxStatus tx={bindTx} successText={t("grant.inviter.success")} />
           <TxStatus tx={optInTx} successText={t("pass.issuedToast")} />
-          <p className="mt-5 text-[11px] leading-relaxed text-bone/40">{t("pass.fine")}</p>
+          <p className="mt-5 text-[13px] leading-relaxed text-subtle">{t("pass.fine")}</p>
         </div>
 
         {/* stub */}
@@ -180,13 +180,13 @@ export function PerkPass() {
             <p className="label">{t("pass.no")}</p>
             <p className="num mt-1 text-lg text-bone">{issuedOnChain ? `#${formatNumber(optInBlock!, locale)}` : issued ? "· · ·" : "— — —"}</p>
             <p className="label mt-3">{t("pass.holder")}</p>
-            <p className="num mt-1 text-[12px] text-bone/75">{address ? shortAddress(address) : "0x……"}</p>
+            <p className="mono mt-1 text-[13px] text-muted">{address ? shortAddress(address) : "0x……"}</p>
           </div>
         </div>
       </div>
 
       {address && issued && (
-        <div className="border-t border-dashed border-bone/15 px-6 py-4 sm:px-8">
+        <div className="border-t border-dashed border-line-strong px-6 py-4 sm:px-8">
           <InviteLinkRow address={address} />
         </div>
       )}
@@ -218,7 +218,7 @@ function PassLoading({ label }: { label: string }) {
               <div key={i} className="skel h-[68px]" />
             ))}
           </div>
-          <p className="mt-6 flex items-center gap-2 text-sm text-bone/50">
+          <p className="mt-6 flex items-center gap-2 text-sm text-subtle">
             <Spinner size={14} /> {label}
           </p>
         </div>

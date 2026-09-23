@@ -2,60 +2,102 @@
 
 In one line: **a verifiable credential**, wearing Perk's skin. The brand mark (`public/brand/perk-logo.jpeg`) is a
 fluorescent lemon-green fox silhouette on deep ink green, with a four-pointed star, inside a circle cut open by a
-"P". The interface grows out of it: bold rounded geometric silhouettes, one very bright accent, large areas of dark
-space, and the star as the finishing touch.
+"P". The interface grows out of it: bold rounded geometric silhouettes, calm graphite surfaces, the lime kept for
+the one thing to do on each screen, and the star as the finishing touch. It is meant to be read for hours: nothing is
+harsher than it needs to be, and nothing anyone has to read is faint.
 
 ## Concepts
 
 - Silhouette meets instrument panel. Headings use a geometric sans with character (Bricolage Grotesque, wide,
-  optical sizing), body text uses Instrument Sans, numbers use JetBrains Mono.
+  optical sizing), body text and figures use Instrument Sans (tabular figures for numbers), identifiers use
+  JetBrains Mono.
 - Each launch's `HashSeal` is a **disc with a P-shaped notch**: lemon-green or ink-green face, a four-pointed star
   at the centre, the pattern held inside the disc, and outer-ring ticks encoding the module bits. The seal matches
   only when the preview's config hash matches the chain's.
 - The star is the only ornament: status dots, success states, the Recommended marker, the loading shimmer.
 - Modules are building blocks, grant positions are ticket stubs, and the curve is the protagonist.
-- Shape language: buttons, pills and inputs are all `rounded-full`; panels use a 20px radius; seals are circular.
+- Shape language: buttons, pills and inputs are all `rounded-full`; panels use an 18px radius; seals are circular.
   Nothing has square corners.
 
 ## Colour
 
-Tokens live in `globals.css`. The names are stable; only the values are brand-specific.
+Tokens live in `globals.css` as RGB triplets, one set per theme; `tailwind.config.ts` exposes them as colours. Every
+text colour was measured against the page and panel colours (WCAG 2 contrast ratio and APCA Lc); the numbers below
+are WCAG ratios on the page colour.
+
+Why the values are what they are. The first version used the logo's two colours directly: page `#0F1D1D`, lime
+`#D6FD3E`. Users reported eye strain in both themes, and the measurements explain it. Dark mode put primary text at
+15:1 and the lime at 14.8:1 (lime sits at the peak of the eye's brightness sensitivity at full saturation), while
+roughly 85 uses of `bone/40`-`bone/55` put secondary text at 3.5-4.7:1: glare and squinting on the same screen.
+Light mode had lime text and the primary button label at 2.6:1 and secondary text at 2.5-3.8:1. An audit of eight
+pages found 179 (dark) and 509 (light) text elements below WCAG AA; this system has none (disabled controls, which
+WCAG exempts, aside).
 
 | Token | Dark | Light | Use |
 |-------|------|-------|-----|
-| ink | #0F1D1D | #F3F6EE | Page background (deep ink green / moss white) |
-| surface | #112323 | #FFFFFF | Panels |
-| bone | #E9F2EA | #0F1D1D | Primary text (mist white / ink green) |
-| muted | bone 56% | ink 56% | Secondary text |
-| line | bone 10% | ink 12% | Hairlines |
-| flare | #D6FD3E | #7FA800 | **Lemon-green accent**: calls to action, the current point, emphasised numbers, the star |
-| verdigris | #7BE3B5 | #1F8F62 | Success, positive return |
-| amber | #F2C14E | #B8801A | Warning, decay countdown |
-| ember | #F7924A | #C65F26 | **Severity grading only** (indexer 1k-5k blocks behind); sits between amber and rose and is never a brand colour |
-| rose | #FF6B8A | #C0395C | Danger, negative return, burning |
+| ink | #121916 | #F4F5F1 | Page background |
+| surface | #1A221F | #FCFDFA | Panels |
+| raised | #242C29 | #EDEEEA | Inputs, hover, tracks, nested cards |
+| knob | #343D39 | #FCFDFA | The selected thumb of a segmented control |
+| line / line-strong | #2D3632 / #464E4B | #DADDD8 / #BFC4BE | Borders and dividers / control outlines |
+| bone | #DADFDB (13.2:1) | #1E2824 (13.9:1) | Primary text |
+| muted | #B6BDB8 (9.3:1) | #4B5551 (7.1:1) | Secondary text |
+| subtle | #969E99 (6.5:1) | #616A66 (5.1:1) | Labels, meta: the lowest tier anyone has to read |
+| faint | #6A726E | #8A918D | Placeholders, disabled, decoration only |
+| flare | #BFE16B (12.1:1) | #406C13 (5.7:1) | Accent as text and indicator: links, progress, selection, focus |
+| cta / on-cta | #D1F556 / #111F1C | #142B29 / #D1F556 | Primary action: lime on ink in dark, ink carrying lime in light |
+| verdigris | #73D5A7 | #176E4A | Up, success |
+| amber | #F0BE67 | #8F550B | Warning, countdowns |
+| ember | #F2985F | #A34409 | Severity grading only (indexer lag), between amber and rose |
+| rose | #F17F85 | #B13038 | Down, danger, cancellation |
 
-Rules: only ink-green text may sit on lemon green; at most one large lemon-green area per screen, either the call to
-action or the headline number; the background carries a 3% monochrome grain (SVG `feTurbulence`) for texture; the
-primary call to action has a 24px lemon-green glow at 10%, rising to 16% on hover. Backgrounds are never gradients.
+Rules:
+
+- Text colour is one of the four solid tiers. Never set text with an alpha (`text-bone/50`): its contrast then depends
+  on whatever it lands on, which is how the old secondary text ended up unreadable.
+- Primary text stays near 13:1 in both themes. Higher is not better: white-on-black contrast causes halation.
+- The lime appears in two forms only. As the primary action it is a fill (dark) or the label on an ink button
+  (light), the logo's two colourways. As `flare` it is a softened lime in dark mode and a deep leaf green in light
+  mode, because lime cannot be read on a light page. Never use lime for large areas of text or for decoration.
+- Market direction has its own colours: up is `verdigris`, down is `rose`. Lime means "act", not "went up".
+- Status pills are a 10% tint of their colour with the colour as text, no outline (at least 4.8:1 in both themes).
+  An expired grant campaign is muted; `rose` is kept for failure and cancellation.
+- Price impact is coloured by size, not sign: quiet under 1%, amber from 1%, rose from 5%.
+- Panels are separated by tone plus a 1px `line` border; light mode adds a faint shadow. No glows, no background
+  texture, no gradients behind text.
+- Deterministic art (`HashSeal`) draws from `--seal-*` tokens: the logo's lime and ink, softened a step, so a list
+  of seals is not a wall of fluorescent discs.
+
+### Palettes
+
+Readers choose a palette in the theme menu, under the mode (System / Light / Dark). A palette changes only the
+neutral tones (page, panels, lines and the tint of text); accents and status colours are shared, and every
+lightness step is the same, so contrast is identical in all three. Graphite is the default. Moss leans toward the
+logo's ink green; Stone is warm. The choice is kept in localStorage (`perk-palette`) and applied as `data-palette`
+by the same pre-paint script as the theme.
 
 ## Type
 
-- Display numbers and headings: Bricolage Grotesque 600, `font-variation-settings: "opsz" 96, "wdth" 100`, heading
-  tracking -0.03em. Display numbers run 40 to 72px with `tabular-nums`, falling back to JetBrains Mono where a
-  tabular variant is unavailable.
-- The wordmark *Perk* is Bricolage Grotesque 700 with a star. The tagline "Choose the launch. Compose the market."
-  sets its second sentence in flare rather than in italics.
-- Body: Instrument Sans 400/500, 15px, line height 1.55. Chinese falls back to PingFang SC / Noto Sans SC, Japanese
-  to Hiragino Sans / Noto Sans JP.
-- Data: JetBrains Mono 400, 13px. Addresses and hashes are 12px with the middle elided.
+- Headings: Bricolage Grotesque 600 with `font-optical-sizing: auto`, so a 20px heading uses the text cut rather
+  than the 96pt display cut that was forced everywhere before; tracking -0.02em (-0.03em on the hero). The wordmark
+  (`.wordmark`) keeps the display cut at every size because it is part of the logo lockup.
+- Body: Instrument Sans 400/500, 15px, line height 1.6. Chinese falls back to PingFang SC / Noto Sans SC, Japanese to
+  Hiragino Sans / Noto Sans JP.
+- Figures (`.num`): the text face with tabular figures, so columns align without a typewriter look. Identifiers
+  (`.mono`: addresses, hashes, module ids, the proof JSON) use JetBrains Mono.
+- Small prices keep the zero count as a real subscript in the surrounding face (`components/ui/Subscripted`):
+  `formatPrice` writes Unicode subscript digits, which none of the site's faces contain.
+- Minimum sizes: 12px for anything a person reads, 13px for labels (`.label`, no letter-spacing), 11px only for
+  tiny badges. Charts measure their container and draw at 1:1, so axis labels are the size they say they are.
 
 ## Layout
 
 - Content is 1120px wide on a 12-column grid with 24px gutters; page margins are 24px, or 16px on mobile.
 - Vertical rhythm is an 8px baseline; panel padding is 24px, section spacing 48px, and the gap from header to the
   first screen 64px.
-- Hairlines replace shadows. Panels take a 1px line border, no shadow, and a 20px radius; the border lifts to bone
-  24% on hover.
+- Panels take a 1px `line` border and an 18px radius (light mode adds a faint shadow); linked panels lift their border
+  to `line-strong` on hover. Menus and toasts use `.popover`, a floating surface with a soft shadow.
+- The header is two rows on a phone (brand and controls, then navigation) and only sticks to the top from `sm` up.
 - Every page has one headline number: a large figure with a small label beneath it, with everything else secondary.
 
 ## Motion
@@ -65,6 +107,10 @@ primary call to action has a 24px lemon-green glow at 10%, rising to 16% on hove
 - Hover and press are 160ms ease-out.
 - While a transaction is pending, a 2px line travels inside the call to action; there is no spinner.
 - On seal hover the outer ticks light and rotate 6 degrees clockwise.
+- Nothing ambient loops forever: the LP Grant pass sheen crosses twice and its claim button pulses three times, then
+  both stay still. Only in-flight states (a pending transaction, a loading placeholder) keep moving.
+- The theme is applied before first paint by an inline script in `app/layout.tsx`; the theme menu offers System,
+  Light and Dark and follows the system live while on System.
 - `prefers-reduced-motion` is respected.
 
 ## Components (`src/components/`)
@@ -72,12 +118,13 @@ primary call to action has a 24px lemon-green glow at 10%, rising to 16% on hove
 - `art/HashSeal` the disc seal, `art/CurveChart` the price curve, `art/DecayRing` the decay ring, and
   `art/Sparkle` the four-pointed star (`size`, `tone`, `twinkle`). The drawing algorithms are settled; adjust size
   and colour through props rather than changing them.
-- `ui/Panel`, `ui/Stat` for the headline number, `ui/Kv` for key-value rows, `ui/ModuleBlocks`, `ui/Ticket` for
-  grant positions, `ui/Pill`, `ui/Button` (primary flare / ghost / danger), `ui/Field`, and `ui/Notice` for risk
-  disclosures with an amber or rose left border. The header carries the logo, circle-cropped at 28px, beside the
-  wordmark.
+- `ui/Panel`, `ui/Stat` for the headline number, `ui/Kv` for key-value rows (identifiers in mono, everything else in
+  the text face), `ui/ModuleBlocks`, `ui/Ticket` for grant positions, `ui/Pill`, `ui/Button` (primary / ghost /
+  danger), `ui/Field` (sunken input with a focus ring; `mono` for identifiers, `numeric` for amounts),
+  `ui/Segmented`, `ui/Notice` for risk disclosures (a tinted, outlined box), `ui/Icon` for the few line icons, and
+  `ui/Subscripted` for small prices. The header carries the logo, circle-cropped at 28px, beside the wordmark.
 - Status pills: CURVE_ACTIVE amber, GRADUATION_PENDING flare, GRADUATED verdigris. Grant campaigns: AWAITING_ROOT
-  muted, ROOT_PROPOSED amber, ACTIVE verdigris, EXPIRED and CANCELLED rose.
+  muted, ROOT_PROPOSED amber, ACTIVE verdigris, EXPIRED muted, CANCELLED rose.
 
 ## Pages
 

@@ -10,7 +10,7 @@ export function Sparkle({
   twinkle?: boolean;
   className?: string;
 }) {
-  const fill = tone === "muted" ? "rgb(var(--c-bone) / 0.45)" : `rgb(var(--c-${tone}))`;
+  const fill = tone === "muted" ? "rgb(var(--c-faint))" : `rgb(var(--c-${tone}))`;
   return (
     <svg
       viewBox="0 0 24 24"

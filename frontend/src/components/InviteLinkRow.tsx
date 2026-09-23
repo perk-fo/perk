@@ -23,14 +23,14 @@ export function InviteLinkRow({ address }: { address: Address }) {
     <div className="flex flex-col gap-1.5">
       <span className="label">{t("invite.myLink")}</span>
       <div className="flex items-center gap-2">
-        <span className="num min-w-0 flex-1 select-all truncate text-[12px] text-bone/70" title={link}>
+        <span className="mono min-w-0 flex-1 select-all truncate text-[13px] text-muted" title={link}>
           {link}
         </span>
         <button type="button" onClick={copy} className="btn-ghost shrink-0 px-3 py-1 text-xs">
           {copied ? t("invite.copied") : t("invite.copyLink")}
         </button>
       </div>
-      <p className="text-[11px] leading-snug text-bone/40">{t("invite.share")}</p>
+      <p className="text-xs leading-snug text-subtle">{t("invite.share")}</p>
     </div>
   );
 }

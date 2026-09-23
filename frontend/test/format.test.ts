@@ -42,7 +42,7 @@ describe("formatCompact", () => {
 describe("misc", () => {
   test("bps and signed percentages", () => {
     expect(fmtBps(1500n, "en")).toBe("15%");
-    expect(signedPct(123, "en")).toEqual({ text: "+1.23%", tone: "flare" });
+    expect(signedPct(123, "en")).toEqual({ text: "+1.23%", tone: "verdigris" });
     expect(signedPct(-40, "en")).toEqual({ text: "-0.4%", tone: "rose" });
     expect(signedPct(0)).toEqual({ text: "0%", tone: null });
   });

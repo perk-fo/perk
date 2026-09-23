@@ -31,13 +31,13 @@ export function TxStatus({
   if (!tx.hash) return null;
   return (
     <p className="num mt-3 text-[13px]">
-      {tx.isConfirming && <span className="text-bone/60">{t("tx.confirming")} </span>}
+      {tx.isConfirming && <span className="text-muted">{t("tx.confirming")} </span>}
       {tx.isSuccess && (
         <span className={successTone === "amber" ? "text-amber" : "text-verdigris"}>{successText ?? t("tx.confirmed")} </span>
       )}
-      {!tx.isConfirming && !tx.isSuccess && <span className="text-bone/60">{t("tx.submitted")} </span>}
+      {!tx.isConfirming && !tx.isSuccess && <span className="text-muted">{t("tx.submitted")} </span>}
       <a
-        className="text-flare underline decoration-flare/40 hover:decoration-flare"
+        className="mono text-flare underline decoration-flare/40 underline-offset-4 hover:decoration-flare"
         href={explorerTxUrl(chainId, tx.hash)}
         target="_blank"
         rel="noreferrer"

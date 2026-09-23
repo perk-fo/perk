@@ -16,6 +16,7 @@ import { LiquidityPanel } from "@/components/meme/LiquidityPanel";
 import type { PoolKey } from "@/lib/pool";
 import { formatAmount, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 /** One pool: what it is on the left, adding and managing your own liquidity on the right. */
 export default function PoolDetailPage() {
@@ -66,13 +67,13 @@ export default function PoolDetailPage() {
           <HashSeal hash={d.configHash} moduleBitmap={BigInt(d.moduleBitmap)} size={48} className="shrink-0" />
           <div>
             <h1 className="font-display text-3xl leading-none">
-              {d.symbol} <span className="text-bone/30">/</span> {d.quoteSymbol}
+              {d.symbol} <span className="text-subtle">/</span> {d.quoteSymbol}
             </h1>
-            <p className="mt-1.5 text-sm text-bone/55">{d.name}</p>
+            <p className="mt-1.5 text-sm text-subtle">{d.name}</p>
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          <Link href="/pool" className="text-bone/55 transition-colors duration-fast hover:text-bone">
+          <Link href="/pool" className="text-subtle transition-colors duration-fast hover:text-bone">
             ← {t("pool.back")}
           </Link>
           <Link href={`/meme/${meme}`} className="text-flare underline decoration-flare/40 underline-offset-4">
@@ -92,13 +93,16 @@ export default function PoolDetailPage() {
         <div className="grid items-start gap-6 lg:grid-cols-12">
           <div className="min-w-0 space-y-6 lg:col-span-7">
             <Panel title={t("pool.facts.title")}>
-              <div className="divide-y divide-bone/6">
-                <Kv
-                  label={t("trade.col.price")}
-                  value={
-                    m.lastPrice !== null && m.lastPrice > 0 ? `${formatPrice(m.lastPrice, locale)} ${d.quoteSymbol}` : "—"
-                  }
-                />
+              <div className="divide-y divide-line">
+                <Kv label={t("trade.col.price")}>
+                  {m.lastPrice !== null && m.lastPrice > 0 ? (
+                    <>
+                      <Subscripted text={formatPrice(m.lastPrice, locale)} /> {d.quoteSymbol}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </Kv>
                 <Kv
                   label={t("trade.col.volume")}
                   value={`${formatAmount(BigInt(m.volume24hQuote), d.quoteDecimals, { locale, maxFrac: 4 })} ${d.quoteSymbol}`}
@@ -120,12 +124,12 @@ export default function PoolDetailPage() {
             </Panel>
 
             <Panel title={t("pool.how.title")}>
-              <ul className="space-y-2 text-sm leading-relaxed text-bone/65">
+              <ul className="space-y-2 text-sm leading-relaxed text-muted">
                 <li>{t("pool.how.own")}</li>
                 <li>{t("pool.how.range")}</li>
                 <li>{t("pool.how.risk")}</li>
               </ul>
-              <p className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-bone/8 pt-4 text-sm text-bone/55">
+              <p className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm text-subtle">
                 <span>{t("pool.how.grant")}</span>
                 <Link
                   href={d.lpGrantEnabled ? `/grant/${meme}` : "/grant"}

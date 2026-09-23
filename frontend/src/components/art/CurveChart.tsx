@@ -4,6 +4,7 @@
  * price(q) = (Q0 + q)^2 / (M0 * Q0) for a constant-product curve with virtual reserves; drawn from q = 0 to the
  * graduation threshold, normalised to the graduation price. The filled area is what has been bought so far.
  */
+import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/provider";
 
 export function CurveChart({
@@ -29,7 +30,21 @@ export function CurveChart({
   minimal?: boolean;
 }) {
   const { t } = useT();
+  // measure the container so the labels render at their real size instead of scaling with the column
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [measured, setMeasured] = useState<number | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = Math.round(entry.contentRect.width);
+      if (w > 0) setMeasured(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   if (virtualQuote0 === 0n || virtualMeme0 === 0n || threshold === 0n) return null;
+  if (measured !== null) width = measured;
   const T = Number(threshold);
   const Q0 = Number(virtualQuote0);
   const cur = Math.min(Number(realQuote), T);
@@ -65,9 +80,10 @@ export function CurveChart({
   const pct = T === 0 ? 0 : (cur / T) * 100;
 
   return (
+    <div ref={wrapRef} className="w-full">
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label="bonding curve">
       {/* baseline + graduation marker */}
-      <line x1={padL} x2={width - padR} y1={padT + H} y2={padT + H} stroke="currentColor" strokeOpacity="0.15" />
+      <line x1={padL} x2={width - padR} y1={padT + H} y2={padT + H} stroke="rgb(var(--c-line-strong))" />
       <line
         x1={width - padR}
         x2={width - padR}
@@ -78,14 +94,14 @@ export function CurveChart({
         strokeDasharray="3 4"
       />
       {!minimal && (
-      <text x={width - padR - 4} y={padT + 10} textAnchor="end" fontSize="11" fill="rgb(var(--c-verdigris))" className="num">
+      <text x={width - padR - 6} y={padT + 12} textAnchor="end" fontSize="12" fill="rgb(var(--c-verdigris))" className="num">
         {t("chart.graduation", { amount: formatQuote ? formatQuote(threshold) : "", symbol: quoteSymbol })}
       </text>
       )}
       {/* bought area */}
-      {cur > 0 && <path d={filled.join(" ")} fill="rgb(var(--c-flare))" fillOpacity="0.16" />}
+      {cur > 0 && <path d={filled.join(" ")} fill="rgb(var(--c-flare))" fillOpacity="0.14" />}
       {/* curve */}
-      <path d={pts.join(" ")} fill="none" stroke="currentColor" strokeOpacity="0.85" strokeWidth="1.5" className="draw" />
+      <path d={pts.join(" ")} fill="none" stroke="rgb(var(--c-muted))" strokeWidth="1.5" className="draw" />
       {/* current point */}
       <circle cx={cx} cy={cy} r="5" fill="rgb(var(--c-flare))" />
       <circle cx={cx} cy={cy} r="10" fill="none" stroke="rgb(var(--c-flare))" strokeOpacity="0.4" />
@@ -94,7 +110,8 @@ export function CurveChart({
         x={Math.min(Math.max(cx, padL + 40), width - padR - 60)}
         y={cy - 16}
         textAnchor="middle"
-        fontSize="12"
+        fontSize="13"
+        fontWeight="500"
         fill="rgb(var(--c-flare))"
         className="num"
       >
@@ -102,10 +119,11 @@ export function CurveChart({
       </text>
       )}
       {!minimal && (
-      <text x={padL} y={height - 6} fontSize="11" fill="currentColor" fillOpacity="0.5" className="num">
+      <text x={padL} y={height - 6} fontSize="12" fill="rgb(var(--c-subtle))" className="num">
         {t("chart.raised", { amount: formatQuote ? formatQuote(realQuote) : "", symbol: quoteSymbol })}
       </text>
       )}
     </svg>
+    </div>
   );
 }

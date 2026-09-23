@@ -386,6 +386,10 @@ export function OrderPanel({
   };
 
   const impactFmt = impact !== undefined ? signedPct(impact, locale) : undefined;
+  // Impact is a cost in both directions (a buy fills above spot, a sell below), so its sign says nothing about
+  // good or bad: colour it by size instead - quiet under 1%, amber from 1%, rose from 5%.
+  const impactAbs = impact === undefined ? undefined : impact < 0n ? -impact : impact;
+  const impactClass = impactAbs === undefined ? "" : impactAbs >= 500n ? "text-rose" : impactAbs >= 100n ? "text-amber" : "";
   const error = approveTx.error ?? tradeTx.error;
 
   if (status === 3 && chainId === 196) {
@@ -399,17 +403,16 @@ export function OrderPanel({
 
   return (
     <section className="panel flex h-full flex-col p-6 lg:sticky lg:top-20">
-      <div className="mb-4 grid grid-cols-2 gap-1 rounded-full border border-bone/10 p-0.5">
+      <div className="mb-5 grid grid-cols-2 gap-1 rounded-full bg-raised p-1">
         <button
           type="button"
           onClick={() => {
             setMode("buy");
             setInput("");
           }}
+          aria-pressed={mode === "buy"}
           className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors duration-fast ${
-            mode === "buy"
-              ? "bg-flare text-[rgb(var(--on-flare))]"
-              : "text-bone/60 hover:text-bone"
+            mode === "buy" ? "bg-knob text-verdigris shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
           }`}
         >
           {t("meme.trade.buy")}
@@ -420,8 +423,9 @@ export function OrderPanel({
             setMode("sell");
             setInput("");
           }}
+          aria-pressed={mode === "sell"}
           className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors duration-fast ${
-            mode === "sell" ? "border border-rose text-rose" : "text-bone/60 hover:text-bone"
+            mode === "sell" ? "bg-knob text-rose shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
           }`}
         >
           {t("meme.trade.sell")}
@@ -437,21 +441,21 @@ export function OrderPanel({
           }}
           inputMode="decimal"
           placeholder="0"
-          className="num w-full rounded-full border border-bone/15 bg-transparent py-3 pl-4 pr-20 text-[22px] outline-none transition-colors duration-fast placeholder:text-bone/30 focus:border-flare/60"
+          className="num w-full rounded-full border border-line-strong bg-ink/50 py-3 pl-5 pr-20 text-[22px] outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-flare focus:ring-2 focus:ring-flare/20"
         />
-        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 num text-sm text-bone/50">
+        <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 num text-sm text-subtle">
           {spendSymbol}
         </span>
       </div>
       {parsed === null && <p className="mt-1 text-xs text-rose">{t("common.invalidAmount")}</p>}
 
-      <div className="mt-2 flex gap-1">
+      <div className="mt-2.5 flex gap-1.5">
         {([25n, 50n, 75n] as const).map((p) => (
           <button
             key={p.toString()}
             type="button"
             onClick={() => setPct(p, false)}
-            className="num flex-1 rounded-full border border-bone/10 py-1 text-[11px] text-bone/60 transition-colors duration-fast hover:border-bone/30 hover:text-bone"
+            className="num flex-1 rounded-full bg-raised py-1 text-xs text-muted transition-colors duration-fast hover:bg-knob hover:text-bone"
           >
             {p.toString()}%
           </button>
@@ -459,26 +463,26 @@ export function OrderPanel({
         <button
           type="button"
           onClick={() => setPct(100n, true)}
-          className="num flex-1 rounded-full border border-bone/10 py-1 text-[11px] text-bone/60 transition-colors duration-fast hover:border-bone/30 hover:text-bone"
+          className="num flex-1 rounded-full bg-raised py-1 text-xs text-muted transition-colors duration-fast hover:bg-knob hover:text-bone"
         >
           {t("meme.order.chipMax")}
         </button>
       </div>
       {/* both sides of the pair; the side being spent is brighter */}
-      <div className="mt-2 flex items-baseline justify-between gap-3 text-[12px]">
+      <div className="mt-3 flex items-baseline justify-between gap-3 text-[13px]">
         <span className="label">{t("meme.order.wallet")}</span>
-        <span className="num text-right text-bone/45">
-          <span className={mode === "buy" ? "text-bone/85" : undefined}>
+        <span className="num text-right text-subtle">
+          <span className={mode === "buy" ? "text-bone" : undefined}>
             {formatAmount(quoteBal.data?.value, quoteMeta.decimals, { locale, maxFrac: 6 })} {quoteMeta.symbol}
           </span>
-          <span className="mx-1.5 text-bone/25">·</span>
-          <span className={mode === "sell" ? "text-bone/85" : undefined}>
+          <span className="mx-1.5 text-faint">·</span>
+          <span className={mode === "sell" ? "text-bone" : undefined}>
             {formatAmount(memeBal.data?.value, memeDecimals, { locale, maxFrac: 2 })} {memeSymbol}
           </span>
         </span>
       </div>
 
-      <dl className="mt-4 divide-y divide-bone/8 border-y border-bone/8">
+      <dl className="mt-4 divide-y divide-line border-y border-line [&>div]:py-2">
         <div className="flex items-baseline justify-between gap-3 py-1.5">
           <dt className="label">{t("meme.order.expect")}</dt>
           <dd className="num text-[13px]">
@@ -498,9 +502,7 @@ export function OrderPanel({
         <div className="flex items-baseline justify-between gap-3 py-1.5">
           <dt className="label">{t("meme.order.impact")}</dt>
           <dd
-            className={`num text-[13px] ${
-              impactFmt?.tone === "flare" ? "text-flare" : impactFmt?.tone === "rose" ? "text-rose" : ""
-            }`}
+            className={`num text-[13px] ${impactClass}`}
           >
             {impactFmt?.text ?? "—"}
           </dd>
@@ -525,10 +527,11 @@ export function OrderPanel({
               setSlipCustom(false);
               setSlipBps(bps);
             }}
-            className={`num rounded-full border px-2 py-0.5 text-[11px] transition-colors duration-fast ${
+            aria-pressed={!slipCustom && slipBps === bps}
+            className={`num h-6 rounded-full px-2.5 text-xs transition-colors duration-fast ${
               !slipCustom && slipBps === bps
-                ? "border-flare/50 bg-flare/10 text-flare"
-                : "border-bone/10 text-bone/60 hover:text-bone"
+                ? "bg-flare/10 font-medium text-flare"
+                : "bg-raised text-muted hover:text-bone"
             }`}
           >
             {bps / 100}%
@@ -537,7 +540,7 @@ export function OrderPanel({
         {/* One control, two states: the Custom pill becomes the input in place, already focused, and picking a
             preset turns it back into the pill. The typed value is kept, so switching back to Custom restores it. */}
         {slipCustom ? (
-          <span className="num inline-flex items-center rounded-full border border-flare/50 bg-flare/10 px-2 py-0.5 text-[11px] text-flare">
+          <label className="num inline-flex h-6 cursor-text items-stretch overflow-hidden rounded-full border border-flare/60 bg-ink/50 text-xs focus-within:border-flare focus-within:ring-2 focus-within:ring-flare/20">
             <input
               autoFocus
               value={customSlip}
@@ -545,15 +548,21 @@ export function OrderPanel({
               inputMode="decimal"
               placeholder="1.5"
               aria-label={t("meme.order.slippageCustom")}
-              className="w-9 bg-transparent text-right outline-none placeholder:text-flare/40"
+              className="w-12 bg-transparent pl-2.5 pr-1 text-left text-bone caret-flare outline-none placeholder:text-faint"
             />
-            <span className="ml-0.5">%</span>
-          </span>
+            {/* the unit is an adornment in its own segment, not part of the editable text */}
+            <span
+              aria-hidden
+              className="flex select-none items-center border-l border-line bg-raised px-2 text-subtle"
+            >
+              %
+            </span>
+          </label>
         ) : (
           <button
             type="button"
             onClick={() => setSlipCustom(true)}
-            className="rounded-full border border-bone/10 px-2 py-0.5 text-[11px] text-bone/60 transition-colors duration-fast hover:text-bone"
+            className="h-6 rounded-full bg-raised px-2.5 text-xs text-muted transition-colors duration-fast hover:text-bone"
           >
             {t("meme.order.slippageCustom")}
           </button>

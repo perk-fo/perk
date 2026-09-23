@@ -160,19 +160,19 @@ export function GrantJoin(props: {
   let body: React.ReactNode;
   if (walletStatus === "reconnecting" || walletStatus === "connecting") {
     body = (
-      <p className="flex items-center gap-2 text-sm text-bone/60">
+      <p className="flex items-center gap-2 text-sm text-muted">
         <Spinner /> {t("join.checking")}
       </p>
     );
   } else if (!address) {
-    body = <p className="text-sm text-bone/60">{t("join.connect")}</p>;
+    body = <p className="text-sm text-muted">{t("join.connect")}</p>;
   } else if (status === 1) {
-    body = <p className="text-sm text-bone/60">{t("join.awaitingList")}</p>;
+    body = <p className="text-sm text-muted">{t("join.awaitingList")}</p>;
   } else if (status === 4 || status === 5) {
-    body = <p className="text-sm text-bone/60">{t("join.ended")}</p>;
+    body = <p className="text-sm text-muted">{t("join.ended")}</p>;
   } else if (registered === undefined || (registered === false && proofQ.isLoading)) {
     body = (
-      <p className="flex items-center gap-2 text-sm text-bone/60">
+      <p className="flex items-center gap-2 text-sm text-muted">
         <Spinner /> {t("join.checking")}
       </p>
     );
@@ -180,7 +180,7 @@ export function GrantJoin(props: {
     body = (
       <div className="space-y-2">
         <p className="text-base text-bone">{t("join.notListed")}</p>
-        <p className="text-sm leading-relaxed text-bone/55">{t("join.notListedWhy")}</p>
+        <p className="text-sm leading-relaxed text-subtle">{t("join.notListedWhy")}</p>
         <Link href="/grant" className="inline-block text-sm text-flare underline decoration-flare/40">
           {t("join.getPass")} →
         </Link>
@@ -196,14 +196,14 @@ export function GrantJoin(props: {
         <div>
           <p className="label">{t("join.youCanGet")}</p>
           <p className="mt-2 font-display text-4xl leading-none text-verdigris">
-            {fmtMeme(all)} <span className="num text-base text-bone/55">{memeSymbol}</span>
+            {fmtMeme(all)} <span className="num text-base text-subtle">{memeSymbol}</span>
           </p>
           {avail && (
-            <p className="num mt-2 text-[12px] text-bone/45">
+            <p className="num mt-2 text-[13px] text-subtle">
               {t("join.breakdown", { base: fmtMeme(avail[0]), boost: fmtMeme(avail[1]), credit: fmtMeme(avail[2]) })}
             </p>
           )}
-          <p className="mt-2 text-xs text-bone/45">{t("join.decayNote")}</p>
+          <p className="mt-2 text-xs text-subtle">{t("join.decayNote")}</p>
         </div>
 
         {/* step 2: how much */}
@@ -222,17 +222,17 @@ export function GrantJoin(props: {
             disabled={busy}
           />
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-            <p className="text-bone/60">
+            <p className="text-muted">
               {t("join.getMeme")} <span className="num text-bone">{fmtMeme(total)} {memeSymbol}</span>
             </p>
-            <p className="text-bone/60 sm:text-right">
+            <p className="text-muted sm:text-right">
               {t("join.youPut")}{" "}
               <span className="num text-bone">
                 {requiredQuote !== undefined ? formatAmount(requiredQuote, quote?.decimals, { locale }) : "…"} {quote?.symbol}
               </span>
             </p>
           </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-bone/40">{t("join.terms")}</p>
+          <p className="mt-2 text-[13px] leading-relaxed text-muted">{t("join.terms")}</p>
         </div>
 
         {/* step 3: one button */}
@@ -280,7 +280,7 @@ export function GrantJoin(props: {
             )}
           </button>
           {short && <p className="text-xs text-amber">{t("grant.guard.quoteShort", { symbol: quote?.symbol ?? "" })}</p>}
-          {!registered && open && !busy && <p className="text-[11px] text-bone/40">{t("join.twoTx")}</p>}
+          {!registered && open && !busy && <p className="text-xs text-subtle">{t("join.twoTx")}</p>}
           <TxStatus tx={registerTx} />
           <TxStatus tx={activateTx} successText={t("join.done")} />
         </div>

@@ -73,7 +73,7 @@ export function SyncStatus() {
     // placeholder only where the pill is always present, so the header does not jump for operators
     return isAdmin ? (
       <Pill tone="muted">
-        <span className="h-1.5 w-1.5 rounded-full bg-bone/30" aria-hidden />
+        <span className="h-1.5 w-1.5 rounded-full bg-faint" aria-hidden />
         <span className="inline-block w-14 opacity-0">·</span>
       </Pill>
     ) : null;

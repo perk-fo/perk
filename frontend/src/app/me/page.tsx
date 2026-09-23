@@ -24,6 +24,7 @@ import { formatAmount, formatNumber, formatPrice, formatRelativeTime, shortAddre
 import { useRoles, ROLE_ORDER } from "@/lib/roles";
 import { useNow } from "@/lib/hooks";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 type Claim = { kind: "rewards" | "dev"; launch: LaunchSummary; amount: bigint; payee?: Address };
 
@@ -81,7 +82,7 @@ export default function MePage() {
   }
   if (!address) {
     return (
-      <Panel className="py-14 text-center text-sm text-bone/60">{t("me.connect")}</Panel>
+      <Panel className="py-14 text-center text-sm text-muted">{t("me.connect")}</Panel>
     );
   }
   const held = ROLE_ORDER.filter((r) => r !== "guest" && roles.roles.has(r));
@@ -91,7 +92,7 @@ export default function MePage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl leading-none">{t("nav.me")}</h1>
-          <p className="num mt-3 break-all text-sm text-bone/60">{address}</p>
+          <p className="num mt-3 break-all text-sm text-muted">{address}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {held.map((r) => (
@@ -105,13 +106,13 @@ export default function MePage() {
       {summary.error && <Notice tone="rose">{summary.error.message}</Notice>}
 
       {/* claimable */}
-      <Panel title={t("me.claims.title")} right={<span className="num text-xs text-bone/45">{claims.length}</span>}>
+      <Panel title={t("me.claims.title")} right={<span className="num text-xs text-subtle">{claims.length}</span>}>
         {summary.isLoading || (reads.isLoading && holdings.length + created.length > 0) ? (
           <Skeleton size={32} lines={2} />
         ) : claims.length === 0 ? (
-          <p className="text-sm text-bone/50">{t("me.claims.none")}</p>
+          <p className="text-sm text-subtle">{t("me.claims.none")}</p>
         ) : (
-          <div className="divide-y divide-bone/6">
+          <div className="divide-y divide-line">
             {claims.map((c) => (
               <ClaimRow key={`${c.kind}:${c.launch.meme}`} claim={c} onDone={() => void reads.refetch()} />
             ))}
@@ -120,11 +121,11 @@ export default function MePage() {
       </Panel>
 
       {/* holdings */}
-      <Panel title={t("me.holdings.title")} right={<span className="num text-xs text-bone/45">{holdings.length}</span>}>
+      <Panel title={t("me.holdings.title")} right={<span className="num text-xs text-subtle">{holdings.length}</span>}>
         {summary.isLoading ? (
           <Skeleton size={32} lines={3} />
         ) : holdings.length === 0 ? (
-          <p className="text-sm text-bone/50">
+          <p className="text-sm text-subtle">
             {t("me.holdings.none")}{" "}
             <Link href="/trade" className="text-flare underline decoration-flare/40">
               {t("nav.trade")} →
@@ -148,18 +149,18 @@ export default function MePage() {
                   const price = l.market.lastPrice;
                   const value = price ? (Number(bal) / 10 ** l.decimals) * price : null;
                   return (
-                    <tr key={l.meme} className="border-t border-bone/6">
+                    <tr key={l.meme} className="border-t border-line">
                       <td className="py-3">
                         <Link href={`/meme/${l.meme}`} className="flex items-center gap-3 hover:text-flare">
                           <HashSeal hash={l.configHash} moduleBitmap={BigInt(l.moduleBitmap)} size={28} />
                           <span>
                             <span className="block">{l.name}</span>
-                            <span className="num text-[11px] text-bone/45">{l.symbol}</span>
+                            <span className="num text-xs text-subtle">{l.symbol}</span>
                           </span>
                         </Link>
                       </td>
                       <td className="num px-2 py-3 text-right">{formatAmount(bal, l.decimals, { locale, maxFrac: 2 })}</td>
-                      <td className="num px-2 py-3 text-right text-bone/70">{price ? formatPrice(price, locale) : "—"}</td>
+                      <td className="num px-2 py-3 text-right text-muted">{price ? <Subscripted text={formatPrice(price, locale)} /> : "—"}</td>
                       <td className="num py-3 pl-2 text-right">
                         {value !== null ? `${formatNumber(value, locale, { maximumFractionDigits: 6 })} ${l.quoteSymbol}` : "—"}
                       </td>
@@ -173,16 +174,16 @@ export default function MePage() {
       </Panel>
 
       {/* LP Grant positions */}
-      <Panel title={t("me.positions.title")} right={<span className="num text-xs text-bone/45">{s?.positions.length ?? 0}</span>}>
+      <Panel title={t("me.positions.title")} right={<span className="num text-xs text-subtle">{s?.positions.length ?? 0}</span>}>
         {!s || s.positions.length === 0 ? (
-          <p className="text-sm text-bone/50">
+          <p className="text-sm text-subtle">
             {t("me.positions.none")}{" "}
             <Link href="/grant" className="text-flare underline decoration-flare/40">
               {t("nav.grant")} →
             </Link>
           </p>
         ) : (
-          <div className="divide-y divide-bone/6">
+          <div className="divide-y divide-line">
             {s.positions.map((p) => (
               <Link
                 key={p.positionId}
@@ -207,12 +208,12 @@ export default function MePage() {
       {/* liquidity pool positions */}
       <Panel
         title={t("me.lp.title")}
-        right={<span className="num text-xs text-bone/45">{lp.data?.positions.length ?? 0}</span>}
+        right={<span className="num text-xs text-subtle">{lp.data?.positions.length ?? 0}</span>}
       >
         {(lp.data?.positions.length ?? 0) === 0 ? (
-          <p className="text-sm text-bone/50">{t("me.lp.empty")}</p>
+          <p className="text-sm text-subtle">{t("me.lp.empty")}</p>
         ) : (
-          <div className="divide-y divide-bone/6">
+          <div className="divide-y divide-line">
             {(lp.data?.positions ?? []).map((p) => (
               <Link
                 key={p.tokenId}
@@ -222,7 +223,7 @@ export default function MePage() {
                 <span className="num">
                   #{p.tokenId} · {p.meme ? (nameOf.get(p.meme.toLowerCase()) ?? shortAddress(p.meme)) : "—"}
                 </span>
-                <span className="text-xs text-bone/50">{t("pool.mine.manage")} →</span>
+                <span className="text-xs text-subtle">{t("pool.mine.manage")} →</span>
               </Link>
             ))}
           </div>
@@ -233,10 +234,10 @@ export default function MePage() {
       <section>
         <div className="mb-3 flex items-baseline gap-3">
           <h2 className="label">{t("me.launches.title")}</h2>
-          <span className="num text-xs text-bone/40">{created.length}</span>
+          <span className="num text-xs text-subtle">{created.length}</span>
         </div>
         {created.length === 0 ? (
-          <Panel className="text-sm text-bone/50">
+          <Panel className="text-sm text-subtle">
             {t("me.launches.none")}{" "}
             <Link href="/launch" className="text-flare underline decoration-flare/40">
               {t("nav.launch")} →
@@ -254,7 +255,7 @@ export default function MePage() {
       {/* invites */}
       <Panel title={t("me.invites.title")}>
         <div className="grid gap-6 md:grid-cols-2">
-          <div className="divide-y divide-bone/6">
+          <div className="divide-y divide-line">
             <Kv label={t("me.invites.count")} value={formatNumber(s?.inviteeCount ?? 0, locale)} />
             <Kv label={t("grant.inviter.label")} value={s?.inviter ?? t("grant.inviter.unbound")} copy={!!s?.inviter} />
           </div>
@@ -288,7 +289,7 @@ function ClaimRow({ claim, onDone }: { claim: Claim; onDone: () => void }) {
             {l.name} · {claim.kind === "rewards" ? t("meme.rewards.title") : t("meme.dev.title")}
           </span>
           {claim.payee && (
-            <span className="num text-[11px] text-bone/45">{t("me.claims.payee", { who: shortAddress(claim.payee) })}</span>
+            <span className="num text-xs text-subtle">{t("me.claims.payee", { who: shortAddress(claim.payee) })}</span>
           )}
         </span>
       </Link>
@@ -327,12 +328,12 @@ function RecentTrades({ trades }: { trades: import("@/lib/api-types").Trade[] })
   const now = useNow();
   return (
     <Panel title={t("me.trades.title")}>
-      <div className="divide-y divide-bone/6">
+      <div className="divide-y divide-line">
         {trades.slice(0, 10).map((tr) => (
             <div key={tr.id} className="flex items-center justify-between py-2.5 text-[13px]">
-              <span className="num text-bone/55">{formatRelativeTime(tr.timestamp, now, t)}</span>
+              <span className="num text-subtle">{formatRelativeTime(tr.timestamp, now, t)}</span>
               <Pill tone={tr.side === "buy" ? "flare" : "rose"}>{tr.side === "buy" ? t("meme.trade.buy") : t("meme.trade.sell")}</Pill>
-              <span className="num text-bone/70">{tr.source === "pool" ? "Pool" : "Curve"}</span>
+              <span className="num text-muted">{tr.source === "pool" ? "Pool" : "Curve"}</span>
             </div>
         ))}
       </div>

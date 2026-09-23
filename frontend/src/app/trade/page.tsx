@@ -44,9 +44,9 @@ export default function TradePage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl leading-none">{t("trade.title")}</h1>
-          <p className="mt-2 text-sm text-bone/55">{t("trade.sub")}</p>
+          <p className="mt-2 text-sm text-subtle">{t("trade.sub")}</p>
         </div>
-        <span className="num text-xs text-bone/45">
+        <span className="num text-xs text-subtle">
           {list.data ? t("trade.count", { n: formatNumber(list.data.total, locale) }) : ""}
         </span>
       </header>
@@ -56,7 +56,7 @@ export default function TradePage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("trade.search")}
-          className="w-full rounded-full border border-bone/10 bg-transparent px-4 py-2 text-sm outline-none transition-colors duration-fast placeholder:text-bone/35 focus:border-bone/30 sm:w-72"
+          className="w-full rounded-full border border-line bg-transparent px-4 py-2 text-sm outline-none transition-colors duration-fast placeholder:text-faint focus:border-line-strong sm:w-72"
         />
         <div className="flex flex-wrap items-center gap-2">
           <Segmented
@@ -81,7 +81,7 @@ export default function TradePage() {
         </Panel>
       ) : items.length === 0 && !apiDown ? (
         <Panel className="flex flex-col items-center py-14 text-center">
-          <p className="text-sm text-bone/60">{q ? t("trade.noMatch") : t("home.empty.text")}</p>
+          <p className="text-sm text-muted">{q ? t("trade.noMatch") : t("home.empty.text")}</p>
           {!q && (
             <Link href="/launch" className="btn-primary mt-6 inline-block px-5 py-2.5 text-sm">
               {t("home.empty.cta")}

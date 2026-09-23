@@ -35,9 +35,9 @@ export function InviteBar() {
   return (
     <div className="border-b border-flare/20 bg-flare/[0.06]">
       <div className="mx-auto flex w-full max-w-page flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm sm:px-6">
-        <span className="text-bone/80">
+        <span className="text-bone">
           {before}
-          <span className="num text-bone">{shortAddress(invite.pending)}</span>
+          <span className="mono text-bone">{shortAddress(invite.pending)}</span>
           {after}
         </span>
         <span className="flex items-center gap-2">

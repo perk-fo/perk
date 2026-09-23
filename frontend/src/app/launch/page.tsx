@@ -237,7 +237,7 @@ export default function CreatePage() {
     <div>
       <header className="mb-8 pt-6">
         <h1 className="font-display text-3xl sm:text-4xl">{t("create.title")}</h1>
-        <p className="mt-2 max-w-lg text-sm text-bone/60">{t("create.subtitle")}</p>
+        <p className="mt-2 max-w-lg text-sm text-muted">{t("create.subtitle")}</p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
@@ -246,7 +246,7 @@ export default function CreatePage() {
           <Panel title={t("create.section.basic")}>
             <div className="space-y-4">
               <Field label={t("create.field.name")} value={name} onChange={(e) => setName(e.target.value)} placeholder="Perk Smoke" />
-              <Field label="Symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="SMOKE" mono />
+              <Field label="Symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="SMOKE" />
               <FieldRow label={t("launch.image.title")}>
                 <ImageDrop
                   previewUrl={image.upload?.url ?? null}
@@ -264,7 +264,9 @@ export default function CreatePage() {
                 placeholder={t("launch.desc.placeholder")}
                 hint={`${description.length}/${DESCRIPTION_MAX}`}
               />
-              <div className="grid gap-3 sm:grid-cols-3">
+              {/* one row each, on the same label grid as every other field: squeezed three to a line, the
+                  labels took most of each column and the inputs showed three characters */}
+              <>
                 {(["x", "telegram", "website"] as const).map((k) => {
                   const v = links[k] ?? "";
                   const bad = !!v.trim() && !normalizeLink(k, v);
@@ -279,7 +281,7 @@ export default function CreatePage() {
                     />
                   );
                 })}
-              </div>
+              </>
             </div>
           </Panel>
 
@@ -299,7 +301,7 @@ export default function CreatePage() {
                         <span className="font-display text-lg">{q.symbol}</span>
                         <Pill tone={q.category === "rwa" ? "amber" : "muted"}>{t(`quote.category.${q.category}`)}</Pill>
                       </div>
-                      <div className="num mt-2 text-xs text-bone/50">
+                      <div className="num mt-2 text-xs text-subtle">
                         {q.isNative ? t("create.quote.native") : t("create.quote.decimals", { n: q.decimals })}
                       </div>
                     </div>
@@ -333,13 +335,13 @@ export default function CreatePage() {
                         <div className="mt-3 space-y-1">
                           {b.lines.map(([k, v]) => (
                             <div key={k} className="flex items-baseline justify-between gap-4 text-xs">
-                              <span className="num text-bone/50">{t(k)}</span>
-                              <span className="num text-right text-bone/85">{t(v)}</span>
+                              <span className="num text-subtle">{t(k)}</span>
+                              <span className="num text-right text-bone">{t(v)}</span>
                             </div>
                           ))}
                         </div>
                       </div>
-                      <div className="mt-3 border-t border-bone/10 pt-1" onClick={(e) => e.stopPropagation()}>
+                      <div className="mt-3 border-t border-line pt-1" onClick={(e) => e.stopPropagation()}>
                         <Kv label="Template ID" value={id} copy />
                       </div>
                     </ChoiceCard>
@@ -362,7 +364,7 @@ export default function CreatePage() {
               onChange={(e) => setDevBuyInput(e.target.value)}
               placeholder="0"
               inputMode="decimal"
-              mono
+              numeric
               error={devBuyQuote === null ? t("common.invalidAmount") : undefined}
             />
             {needsApprove && !approved && (
@@ -403,9 +405,9 @@ export default function CreatePage() {
                 title={name || symbol ? `${name} (${symbol})` : t("create.preview.sealTitle")}
               />
               <p className="mt-3 font-display text-xl">{name.trim() || t("create.preview.unnamed")}</p>
-              <p className="num text-xs text-bone/50">{symbol.trim() || "—"}</p>
+              <p className="num text-xs text-subtle">{symbol.trim() || "—"}</p>
             </div>
-            <div className="mt-2 divide-y divide-bone/5">
+            <div className="mt-2 divide-y divide-line">
               <Kv label={t("create.preview.predicted")} value={previewData?.[0]} copy />
               <Kv label="Hook" value={previewData?.[1]} copy />
               <Kv label="configHash" value={configHash} copy />
@@ -420,7 +422,7 @@ export default function CreatePage() {
             {!isConnected && (
               <p className="label mt-4 text-center">{t("create.preview.connectHint")}</p>
             )}
-            {isConnected && preview.isLoading && <p className="mt-4 text-sm text-bone/60">{t("create.preview.loading")}</p>}
+            {isConnected && preview.isLoading && <p className="mt-4 text-sm text-muted">{t("create.preview.loading")}</p>}
             {preview.error && (
               <Notice tone="rose" className="mt-4">
                 {t("create.preview.error", { msg: decodeErrorMessage(preview.error, t) })}
@@ -438,7 +440,7 @@ export default function CreatePage() {
                 )}
               </Button>
               {isConnected && !canSubmit && launchStep === "idle" && createTx.phase === "idle" && (
-                <p className="mt-2 text-xs text-bone/50">
+                <p className="mt-2 text-xs text-subtle">
                   {!name.trim() || !symbol.trim()
                     ? t("launch.need.nameSymbol")
                     : image.status !== "done"

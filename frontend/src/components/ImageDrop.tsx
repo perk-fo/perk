@@ -60,7 +60,7 @@ export function ImageDrop({
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
         className={`relative grid h-28 w-28 shrink-0 place-items-center overflow-hidden rounded-[22px] border border-dashed transition-colors duration-fast ${
-          over ? "border-flare bg-flare/10" : shown ? "border-bone/20" : "border-bone/25 hover:border-bone/50"
+          over ? "border-flare bg-flare/10" : shown ? "border-line-strong" : "border-line-strong hover:border-line-strong"
         }`}
         aria-label={t("launch.image.pick")}
       >
@@ -68,7 +68,7 @@ export function ImageDrop({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={shown} alt="" className="h-full w-full object-cover" />
         ) : (
-          <span className="whitespace-pre-line px-3 text-center text-[12px] leading-snug text-bone/50">{t("launch.image.drop")}</span>
+          <span className="whitespace-pre-line px-3 text-center text-[13px] leading-snug text-subtle">{t("launch.image.drop")}</span>
         )}
         {status === "uploading" && (
           <span className="absolute inset-0 grid place-items-center bg-ink/60 text-flare">
@@ -76,12 +76,12 @@ export function ImageDrop({
           </span>
         )}
         {status === "done" && (
-          <span className="absolute bottom-1.5 right-1.5 grid h-5 w-5 place-items-center rounded-full bg-verdigris text-[11px] text-ink">
+          <span className="absolute bottom-1.5 right-1.5 grid h-5 w-5 place-items-center rounded-full bg-verdigris text-xs text-ink">
             ✓
           </span>
         )}
       </button>
-      <div className="min-w-0 pt-2 text-[12px] leading-relaxed text-bone/50">
+      <div className="min-w-0 pt-2 text-[13px] leading-relaxed text-subtle">
         <p>{t("launch.image.rules")}</p>
         {status === "uploading" && <p className="mt-1 text-flare">{t("launch.image.uploading")}</p>}
         {status === "error" && <p className="mt-1 text-rose">{error ?? t("launch.image.failed")}</p>}
@@ -92,7 +92,7 @@ export function ImageDrop({
               setLocal(null);
               onClear();
             }}
-            className="mt-2 text-bone/60 underline decoration-dotted underline-offset-4 hover:text-bone"
+            className="mt-2 text-muted underline decoration-dotted underline-offset-4 hover:text-bone"
           >
             {t("launch.image.remove")}
           </button>

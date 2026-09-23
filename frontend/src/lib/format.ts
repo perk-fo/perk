@@ -124,13 +124,13 @@ export function formatPrice(value: number, locale: string = DEFAULT_LOCALE): str
 export function signedPct(
   bps: bigint | number,
   locale: string = DEFAULT_LOCALE,
-): { text: string; tone: "flare" | "rose" | null } {
+): { text: string; tone: "verdigris" | "rose" | null } {
   const n = Number(bps);
   if (!Number.isFinite(n) || n === 0) return { text: "0%", tone: null };
   const pct = n / 100;
   const sign = pct > 0 ? "+" : "";
   return {
     text: `${sign}${formatNumber(pct, locale, { maximumFractionDigits: 2, minimumFractionDigits: 0 })}%`,
-    tone: pct > 0 ? "flare" : "rose",
+    tone: pct > 0 ? "verdigris" : "rose",
   };
 }

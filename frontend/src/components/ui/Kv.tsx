@@ -40,6 +40,8 @@ export function Kv({
 
   const copyText = copy === true ? value : typeof copy === "string" ? copy : undefined;
   const canCopy = copyText !== undefined && copyText.length > 0;
+  // identifiers get the monospace face; everything else (names, dates, counts) stays in the text face
+  const identifier = children === undefined && value !== undefined && (looksLikeHash(value) || looksLikeAddress(value));
   const display =
     children ??
     (value !== undefined
@@ -59,11 +61,11 @@ export function Kv({
   }
 
   const body = (
-    <span className="num break-all text-[13px] leading-snug">
+    <span className={`num break-all text-[13px] leading-snug ${identifier ? "mono" : ""}`}>
       {display}
       {canCopy && (
         <span
-          className={`ml-1.5 inline-block w-3 text-[11px] transition-opacity duration-200 ${
+          className={`ml-1.5 inline-block w-3 text-xs transition-opacity duration-200 ${
             copied ? "text-verdigris opacity-100" : "opacity-0"
           }`}
           aria-hidden={!copied}
@@ -93,10 +95,10 @@ export function Kv({
             target="_blank"
             rel="noreferrer"
             title={t("kv.openExplorer")}
-            className="underline decoration-bone/30 hover:decoration-flare"
+            className="underline decoration-line-strong underline-offset-4 hover:decoration-flare"
           >
             {body}
-            <span className="ml-1 text-[10px] text-bone/40" aria-hidden>
+            <span className="ml-1 text-xs text-subtle" aria-hidden>
               ↗
             </span>
           </a>

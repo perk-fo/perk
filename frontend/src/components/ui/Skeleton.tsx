@@ -21,7 +21,7 @@ export function Skeleton({
           {Array.from({ length: lines }, (_, i) => (
             <div
               key={i}
-              className="h-2.5 rounded-full border border-bone/10"
+              className="h-2.5 rounded-full border border-line"
               style={{ width: `${Math.max(30, 85 - i * 22)}%` }}
             />
           ))}

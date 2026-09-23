@@ -2,79 +2,129 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---- tokens: RGB triplets so Tailwind can apply alpha. Values come from the Perk mark (ink green + lime). ---- */
-:root {
-  --c-ink: 15 29 29;
-  --c-surface: 17 35 35;
-  --c-bone: 233 242 234;
-  --c-flare: 214 253 62;
-  --c-verdigris: 123 227 181;
-  --c-amber: 242 193 78;
-  /* severity only (indexer lag); sits between amber and rose, never a brand colour */
-  --c-ember: 247 146 74;
-  --c-rose: 255 107 138;
-  --on-flare: 15 29 29;
-  --surface-alpha: 1;
+/*
+ * ---- tokens ----
+ * RGB triplets so Tailwind can apply alpha. Every text colour was measured against the page and panel colours in
+ * WCAG 2 and APCA (numbers in DESIGN.md). Two rules drive the values:
+ *   - no pairing is harsher than it needs to be: primary text sits near 13:1, not the 15-17:1 of white on black,
+ *     and the brand lime is never used for large areas of text;
+ *   - nothing a reader has to read is faint: the lowest text tier people read (`subtle`) is at least 5:1.
+ * The brand lime (#D6FD3E) is kept for the logo and the primary action. Neutrals are graphite with a trace of the
+ * logo's ink green.
+ * `data-theme` is always set before first paint (see the script in app/layout.tsx), so each theme is defined once.
+ */
+:root,
+:root[data-theme="dark"] {
+  --c-ink: 18 25 22; /* page */
+  --c-surface: 26 34 31; /* panels */
+  --c-raised: 36 44 41; /* inputs, hover, tracks, nested cards */
+  --c-line: 45 54 50; /* borders and dividers */
+  --c-line-strong: 70 78 75; /* control outlines */
+  --c-knob: 52 61 57; /* the selected thumb of a segmented control or tab strip */
+  --c-bone: 218 223 219; /* primary text      13.2:1 on page */
+  --c-muted: 182 189 184; /* secondary text     9.3:1 */
+  --c-subtle: 150 158 153; /* labels and meta    6.5:1 */
+  --c-faint: 106 114 110; /* placeholder, disabled, decoration - never text that must be read */
+  --c-flare: 191 225 107; /* accent text and indicators: the brand lime, softened for reading */
+  --c-cta: 209 245 86; /* primary action fill: the brand lime */
+  --c-cta-hover: 220 254 108;
+  --c-on-cta: 17 31 28;
+  --c-verdigris: 115 213 167; /* up, success */
+  --c-amber: 240 190 103; /* warning */
+  --c-ember: 242 152 95; /* severity only (indexer lag), between amber and rose */
+  --c-rose: 241 127 133; /* down, danger */
+  --on-flare: 17 31 28;
+  --seal-lime: 204 237 90;
+  --seal-ink: 31 55 52;
+  --seal-leaf: 163 216 84;
+  --seal-mint: 124 212 172;
+  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025);
+  --shadow-pop: 0 18px 44px -12px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(var(--c-line));
   color-scheme: dark;
 }
 :root[data-theme="light"] {
-  --c-ink: 243 246 238;
-  --c-surface: 255 255 255;
-  --c-bone: 15 29 29;
-  --c-flare: 127 168 0;
-  --c-verdigris: 31 143 98;
-  --c-amber: 184 128 26;
-  --c-ember: 198 95 38;
-  --c-rose: 192 57 92;
-  --on-flare: 243 246 238;
+  --c-ink: 244 245 241;
+  --c-surface: 252 253 250;
+  --c-raised: 237 238 234;
+  --c-line: 218 221 216;
+  --c-line-strong: 191 196 190;
+  --c-knob: 252 253 250;
+  --c-bone: 30 40 36; /* 13.9:1 on page */
+  --c-muted: 75 85 81; /* 7.1:1 */
+  --c-subtle: 97 106 102; /* 5.1:1 */
+  --c-faint: 138 145 141;
+  --c-flare: 64 108 19; /* lime cannot be read on a light page; its deep leaf-green counterpart can (5.7:1) */
+  --c-cta: 20 43 41; /* the logo's ink green ... */
+  --c-cta-hover: 31 61 58;
+  --c-on-cta: 209 245 86; /* ... carrying the logo's lime: the mark's own colourway */
+  --c-verdigris: 23 110 74;
+  --c-amber: 143 85 11;
+  --c-ember: 163 68 9;
+  --c-rose: 177 48 56;
+  --on-flare: 252 253 250;
+  --seal-lime: 206 241 88;
+  --seal-ink: 23 47 45;
+  --seal-leaf: 163 216 84;
+  --seal-mint: 124 212 172;
+  --shadow-panel: 0 1px 2px 0 rgb(30 40 36 / 0.04), 0 1px 1px 0 rgb(30 40 36 / 0.02);
+  --shadow-pop: 0 18px 44px -14px rgb(30 40 36 / 0.22), 0 0 0 1px rgb(var(--c-line));
   color-scheme: light;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) {
-    --c-ink: 243 246 238;
-    --c-surface: 255 255 255;
-    --c-bone: 15 29 29;
-    --c-flare: 127 168 0;
-    --c-verdigris: 31 143 98;
-    --c-amber: 184 128 26;
-    --c-ember: 198 95 38;
-    --c-rose: 192 57 92;
-    --on-flare: 243 246 238;
-    color-scheme: light;
-  }
+
+/*
+ * ---- palettes ----
+ * Graphite (above) is the default. Moss leans the neutrals toward the logo's ink green; Stone warms them. Only the
+ * neutral tones change: every lightness step is the same as Graphite's, so contrast is identical (DESIGN.md), and
+ * the accent and status colours are shared. Readers pick one in the theme menu (components/Header); it is stored in
+ * localStorage and applied as data-palette before first paint (app/layout.tsx).
+ */
+:root[data-palette="moss"]:not([data-theme="light"]) {
+  --c-ink: 10 26 25;
+  --c-surface: 19 35 34;
+  --c-raised: 29 45 44;
+  --c-line: 39 55 54;
+  --c-line-strong: 63 80 78;
+  --c-knob: 45 62 61;
+  --c-bone: 215 224 223;
+  --c-muted: 180 189 188;
+  --c-subtle: 149 158 157;
+  --c-faint: 106 114 113;
 }
-/* grain: a fixed, 3% single-colour noise layer over the page background */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
-  background-size: 160px 160px;
+:root[data-palette="moss"][data-theme="light"] {
+  --c-ink: 239 247 240;
+  --c-surface: 250 254 250;
+  --c-raised: 232 240 233;
+  --c-line: 215 222 216;
+  --c-line-strong: 189 197 190;
+  --c-knob: 250 254 250;
+  --c-bone: 32 40 33;
+  --c-muted: 76 85 78;
+  --c-subtle: 97 106 99;
+  --c-faint: 137 146 138;
 }
-body > * {
-  position: relative;
-  z-index: 1;
+:root[data-palette="stone"]:not([data-theme="light"]) {
+  --c-ink: 25 23 19;
+  --c-surface: 34 32 27;
+  --c-raised: 44 41 37;
+  --c-line: 54 51 47;
+  --c-line-strong: 79 76 71;
+  --c-knob: 61 58 53;
+  --c-bone: 224 221 216;
+  --c-muted: 189 186 181;
+  --c-subtle: 158 155 150;
+  --c-faint: 114 111 107;
 }
-@keyframes twinkle {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-.twinkle {
-  animation: twinkle 400ms ease-out both;
-  transform-origin: center;
+:root[data-palette="stone"][data-theme="light"] {
+  --c-ink: 247 244 237;
+  --c-surface: 254 252 249;
+  --c-raised: 240 237 230;
+  --c-line: 223 220 213;
+  --c-line-strong: 197 194 187;
+  --c-knob: 254 252 249;
+  --c-bone: 40 37 31;
+  --c-muted: 85 82 75;
+  --c-subtle: 107 103 96;
+  --c-faint: 146 143 135;
 }
 
 html {
@@ -85,7 +135,7 @@ body {
   color: rgb(var(--c-bone));
   font-family: var(--font-sans), "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   font-size: 15px;
-  line-height: 1.55;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -107,66 +157,99 @@ html[lang="en"] body {
 /* Japanese headline lines run ~9 full-width glyphs; keep each on one line in the 7/12 hero column */
 @media (min-width: 1024px) {
   html[lang="ja"] .hero-title {
-    font-size: 62px;
+    font-size: 58px;
   }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-line-strong)) transparent;
+}
+::selection {
+  background: rgb(var(--c-flare) / 0.28);
+}
+:where(a, button, summary, [role="radio"], [role="option"], [role="menuitem"], [role="menuitemradio"], [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--c-flare));
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* ---- type ---- */
 .font-display {
   font-family: var(--font-display), "PingFang SC", "Hiragino Sans", system-ui, sans-serif;
+  /* optical size follows the rendered size: display cuts at display sizes, sturdier text cuts for small headings */
+  font-optical-sizing: auto;
+  font-variation-settings: "wdth" 100;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+/* the wordmark keeps the display cut at every size: it is part of the logo lockup, not a heading */
+.wordmark {
+  font-family: var(--font-display), sans-serif;
   font-variation-settings: "opsz" 96, "wdth" 100;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }
-/* the accent line of a headline: same face, brand lime instead of italics */
+/* the accent line of a headline: same face, in the accent */
 .font-display-italic {
   font-family: var(--font-display), "PingFang SC", "Hiragino Sans", system-ui, sans-serif;
-  font-variation-settings: "opsz" 96, "wdth" 100;
+  font-optical-sizing: auto;
+  font-variation-settings: "wdth" 100;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   color: rgb(var(--c-flare));
 }
+/* figures: the text face with tabular digits, so columns line up without a typewriter look */
 .num {
-  font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+/* identifiers (addresses, hashes, module ids): monospace, a touch smaller to match the text face's x-height */
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-ligatures: none;
 }
 .label {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: rgb(var(--c-bone) / 0.56);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.005em;
+  color: rgb(var(--c-subtle));
 }
 .label-en {
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgb(var(--c-bone) / 0.56);
+  color: rgb(var(--c-subtle));
 }
 
 /* ---- surfaces ---- */
 .hairline {
-  border: 1px solid rgb(var(--c-bone) / 0.1);
+  border: 1px solid rgb(var(--c-line));
 }
 .panel {
   background: rgb(var(--c-surface));
-  border: 1px solid rgb(var(--c-bone) / 0.08);
-  border-radius: 20px;
-  /* top-edge highlight: the one detail that makes a dark card read as a surface, not a hole */
-  box-shadow: inset 0 1px 0 rgb(var(--c-bone) / 0.06);
-  transition: border-color 160ms ease-out, transform 160ms ease-out;
-}
-.panel:hover {
-  border-color: rgb(var(--c-bone) / 0.18);
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 18px;
+  box-shadow: var(--shadow-panel);
+  transition: border-color 160ms ease-out, transform 160ms ease-out, background-color 160ms ease-out;
 }
 a.panel:hover {
+  border-color: rgb(var(--c-line-strong));
   transform: translateY(-1px);
+}
+/* menus, toasts: float above the page */
+.popover {
+  background: rgb(var(--c-surface));
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop);
 }
 /* ticket stub: perforated right edge */
 .ticket {
   position: relative;
   background: rgb(var(--c-surface));
-  border: 1px solid rgb(var(--c-bone) / 0.1);
-  border-radius: 20px;
-  box-shadow: inset 0 1px 0 rgb(var(--c-bone) / 0.06);
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 18px;
+  box-shadow: var(--shadow-panel);
 }
 .ticket::before {
   content: "";
@@ -174,7 +257,7 @@ a.panel:hover {
   top: 12px;
   bottom: 12px;
   right: 25%;
-  border-left: 1px dashed rgb(var(--c-bone) / 0.3);
+  border-left: 1px dashed rgb(var(--c-line-strong));
 }
 .ticket::after {
   content: "";
@@ -192,52 +275,54 @@ a.panel:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
   font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  background: rgb(var(--c-bone) / 0.06);
-  box-shadow: inset 0 0 0 1px rgb(var(--c-bone) / 0.14), inset 0 1px 0 rgb(var(--c-bone) / 0.08);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: rgb(var(--c-muted));
+  background: rgb(var(--c-raised));
+  box-shadow: inset 0 0 0 1px rgb(var(--c-line));
 }
 .module-block[data-on="false"] {
-  opacity: 0.35;
+  color: rgb(var(--c-faint));
+  background: transparent;
   text-decoration: line-through;
 }
-/* CTA glow */
+
+/* ---- buttons ---- */
 .btn-primary {
-  background: rgb(var(--c-flare));
-  color: rgb(var(--on-flare));
+  background: rgb(var(--c-cta));
+  color: rgb(var(--c-on-cta));
   border-radius: 999px;
   font-weight: 600;
-  box-shadow: 0 0 0 0 rgb(var(--c-flare) / 0), 0 0 24px rgb(var(--c-flare) / 0.1);
-  transition: transform 160ms ease-out, filter 160ms ease-out, box-shadow 160ms ease-out;
+  transition: transform 160ms ease-out, background-color 160ms ease-out, color 160ms ease-out;
 }
 .btn-primary:hover:not(:disabled) {
-  filter: brightness(1.04);
-  box-shadow: 0 0 0 4px rgb(var(--c-flare) / 0.12), 0 0 32px rgb(var(--c-flare) / 0.16);
-}
-.btn-primary:focus-visible,
-.btn-ghost:focus-visible {
-  outline: 2px solid rgb(var(--c-flare));
-  outline-offset: 2px;
+  background: rgb(var(--c-cta-hover));
 }
 .btn-primary:active:not(:disabled) {
   transform: translateY(1px);
 }
+/* disabled reads as unavailable, not as a faded brand colour */
 .btn-primary:disabled {
-  opacity: 0.4;
+  background: rgb(var(--c-raised));
+  color: rgb(var(--c-faint));
   cursor: not-allowed;
 }
 .btn-ghost {
-  border: 1px solid rgb(var(--c-bone) / 0.18);
+  border: 1px solid rgb(var(--c-line-strong));
   border-radius: 999px;
   color: rgb(var(--c-bone));
   transition: border-color 160ms ease-out, background-color 160ms ease-out;
 }
 .btn-ghost:hover:not(:disabled) {
-  border-color: rgb(var(--c-bone) / 0.4);
-  background: rgb(var(--c-bone) / 0.04);
+  border-color: rgb(var(--c-faint));
+  background: rgb(var(--c-raised));
+}
+.btn-ghost:disabled {
+  color: rgb(var(--c-faint));
+  cursor: not-allowed;
 }
 /* pending: a moving 2px line inside the button */
 .btn-pending {
@@ -259,6 +344,26 @@ a.panel:hover {
     left: 100%;
   }
 }
+
+/* ---- motion ---- */
+@keyframes twinkle {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.twinkle {
+  animation: twinkle 400ms ease-out both;
+  transform-origin: center;
+}
 /* path draw-in */
 .draw {
   stroke-dasharray: 1600;
@@ -271,12 +376,12 @@ a.panel:hover {
   }
 }
 .fade-up {
-  animation: fadeUp 320ms ease-out both;
+  animation: fadeUp 280ms ease-out both;
 }
 @keyframes fadeUp {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -295,23 +400,35 @@ a.panel:hover {
     opacity: 1;
   }
 }
+.fade-up-stagger > * {
+  animation: fadeUp 360ms ease-out both;
+}
+.fade-up-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.fade-up-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.fade-up-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.fade-up-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.fade-up-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.fade-up-stagger > *:nth-child(6) { animation-delay: 250ms; }
 @media (prefers-reduced-motion: reduce) {
   .draw,
   .fade-up,
   .fade-in,
+  .fade-up-stagger > *,
   .btn-pending::after {
     animation: none;
     stroke-dashoffset: 0;
   }
 }
 
+/* ---- form controls ---- */
 input,
 select,
 textarea {
   color-scheme: inherit;
 }
-::selection {
-  background: rgb(var(--c-flare) / 0.35);
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--c-faint));
 }
 input[type="text"],
 input[type="number"],
@@ -322,39 +439,30 @@ textarea {
 textarea {
   border-radius: 16px !important;
 }
-.fade-up-stagger > * {
-  animation: fadeUp 420ms ease-out both;
-}
-.fade-up-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.fade-up-stagger > *:nth-child(2) { animation-delay: 60ms; }
-.fade-up-stagger > *:nth-child(3) { animation-delay: 120ms; }
-.fade-up-stagger > *:nth-child(4) { animation-delay: 180ms; }
-.fade-up-stagger > *:nth-child(5) { animation-delay: 240ms; }
-.fade-up-stagger > *:nth-child(6) { animation-delay: 300ms; }
 .ledger-row + .ledger-row {
-  border-top: 1px solid rgb(var(--c-bone) / 0.08);
+  border-top: 1px solid rgb(var(--c-line));
 }
 
 /* ---- LP Grant pass (components/grant/PerkPass) ---- */
 .pass {
   position: relative;
-  border-radius: 24px;
+  border-radius: 22px;
   background:
-    radial-gradient(120% 140% at 0% 0%, rgb(var(--c-flare) / 0.10), transparent 55%),
-    radial-gradient(90% 120% at 100% 100%, rgb(var(--c-amber) / 0.08), transparent 60%),
+    radial-gradient(110% 130% at 0% 0%, rgb(var(--c-flare) / 0.07), transparent 55%),
     rgb(var(--c-surface));
-  border: 1px solid rgb(var(--c-flare) / 0.28);
-  box-shadow: inset 0 1px 0 rgb(var(--c-bone) / 0.08), 0 20px 60px -30px rgb(var(--c-flare) / 0.35);
+  border: 1px solid rgb(var(--c-flare) / 0.32);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
-/* slow holographic sheen while the pass is unclaimed */
+/* a sheen crosses the unclaimed pass twice when it appears, then the card stays still */
 .pass:not(.pass-issued)::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(105deg, transparent 35%, rgb(var(--c-flare) / 0.10) 48%, rgb(var(--c-bone) / 0.06) 52%, transparent 65%);
+  background: linear-gradient(105deg, transparent 35%, rgb(var(--c-flare) / 0.07) 48%, rgb(var(--c-bone) / 0.04) 52%, transparent 65%);
   background-size: 250% 100%;
-  animation: pass-sheen 5.5s ease-in-out infinite;
+  background-position: -120% 0;
+  animation: pass-sheen 5s ease-in-out 2 both;
   pointer-events: none;
 }
 @keyframes pass-sheen {
@@ -363,7 +471,6 @@ textarea {
 }
 .pass-issued {
   border-color: rgb(var(--c-verdigris) / 0.45);
-  box-shadow: inset 0 1px 0 rgb(var(--c-bone) / 0.08), 0 20px 60px -30px rgb(var(--c-verdigris) / 0.4);
 }
 .pass-body {
   position: relative;
@@ -379,13 +486,13 @@ textarea {
   justify-content: center;
   width: 100%;
   padding: 24px;
-  border-top: 1px dashed rgb(var(--c-bone) / 0.25);
+  border-top: 1px dashed rgb(var(--c-line-strong));
 }
 @media (min-width: 768px) {
   .pass-stub {
     width: 230px;
     border-top: 0;
-    border-left: 1px dashed rgb(var(--c-bone) / 0.25);
+    border-left: 1px dashed rgb(var(--c-line-strong));
   }
   .pass-stub::before,
   .pass-stub::after {
@@ -402,9 +509,9 @@ textarea {
 }
 .pass-perk {
   border-radius: 14px;
-  padding: 10px 12px;
-  background: rgb(var(--c-bone) / 0.04);
-  box-shadow: inset 0 0 0 1px rgb(var(--c-bone) / 0.08);
+  padding: 12px 14px;
+  background: rgb(var(--c-raised) / 0.6);
+  box-shadow: inset 0 0 0 1px rgb(var(--c-line));
 }
 .pass-ribbon {
   display: inline-flex;
@@ -417,13 +524,14 @@ textarea {
   background: rgb(var(--c-amber) / 0.1);
   box-shadow: inset 0 0 0 1px rgb(var(--c-amber) / 0.25);
 }
+/* the claim button draws the eye three times, then waits */
 .pass-cta {
-  box-shadow: 0 0 0 0 rgb(var(--c-flare) / 0.5);
-  animation: pass-pulse 2.4s ease-out infinite;
+  box-shadow: 0 0 0 0 rgb(var(--c-cta) / 0.4);
+  animation: pass-pulse 2.4s ease-out 3;
 }
 @keyframes pass-pulse {
-  0% { box-shadow: 0 0 0 0 rgb(var(--c-flare) / 0.45); }
-  70%, 100% { box-shadow: 0 0 0 14px rgb(var(--c-flare) / 0); }
+  0% { box-shadow: 0 0 0 0 rgb(var(--c-cta) / 0.35); }
+  70%, 100% { box-shadow: 0 0 0 12px rgb(var(--c-cta) / 0); }
 }
 .pass-stamp {
   position: absolute;
@@ -434,7 +542,7 @@ textarea {
   border: 2px solid rgb(var(--c-verdigris));
   border-radius: 8px;
   color: rgb(var(--c-verdigris));
-  background: rgb(var(--c-surface) / 0.75);
+  background: rgb(var(--c-surface) / 0.8);
   font-family: var(--font-mono), monospace;
   font-size: 13px;
   letter-spacing: 0.14em;
@@ -468,11 +576,11 @@ textarea {
 
 /* transaction toast: the current step breathes */
 .tx-step-active {
-  animation: tx-step 1.2s ease-in-out infinite;
+  animation: tx-step 1.6s ease-in-out infinite;
 }
 @keyframes tx-step {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  50% { opacity: 0.55; }
 }
 @media (prefers-reduced-motion: reduce) {
   .tx-step-active { animation: none; }
@@ -483,23 +591,17 @@ textarea {
   position: relative;
   transition: border-color 160ms ease-out, background-color 160ms ease-out, opacity 160ms ease-out;
 }
-.choice:focus-visible {
-  outline: 2px solid rgb(var(--c-flare) / 0.6);
-  outline-offset: 2px;
+.choice:hover {
+  border-color: rgb(var(--c-line-strong));
 }
 .choice[data-selected="true"],
 .choice[data-selected="true"]:hover {
-  border-color: rgb(var(--c-flare) / 0.75);
+  border-color: rgb(var(--c-flare) / 0.8);
   background: linear-gradient(0deg, rgb(var(--c-flare) / 0.06), rgb(var(--c-flare) / 0.06)), rgb(var(--c-surface));
-  box-shadow: inset 0 1px 0 rgb(var(--c-bone) / 0.06), 0 0 0 1px rgb(var(--c-flare) / 0.35);
+  box-shadow: 0 0 0 1px rgb(var(--c-flare) / 0.35);
 }
-/* once something is chosen, the others step back */
-[role="radiogroup"]:has(.choice[data-selected="true"]) .choice[data-selected="false"] {
-  opacity: 0.62;
-}
-[role="radiogroup"]:has(.choice[data-selected="true"]) .choice[data-selected="false"]:hover {
-  opacity: 1;
-}
+/* The unchosen cards are not dimmed: fading them to 60-70% put their text near 3:1. The chosen card's border,
+   wash and check are what mark the choice. */
 .choice-check {
   position: absolute;
   top: -8px;
@@ -519,18 +621,28 @@ textarea {
 /* loading placeholders: a soft sweep instead of content that changes its mind */
 .skel {
   border-radius: 10px;
-  background: linear-gradient(90deg, rgb(var(--c-bone) / 0.05) 25%, rgb(var(--c-bone) / 0.11) 50%, rgb(var(--c-bone) / 0.05) 75%);
+  background: linear-gradient(90deg, rgb(var(--c-raised)) 25%, rgb(var(--c-line)) 50%, rgb(var(--c-raised)) 75%);
   background-size: 200% 100%;
-  animation: skel 1.4s ease-in-out infinite;
+  animation: skel 1.6s ease-in-out infinite;
 }
 @keyframes skel {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
-.pass-loading { border-color: rgb(var(--c-bone) / 0.12); box-shadow: inset 0 1px 0 rgb(var(--c-bone) / 0.06); }
+.pass-loading { border-color: rgb(var(--c-line)); }
 .pass-loading::before { display: none; }
 .pass-seal-spin { animation: pass-seal-spin 6s linear infinite; }
 @keyframes pass-seal-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .skel, .pass-seal-spin { animation: none; }
+}
+
+/* the zero count in a small price (0.0₁₀4297), kept in the surrounding face: see components/ui/Subscripted */
+sub.price-sub {
+  position: relative;
+  top: 0.3em;
+  margin: 0 0.04em;
+  font-size: 0.64em;
+  line-height: 0;
+  vertical-align: baseline;
 }

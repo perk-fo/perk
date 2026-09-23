@@ -24,7 +24,9 @@ export function DecayRing({
   return (
     <div className="relative inline-block" style={{ width: size, height: size }}>
       <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label="decay">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeOpacity="0.12" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(var(--c-raised))" strokeWidth={stroke} />
+        {/* nothing left draws nothing: a round cap on a zero-length arc used to leave a coloured dot at 12 o'clock */}
+        {frac > 0 && (
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -37,6 +39,7 @@ export function DecayRing({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
           style={{ transition: "stroke-dasharray 600ms ease-out" }}
         />
+        )}
         {/* 14 day ticks */}
         {Array.from({ length: 14 }, (_, i) => (
           <line
@@ -45,8 +48,7 @@ export function DecayRing({
             y1={stroke + 4}
             x2={size / 2}
             y2={stroke + 10}
-            stroke="currentColor"
-            strokeOpacity="0.25"
+            stroke="rgb(var(--c-line-strong))"
             transform={`rotate(${(i * 360) / 14} ${size / 2} ${size / 2})`}
           />
         ))}

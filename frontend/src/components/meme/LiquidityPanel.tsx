@@ -158,7 +158,7 @@ export function LiquidityPanel({
 
   return (
     <Panel title={t("pool.lp.title")}>
-      <p className="mb-4 text-sm text-bone/60">{t("pool.lp.intro")}</p>
+      <p className="mb-4 text-sm text-muted">{t("pool.lp.intro")}</p>
 
       {!sqrtPriceX96 ? (
         <Notice tone="amber" title={t("pool.lp.noPriceTitle")}>
@@ -172,7 +172,7 @@ export function LiquidityPanel({
             onChange={(e) => setMemeAmount(e.target.value)}
             placeholder="0.0"
             inputMode="decimal"
-            mono
+            numeric
           />
           <Field
             label={quoteSymbol}
@@ -180,7 +180,7 @@ export function LiquidityPanel({
             onChange={(e) => setQuoteAmount(e.target.value)}
             placeholder="0.0"
             inputMode="decimal"
-            mono
+            numeric
             hint={t("pool.lp.rangeHint")}
           />
 
@@ -199,20 +199,20 @@ export function LiquidityPanel({
         </div>
       )}
 
-      <div className="mt-6 border-t border-bone/10 pt-4">
-        <h3 className="mb-3 text-sm text-bone/80">{t("pool.lp.mine")}</h3>
+      <div className="mt-6 border-t border-line pt-4">
+        <h3 className="mb-3 text-sm text-bone">{t("pool.lp.mine")}</h3>
         {!address ? (
-          <p className="text-sm text-bone/50">{t("pool.lp.connect")}</p>
+          <p className="text-sm text-subtle">{t("pool.lp.connect")}</p>
         ) : mine.length === 0 ? (
-          <p className="text-sm text-bone/50">{t("pool.lp.none")}</p>
+          <p className="text-sm text-subtle">{t("pool.lp.none")}</p>
         ) : (
           <ul className="space-y-2">
             {mine.map((p, i) => (
               <li
                 key={p.tokenId}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-bone/10 px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-line px-3 py-2"
               >
-                <span className="num text-xs text-bone/70">
+                <span className="num text-xs text-muted">
                   #{p.tokenId} · {t("pool.lp.liquidity")}{" "}
                   {formatAmount((liveLiquidity.data?.[i]?.result as bigint | undefined) ?? BigInt(p.liquidity), 0, { maxFrac: 0 })}
                 </span>

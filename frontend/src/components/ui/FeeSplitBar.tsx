@@ -19,11 +19,11 @@ export function FeeSplitBar() {
         <span className="label">{t("fees.total")}</span>
         <span className="num text-sm">1.00%</span>
       </div>
-      <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-bone/10" role="img" aria-label={t("fees.aria")}>
+      <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-raised" role="img" aria-label={t("fees.aria")}>
         {SPLITS.map(([label, pct]) => (
           <div
             key={label}
-            className="border-r border-ink bg-bone/35 last:border-r-0"
+            className="border-r-2 border-surface bg-faint last:border-r-0"
             style={{ width: `${pct}%` }}
           />
         ))}
@@ -32,7 +32,7 @@ export function FeeSplitBar() {
         {SPLITS.map(([label, pct]) => (
           <span key={label} className="label-en inline-flex items-baseline gap-1.5">
             {label}
-            <span className="num text-[11px] text-bone/70">{pct}%</span>
+            <span className="num text-xs text-muted">{pct}%</span>
           </span>
         ))}
       </div>

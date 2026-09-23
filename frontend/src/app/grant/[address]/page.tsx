@@ -67,7 +67,7 @@ function Timeline({
   const { locale } = useT();
   return (
     <ol className="relative grid grid-cols-4 gap-2">
-      <div className="absolute left-0 right-0 top-[5px] border-t border-bone/10" aria-hidden />
+      <div className="absolute left-0 right-0 top-[5px] border-t border-line" aria-hidden />
       {points.map((p) => {
         const reached = p.at > 0 && now >= p.at;
         const set = p.at > 0;
@@ -75,12 +75,12 @@ function Timeline({
           <li key={p.label} className="relative min-w-0 pt-4">
             <span
               className={`absolute left-0 top-0 h-[11px] w-[11px] rounded-full border-2 ${
-                reached ? "border-verdigris bg-verdigris" : set ? "border-flare bg-ink" : "border-bone/25 bg-ink"
+                reached ? "border-verdigris bg-verdigris" : set ? "border-flare bg-ink" : "border-line-strong bg-ink"
               }`}
               aria-hidden
             />
             <div className="label">{p.label}</div>
-            <div className="num mt-1 truncate text-[11px] text-bone/50">{set ? fmtTime(p.at, locale) : "—"}</div>
+            <div className="num mt-1 truncate text-xs text-subtle">{set ? fmtTime(p.at, locale) : "—"}</div>
           </li>
         );
       })}
@@ -156,13 +156,13 @@ function PositionTicket({
           ) : (
             <>
               <Pill tone="amber">{t("grant.position.locked")}</Pill>
-              <span className="num text-[11px] text-amber">{fmtCountdown(exitableAt - now, t)}</span>
+              <span className="num text-xs text-amber">{fmtCountdown(exitableAt - now, t)}</span>
             </>
           )}
         </>
       }
     >
-      <div className="divide-y divide-bone/5">
+      <div className="divide-y divide-line">
         <Kv label={t("grant.position.grantMeme")} value={formatAmount(position.grantMemeAmount, memeDecimals, { locale })} />
         <Kv label={t("grant.position.principal")} value={`${formatAmount(position.quoteDeposited, quoteDecimals, { locale })} ${quoteSymbol}`} />
         <Kv label={t("common.liquidity")}>
@@ -376,7 +376,7 @@ export default function GrantPage() {
   if (!launch.lpGrantEnabled) {
     return (
       <Panel>
-        <p className="text-sm text-bone/70">{t("grant.disabled")}</p>
+        <p className="text-sm text-muted">{t("grant.disabled")}</p>
         <Link href={`/meme/${meme}`} className="mt-3 inline-block text-sm text-flare underline decoration-flare/40">
           {t("grant.back")}
         </Link>
@@ -407,7 +407,8 @@ export default function GrantPage() {
           ? Math.max(0, Math.min(1, (endTime - now) / (endTime - startTime)))
           : 1
       : 0;
-  const ringTone: "amber" | "rose" = campaignStatus === 4 || campaignStatus === 5 ? "rose" : "amber";
+  // a cancelled campaign is the one red state; an expired one simply finished (its ring is empty anyway)
+  const ringTone: "amber" | "rose" = campaignStatus === 5 ? "rose" : "amber";
   const ringCentre =
     campaignStatus === 3
       ? null
@@ -430,11 +431,11 @@ export default function GrantPage() {
           </Link>
           <h1 className="mt-2 font-display text-3xl sm:text-4xl">
             {detail.data ? `${detail.data.name}` : "LP Grant"}
-            {detail.data && <span className="num ml-3 text-lg text-bone/45">{detail.data.symbol}</span>}
+            {detail.data && <span className="num ml-3 text-lg text-subtle">{detail.data.symbol}</span>}
           </h1>
           <div className="mt-2 flex items-center gap-2">
             <Pill tone={statusPill.tone}>{statusPill.label}</Pill>
-            <span className="num break-all text-xs text-bone/50">{meme}</span>
+            <span className="mono break-all text-xs text-subtle">{meme}</span>
           </div>
         </div>
         <Link href={`/meme/${meme}`} className="btn-ghost px-3.5 py-1.5 text-sm">
@@ -458,7 +459,7 @@ export default function GrantPage() {
               <span className="font-display text-3xl leading-none">{ringCentre}</span>
             )}
           </DecayRing>
-          <div className="min-w-0 flex-1 divide-y divide-bone/5">
+          <div className="min-w-0 flex-1 divide-y divide-line">
             <Kv label={t("grant.kv.status")} >{statusPill.label}</Kv>
             <Kv label={t("grant.kv.reserve")} value={formatAmount(campaign?.reserve, memeDecimals, { locale })} />
             <Kv label={t("grant.kv.activated")} value={formatAmount(campaign?.totalActivated, memeDecimals, { locale })} />
@@ -506,33 +507,33 @@ export default function GrantPage() {
       {/* participation is global and lives on /grant; here only its status, with a way there */}
       <Link href="/grant" className="panel flex flex-wrap items-center justify-between gap-3 px-6 py-4">
         <span className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-          <span className="text-bone/60">
+          <span className="text-muted">
             {t("grant.optin.status")}{" "}
             <span className={optInBlock.data && optInBlock.data > 0n ? "text-verdigris" : "text-amber"}>
               {optInBlock.data && optInBlock.data > 0n ? t("grant.hub.optedShort") : t("grant.optin.none")}
             </span>
           </span>
-          <span className="text-bone/60">
+          <span className="text-muted">
             {t("grant.inviter.label")}{" "}
-            <span className="num text-bone/85">
-              {inviter.data && inviter.data !== "0x0000000000000000000000000000000000000000"
-                ? shortAddress(inviter.data)
-                : t("grant.inviter.unbound")}
-            </span>
+            {inviter.data && inviter.data !== "0x0000000000000000000000000000000000000000" ? (
+              <span className="mono text-bone">{shortAddress(inviter.data)}</span>
+            ) : (
+              <span className="text-bone">{t("grant.inviter.unbound")}</span>
+            )}
           </span>
         </span>
-        <span className="text-sm text-bone/60">{t("grant.hub.manage")} →</span>
+        <span className="text-sm text-muted">{t("grant.hub.manage")} →</span>
       </Link>
 
       {/* for the curious: verify the list yourself / supply a proof by hand. Collapsed; nobody needs it to join. */}
       {!allocation.data?.registered && (
         <details className="panel group p-6">
-          <summary className="cursor-pointer list-none text-sm text-bone/60 hover:text-bone">
+          <summary className="cursor-pointer list-none text-sm text-muted hover:text-bone">
             <span className="mr-2 inline-block transition-transform duration-fast group-open:rotate-90">›</span>
             {t("join.verifyTitle")}
           </summary>
           <div className="mt-4">
-          <p className="mb-4 text-xs leading-relaxed text-bone/50">{t("join.verifyBody")}</p>
+          <p className="mb-4 text-xs leading-relaxed text-subtle">{t("join.verifyBody")}</p>
           <Field
             label="Proof JSON"
             hint={t("grant.register.proofHint")}
@@ -578,7 +579,7 @@ export default function GrantPage() {
           )}
           {proofJson && (
             <div className="mt-4">
-              <p className="num text-xs text-bone/60">
+              <p className="num text-xs text-muted">
                 leaf: {proofJson.leaf.account.slice(0, 6)}…{proofJson.leaf.account.slice(-4)} · base{" "}
                 {formatAmount(BigInt(proofJson.leaf.baseAllocation), memeDecimals, { locale })} · boost{" "}
                 {formatAmount(BigInt(proofJson.leaf.inviteeBoost), memeDecimals, { locale })}
@@ -622,7 +623,7 @@ export default function GrantPage() {
           {myPositions.length === 0 ? (
             <div className="flex flex-col items-center py-6 text-center">
               <Skeleton size={48} lines={0} />
-              <p className="mt-3 text-sm text-bone/50">{t("grant.positions.empty")}</p>
+              <p className="mt-3 text-sm text-subtle">{t("grant.positions.empty")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -647,11 +648,11 @@ export default function GrantPage() {
 
       {/* PRD 11.3 verbatim */}
       <Notice tone="amber" title={t("grant.risk.title")}>
-        <p className="mb-2 text-sm text-bone/70">{t("grant.risk.intro")}</p>
-        <ul className="divide-y divide-bone/10">
+        <p className="mb-2 text-sm text-muted">{t("grant.risk.intro")}</p>
+        <ul className="divide-y divide-line">
           {RISK_KEYS.map((key) => (
-            <li key={key} className="flex items-baseline gap-2 py-1.5 text-sm text-bone/70">
-              <span aria-hidden className="shrink-0 text-bone/40">
+            <li key={key} className="flex items-baseline gap-2 py-1.5 text-sm text-muted">
+              <span aria-hidden className="shrink-0 text-subtle">
                 ·
               </span>
               <span>{t(key)}</span>

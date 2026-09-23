@@ -5,10 +5,13 @@
  */
 import type { CSSProperties } from "react";
 
-const LIME = "#D6FD3E";
-const INK = "#0F1D1D";
-const MIST = "#E9F2EA";
-const TINTS = ["#D6FD3E", "#A7E34A", "#7BE3B5", "#E9F2EA", "#F2C14E", "#B4F06B"];
+// Colours come from the theme (globals.css): the logo's lime and ink, softened a step so a page of seals is not a
+// page of fluorescent discs, with ink plates lifted off the page. The geometry is untouched, so a hash still
+// renders the same seal everywhere.
+const LIME = "rgb(var(--seal-lime))";
+const INK = "rgb(var(--seal-ink))";
+const MIST = "rgb(var(--c-faint))";
+const TINTS = [LIME, "rgb(var(--seal-leaf))", "rgb(var(--seal-mint))"];
 const MODULE_BITS = 5;
 
 function bytesOf(hash: string): number[] {

@@ -49,6 +49,7 @@ import { TradeTable } from "@/components/meme/TradeTable";
 import { HolderList } from "@/components/meme/HolderList";
 import { RoleGate } from "@/components/RoleGate";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 const TRADE_PAGE = 20;
 
@@ -59,17 +60,17 @@ function Tile({
   wrap,
 }: {
   label: string;
-  value: string;
-  tone?: "flare" | "rose" | null;
+  value: React.ReactNode;
+  tone?: "verdigris" | "rose" | null;
   /** Let a long value (price with subscript zeros + symbol) break onto a second line instead of truncating. */
   wrap?: boolean;
 }) {
   return (
-    <div className="min-w-0 border-b border-r border-bone/10 px-3 py-2.5 lg:border-b-0">
+    <div className="min-w-0 border-b border-r border-line px-4 py-3 lg:border-b-0">
       <div className="label truncate">{label}</div>
       <div
-        className={`num mt-1 text-[13px] tabular-nums ${wrap ? "break-words leading-snug" : "truncate"} ${
-          tone === "flare" ? "text-flare" : tone === "rose" ? "text-rose" : ""
+        className={`num mt-1 text-[15px] font-medium ${wrap ? "break-words leading-snug" : "truncate"} ${
+          tone === "verdigris" ? "text-verdigris" : tone === "rose" ? "text-rose" : ""
         }`}
       >
         {value}
@@ -83,31 +84,31 @@ function MemePageSkeleton() {
     <div className="space-y-12 pt-6" aria-hidden>
       <header className="flex flex-col gap-5 lg:flex-row lg:items-start">
         <div className="flex items-start gap-5">
-          <div className="h-[72px] w-[72px] rounded-full border border-bone/10" />
+          <div className="h-[72px] w-[72px] rounded-full border border-line" />
           <div className="space-y-2.5 pt-2">
-            <div className="h-4 w-40 rounded-full border border-bone/10" />
-            <div className="h-2.5 w-24 rounded-full border border-bone/10" />
+            <div className="h-4 w-40 rounded-full border border-line" />
+            <div className="h-2.5 w-24 rounded-full border border-line" />
           </div>
         </div>
-        <div className="grid min-w-0 flex-1 grid-cols-2 overflow-hidden rounded-[20px] border border-bone/10 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="panel grid min-w-0 flex-1 grid-cols-2 overflow-hidden sm:grid-cols-3 lg:grid-cols-6">
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="border-b border-r border-bone/10 px-3 py-2.5 lg:border-b-0">
-              <div className="h-2 w-10 rounded-full border border-bone/10" />
-              <div className="mt-2 h-2.5 w-16 rounded-full border border-bone/10" />
+            <div key={i} className="border-b border-r border-line px-3 py-2.5 lg:border-b-0">
+              <div className="h-2 w-10 rounded-full border border-line" />
+              <div className="mt-2 h-2.5 w-16 rounded-full border border-line" />
             </div>
           ))}
         </div>
       </header>
       <div className="grid gap-6 lg:grid-cols-12">
         <div className="panel p-6 lg:col-span-8">
-          <div className="h-[300px] rounded-panel border border-dashed border-bone/10" />
+          <div className="h-[300px] rounded-panel border border-dashed border-line" />
         </div>
         <div className="panel p-6 lg:col-span-4">
-          <div className="h-10 rounded-full border border-bone/10" />
-          <div className="mt-4 h-12 rounded-full border border-bone/10" />
+          <div className="h-10 rounded-full border border-line" />
+          <div className="mt-4 h-12 rounded-full border border-line" />
           <div className="mt-6 space-y-2">
             {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="h-2.5 rounded-full border border-bone/10" />
+              <div key={i} className="h-2.5 rounded-full border border-line" />
             ))}
           </div>
         </div>
@@ -115,15 +116,15 @@ function MemePageSkeleton() {
       <div className="grid gap-6 lg:grid-cols-12">
         <div className="panel p-6 lg:col-span-7">
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="flex items-center gap-3 border-t border-bone/8 py-3 first:border-t-0">
-              <div className="h-2 w-16 rounded-full border border-bone/10" />
-              <div className="ml-auto h-2 w-24 rounded-full border border-bone/10" />
+            <div key={i} className="flex items-center gap-3 border-t border-line py-3 first:border-t-0">
+              <div className="h-2 w-16 rounded-full border border-line" />
+              <div className="ml-auto h-2 w-24 rounded-full border border-line" />
             </div>
           ))}
         </div>
         <div className="panel p-6 lg:col-span-5">
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="mb-3 h-1.5 rounded-full border border-bone/10" />
+            <div key={i} className="mb-3 h-1.5 rounded-full border border-line" />
           ))}
         </div>
       </div>
@@ -300,22 +301,25 @@ export default function MemePage() {
           <HashSeal hash={launch.configHash} moduleBitmap={launch.moduleBitmap} size={72} className="shrink-0" />
           <div className="min-w-0">
             <h1 className="font-display text-3xl leading-tight sm:text-4xl">{memeName ?? "…"}</h1>
-            <div className="num mt-1 text-xs text-bone/50">{memeSymbol}</div>
+            <div className="num mt-1 text-[13px] text-subtle">{memeSymbol}</div>
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <Pill tone="muted">{quoteSymbol}</Pill>
               <Pill tone={statusPill.tone}>{statusPill.label}</Pill>
               {launch.lpGrantEnabled && (
-                <Link href={`/grant/${meme}`} className="btn-ghost inline-block px-2.5 py-0.5 text-xs">
+                <Link
+                  href={`/grant/${meme}`}
+                  className="inline-flex items-center rounded-full bg-amber/10 px-2.5 py-0.5 text-xs font-medium leading-5 text-amber transition-colors duration-fast hover:bg-amber/20"
+                >
                   LP Grant →
                 </Link>
               )}
             </div>
           </div>
         </div>
-        <div className="grid min-w-0 flex-1 grid-cols-2 overflow-hidden rounded-[20px] border border-bone/10 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="panel grid min-w-0 flex-1 grid-cols-2 overflow-hidden sm:grid-cols-3 lg:grid-cols-6 [&>*:last-child]:border-r-0">
           <Tile
             label={t("meme.market.price")}
-            value={lastPrice !== undefined ? `${formatPrice(lastPrice, locale)} ${quoteSymbol}` : "—"}
+            value={lastPrice !== undefined ? <><Subscripted text={formatPrice(lastPrice, locale)} /> {quoteSymbol}</> : "—"}
             wrap
           />
           <Tile label={t("meme.market.change24h")} value={change.text} tone={change.tone} />
@@ -326,10 +330,12 @@ export default function MemePage() {
                 ? `${formatAmount(stats.mcapQuote, quoteDecimals, { locale, maxFrac: 2 })} ${quoteSymbol}`
                 : "—"
             }
+            wrap
           />
           <Tile
             label={t("meme.market.volume24h")}
             value={`${formatAmount(stats.volume24h, quoteDecimals, { locale, maxFrac: 6 })} ${quoteSymbol}`}
+            wrap
           />
           <Tile
             label={t("meme.market.holders")}
@@ -341,13 +347,13 @@ export default function MemePage() {
 
       <Panel title={t("meme.facts.title")}>
         <div className="grid gap-x-10 sm:grid-cols-2">
-          <div className="divide-y divide-bone/5">
+          <div className="divide-y divide-line">
             <Kv label={t("meme.facts.template")} value={templateLabel(launch.templateId, quotes)} />
             <Kv label="Hook" value={deployment.hook} copy href={explorerAddressUrl(chainId, deployment.hook)} />
             <Kv label={t("meme.facts.hookVersion")} value={String(launch.hookVersion)} />
             <Kv label={t("meme.facts.createdAt")} value={fmtTime(launch.createdAt, locale)} />
           </div>
-          <div className="divide-y divide-bone/5">
+          <div className="divide-y divide-line">
             <Kv label="configHash" value={launch.configHash} copy />
             <Kv label={t("meme.facts.memeContract")} value={meme} copy href={explorerAddressUrl(chainId, meme)} />
             {status === 3 && (
@@ -365,14 +371,15 @@ export default function MemePage() {
         <div className="min-w-0 lg:col-span-8">
           <Panel className="flex h-full flex-col">
             {showCurve && (
-              <div className="mb-4 flex gap-1 rounded-full border border-bone/10 p-0.5">
+              <div className="mb-4 flex w-fit gap-0.5 rounded-full bg-raised p-1">
                 {(["price", "curve"] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
+                    aria-pressed={effectiveChart === m}
                     onClick={() => setChartMode(m)}
-                    className={`rounded-full px-3 py-1 text-[12px] transition-colors duration-fast ${
-                      effectiveChart === m ? "bg-bone/10 text-bone" : "text-bone/50 hover:text-bone"
+                    className={`rounded-full px-3.5 py-1 text-[13px] transition-colors duration-fast ${
+                      effectiveChart === m ? "bg-knob font-medium text-bone shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
                     }`}
                   >
                     {m === "price" ? t("meme.chart.price") : t("meme.chart.curve")}
@@ -435,17 +442,17 @@ export default function MemePage() {
             )}
 
             {status === 3 && graduation && (
-              <div className="mt-auto pt-6 divide-y divide-bone/5">
+              <div className="mt-auto pt-6 divide-y divide-line">
                 <Kv label={t("meme.pool.memeIn")} value={formatAmount(graduation.memeToPool, memeDecimals, { locale })} />
                 <Kv
                   label={t("meme.pool.quoteIn")}
                   value={`${formatAmount(graduation.quoteToPool, quoteDecimals, { locale })} ${quoteSymbol}`}
                 />
                 <div className="flex items-center justify-between py-3 text-sm">
-                  <span className="text-bone/55">{t("pool.cta.body")}</span>
+                  <span className="text-muted">{t("pool.cta.body")}</span>
                   <Link
                     href={`/pool/${meme}`}
-                    className="shrink-0 rounded-full border border-flare/40 px-3 py-1.5 text-[12px] text-flare transition-colors duration-fast hover:bg-flare/10"
+                    className="shrink-0 rounded-full bg-flare/10 px-3.5 py-1.5 text-[13px] font-medium text-flare transition-colors duration-fast hover:bg-flare/20"
                   >
                     {t("pool.lp.title")} →
                   </Link>
@@ -458,7 +465,7 @@ export default function MemePage() {
         <div className="min-w-0 lg:col-span-4">
           {status === 2 && (
             <Panel title={t("meme.graduate.title")} className="lg:sticky lg:top-20">
-              <p className="text-sm text-bone/70">{t("meme.graduate.body")}</p>
+              <p className="text-sm text-muted">{t("meme.graduate.body")}</p>
               <div className="mt-4">
                 <Button
                   tx={graduateTx}
@@ -549,7 +556,7 @@ export default function MemePage() {
             unit={quoteSymbol}
             tone="verdigris"
           />
-          <p className="mt-3 text-xs text-bone/50">{t("meme.rewards.note")}</p>
+          <p className="mt-3 text-[13px] leading-relaxed text-subtle">{t("meme.rewards.note")}</p>
           <div className="mt-4">
             <Button
               tx={claimTx}
@@ -579,9 +586,8 @@ export default function MemePage() {
             label={t("common.claimable")}
             value={formatAmount(launchFees?.devClaimable, quoteDecimals, { locale })}
             unit={quoteSymbol}
-            tone="flare"
           />
-          <div className="mt-3 divide-y divide-bone/5">
+          <div className="mt-3 divide-y divide-line">
             <Kv label={t("meme.dev.address")} value={launchFees?.dev} copy />
           </div>
           <div className="mt-4">
@@ -610,7 +616,7 @@ export default function MemePage() {
 
         <Panel title={t("meme.fee.title")}>
           <FeeSplitBar />
-          <p className="mt-4 text-xs text-bone/50">{t("meme.fee.note")}</p>
+          <p className="mt-4 text-[13px] leading-relaxed text-subtle">{t("meme.fee.note")}</p>
         </Panel>
       </div>
     </div>

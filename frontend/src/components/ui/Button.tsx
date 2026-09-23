@@ -11,7 +11,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary: "btn-primary",
   ghost: "btn-ghost",
   danger:
-    "rounded-full border border-rose/60 text-rose transition-colors duration-fast hover:bg-rose/10 disabled:opacity-40",
+    "rounded-full border border-rose/50 text-rose transition-colors duration-fast hover:bg-rose/10 disabled:border-line disabled:text-faint disabled:hover:bg-transparent",
 };
 
 /**

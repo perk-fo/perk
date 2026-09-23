@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { HashSeal } from "@/components/art/HashSeal";
 import { formatAmount, formatNumber, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 /**
  * Pool: every graduated launch has a public v4 pool, and anyone can add two-sided liquidity to it. This page lists
@@ -53,9 +54,9 @@ export default function PoolPage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl leading-none">{t("pool.title")}</h1>
-          <p className="mt-2 max-w-2xl text-sm text-bone/55">{t("pool.sub")}</p>
+          <p className="mt-2 max-w-2xl text-sm text-subtle">{t("pool.sub")}</p>
         </div>
-        <span className="num text-xs text-bone/45">
+        <span className="num text-xs text-subtle">
           {list.data ? t("pool.count", { n: formatNumber(pools.length, locale) }) : ""}
         </span>
       </header>
@@ -69,16 +70,16 @@ export default function PoolPage() {
       {/* my positions */}
       <Panel
         title={t("pool.mine.title")}
-        right={<span className="num text-xs text-bone/45">{address ? mine.length : ""}</span>}
+        right={<span className="num text-xs text-subtle">{address ? mine.length : ""}</span>}
       >
         {!address ? (
-          <p className="text-sm text-bone/50">{t("pool.lp.connect")}</p>
+          <p className="text-sm text-subtle">{t("pool.lp.connect")}</p>
         ) : positions.isLoading ? (
           <Skeleton size={28} lines={2} />
         ) : mine.length === 0 ? (
-          <p className="text-sm text-bone/50">{t("pool.mine.empty")}</p>
+          <p className="text-sm text-subtle">{t("pool.mine.empty")}</p>
         ) : (
-          <div className="divide-y divide-bone/6">
+          <div className="divide-y divide-line">
             {mine.map((p) => {
               const meta = nameOf.get(p.meme!.toLowerCase());
               return (
@@ -88,12 +89,12 @@ export default function PoolPage() {
                   className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm transition-colors duration-fast hover:text-flare"
                 >
                   <span className="flex items-center gap-3">
-                    <span className="num text-bone/45">#{p.tokenId}</span>
+                    <span className="num text-subtle">#{p.tokenId}</span>
                     <span>
                       {meta ? `${meta.symbol} / ${meta.quoteSymbol}` : p.meme}
                     </span>
                   </span>
-                  <span className="text-xs text-bone/50">{t("pool.mine.manage")} →</span>
+                  <span className="text-xs text-subtle">{t("pool.mine.manage")} →</span>
                 </Link>
               );
             })}
@@ -108,7 +109,7 @@ export default function PoolPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("trade.search")}
-          className="w-full rounded-full border border-bone/10 bg-transparent px-4 py-2 text-sm outline-none transition-colors duration-fast placeholder:text-bone/35 focus:border-bone/30 sm:w-72"
+          className="w-full rounded-full border border-line bg-transparent px-4 py-2 text-sm outline-none transition-colors duration-fast placeholder:text-faint focus:border-line-strong sm:w-72"
         />
       </div>
 
@@ -117,13 +118,13 @@ export default function PoolPage() {
           <Skeleton size={40} lines={5} />
         </Panel>
       ) : pools.length === 0 && !apiDown ? (
-        <Panel className="py-14 text-center text-sm text-bone/60">{q ? t("trade.noMatch") : t("pool.all.empty")}</Panel>
+        <Panel className="py-14 text-center text-sm text-muted">{q ? t("trade.noMatch") : t("pool.all.empty")}</Panel>
       ) : (
         <div className="panel overflow-hidden p-0">
           <div className="overflow-x-auto">
             <table className="w-full whitespace-nowrap text-[13px]">
               <thead>
-                <tr className="label border-b border-bone/8 text-left">
+                <tr className="label border-b border-line text-left">
                   <th className="py-3 pl-5 pr-2 font-normal">{t("pool.col.pool")}</th>
                   <th className="px-2 py-3 text-right font-normal">{t("trade.col.price")}</th>
                   <th className="hidden px-2 py-3 text-right font-normal md:table-cell">{t("trade.col.volume")}</th>
@@ -139,34 +140,34 @@ export default function PoolPage() {
                     <tr
                       key={item.meme}
                       onClick={() => router.push(href)}
-                      className="cursor-pointer border-b border-bone/6 transition-colors duration-fast last:border-0 hover:bg-bone/[0.03]"
+                      className="cursor-pointer border-b border-line transition-colors duration-fast last:border-0 hover:bg-raised"
                     >
                       <td className="py-3 pl-5 pr-2">
                         <span className="flex items-center gap-3">
                           <HashSeal hash={item.configHash} moduleBitmap={BigInt(item.moduleBitmap)} size={30} className="shrink-0" />
                           <span className="min-w-0">
                             <span className="block text-[14px] text-bone">
-                              {item.symbol} <span className="text-bone/30">/</span> {item.quoteSymbol}
+                              {item.symbol} <span className="text-faint">/</span> {item.quoteSymbol}
                             </span>
-                            <span className="block max-w-[200px] truncate text-[11px] text-bone/45">{item.name}</span>
+                            <span className="block max-w-[200px] truncate text-xs text-subtle">{item.name}</span>
                           </span>
                         </span>
                       </td>
                       <td className="num px-2 py-3 text-right">
-                        {m.lastPrice !== null && m.lastPrice > 0 ? formatPrice(m.lastPrice, locale) : <span className="text-bone/30">—</span>}
+                        {m.lastPrice !== null && m.lastPrice > 0 ? <Subscripted text={formatPrice(m.lastPrice, locale)} /> : <span className="text-faint">—</span>}
                       </td>
-                      <td className="num hidden px-2 py-3 text-right text-bone/80 md:table-cell">
+                      <td className="num hidden px-2 py-3 text-right text-bone md:table-cell">
                         {formatAmount(BigInt(m.volume24hQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
-                        <span className="ml-1 text-[11px] text-bone/40">{item.quoteSymbol}</span>
+                        <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
                       </td>
-                      <td className="num hidden px-2 py-3 text-right text-bone/70 lg:table-cell">
+                      <td className="num hidden px-2 py-3 text-right text-muted lg:table-cell">
                         {item.curve ? `${(item.curve.totalFeeBps / 100).toFixed(2)}%` : "—"}
                       </td>
                       <td className="py-3 pl-2 pr-5 text-right">
                         <Link
                           href={href}
                           onClick={(e) => e.stopPropagation()}
-                          className="rounded-full border border-flare/40 px-3 py-1.5 text-[12px] text-flare transition-colors duration-fast hover:bg-flare/10"
+                          className="rounded-full bg-raised px-3.5 py-1.5 text-[13px] font-medium text-bone transition-colors duration-fast hover:bg-flare/10 hover:text-flare"
                         >
                           {t("pool.lp.add")}
                         </Link>

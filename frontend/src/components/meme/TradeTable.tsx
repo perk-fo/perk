@@ -16,6 +16,7 @@ import {
 import { Pill } from "@/components/ui/Pill";
 import { useNow } from "@/lib/hooks";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 const PAGE = 20;
 /** Trades and holders share this fixed height (side by side, always equal); rows scroll inside. */
@@ -81,10 +82,10 @@ export function TradeTable({
         </header>
         <div>
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="flex items-center gap-3 border-t border-bone/8 py-3">
-              <div className="h-2 w-16 rounded-full border border-bone/10" />
-              <div className="h-2 w-10 rounded-full border border-bone/10" />
-              <div className="ml-auto h-2 w-24 rounded-full border border-bone/10" />
+            <div key={i} className="flex items-center gap-3 border-t border-line py-3">
+              <div className="h-2 w-16 rounded-full border border-line" />
+              <div className="h-2 w-10 rounded-full border border-line" />
+              <div className="ml-auto h-2 w-24 rounded-full border border-line" />
             </div>
           ))}
         </div>
@@ -96,10 +97,10 @@ export function TradeTable({
     <section className={`panel flex flex-col p-6 ${LIST_PANEL_H}`}>
       <header className="mb-4 flex items-baseline justify-between gap-3">
         <h2 className="label">{t("meme.trades.title")}</h2>
-        <span className="num text-xs text-bone/50">{formatNumber(trades.length, locale)}</span>
+        <span className="num text-xs text-subtle">{formatNumber(trades.length, locale)}</span>
       </header>
       {rows.length === 0 ? (
-        <p className="text-sm text-bone/50">
+        <p className="text-sm text-subtle">
           {t("meme.trades.empty")} {t("meme.trades.emptyHint")}
         </p>
       ) : (
@@ -129,7 +130,7 @@ export function TradeTable({
                 return (
                   <tr
                     key={tr.id}
-                    className={`border-t border-bone/8 hover:bg-bone/[0.03] ${fresh.has(tr.id) ? "fade-in" : ""}`}
+                    className={`border-t border-line hover:bg-raised ${fresh.has(tr.id) ? "fade-in" : ""}`}
                   >
                     <td className="py-3 pr-3 align-middle">
                       <a
@@ -137,13 +138,13 @@ export function TradeTable({
                         target="_blank"
                         rel="noreferrer"
                         title={`${formatDate(tr.timestamp, locale)} · ${t("meme.trades.tx")} ${shortAddress(tr.txHash)}`}
-                        className="num text-bone/70 underline decoration-dotted decoration-bone/25 underline-offset-4 hover:text-flare hover:decoration-flare"
+                        className="num text-muted underline decoration-dotted decoration-line-strong underline-offset-4 hover:text-flare hover:decoration-flare"
                       >
                         {formatRelativeTime(tr.timestamp, now, t)}
                       </a>
                     </td>
                     <td className="px-2 py-3 align-middle">
-                      <Pill tone={tr.side === "buy" ? "flare" : "rose"}>
+                      <Pill tone={tr.side === "buy" ? "verdigris" : "rose"}>
                         {tr.side === "buy" ? t("meme.trade.buy") : t("meme.trade.sell")}
                       </Pill>
                     </td>
@@ -154,9 +155,9 @@ export function TradeTable({
                       {formatAmount(tr.memeAmount, memeDecimals, { locale, maxFrac: 2 })}
                     </td>
                     <td className="num px-2 py-3 text-right align-middle">
-                      {formatPrice(price, locale)}
+                      <Subscripted text={formatPrice(price, locale)} />
                     </td>
-                    <td className={`num py-3 pl-2 text-right align-middle ${isMine ? "text-flare" : "text-bone/70"}`}>
+                    <td className={`mono py-3 pl-2 text-right align-middle text-[12.5px] ${isMine ? "text-flare" : "text-muted"}`}>
                       {tr.walletIsRouter
                         ? t("meme.trades.router")
                         : shortAddress(tr.wallet)}

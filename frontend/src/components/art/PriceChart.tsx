@@ -5,9 +5,10 @@
  * Candles are right-aligned (latest at the right edge) in a fixed number of slots, so a young market shows a few
  * candles at their true width instead of stretching them across the chart.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice } from "@/lib/format";
 import { buildCandles, candleChange, pickBucket, type TradePoint } from "@/lib/candles";
+import { Subscripted, SvgSubscripted } from "@/components/ui/Subscripted";
 
 export type { TradePoint, Candle } from "@/lib/candles";
 
@@ -52,6 +53,20 @@ export function PriceChart({
 }) {
   const [range, setRange] = useState<RangeKey>("all");
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  // Draw at the container's real width. A fixed 720-wide viewBox scaled into a ~560px column shrank every axis
+  // label to 7-9px; at 1:1 the labels are the size they say they are.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(720);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = Math.round(entry.contentRect.width);
+      if (w > 0) setW(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const def = RANGES.find((r) => r.key === range)!;
 
   const { candles, bucket, slots } = useMemo(() => {
@@ -65,9 +80,8 @@ export function PriceChart({
     return { candles: cs, bucket: def.bucket as number, slots: def.seconds / def.bucket + 1 };
   }, [trades, def, now]);
 
-  const W = 720;
-  const padL = 8,
-    padR = 64,
+  const padL = 4,
+    padR = 76,
     padT = 12,
     volH = 40,
     gap = 10,
@@ -85,8 +99,10 @@ export function PriceChart({
   const offset = slots - n; // right-align: latest candle sits in the last slot
   const bodyW = Math.max(1.5, Math.min(12, slot * 0.64));
   const x = (i: number) => padL + (offset + i) * slot + slot / 2;
-  const up = "rgb(var(--c-flare))";
+  // market direction has its own colours; the brand lime means "act", not "went up"
+  const up = "rgb(var(--c-verdigris))";
   const down = "rgb(var(--c-rose))";
+  const axis = "rgb(var(--c-subtle))";
   const last = candles[n - 1];
   const change = candleChange(candles);
   const active = hoverIdx !== null ? candles[hoverIdx] : last;
@@ -106,26 +122,27 @@ export function PriceChart({
   const span = n > 0 ? candles[n - 1].t - candles[0].t : 0;
 
   return (
-    <div className="w-full">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-baseline gap-3">
-          <span className="font-display num text-3xl leading-none">{active ? formatPrice(active.c) : "—"}</span>
+    <div className="w-full" ref={wrapRef}>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-baseline gap-2.5">
+          <span className="font-display num text-3xl leading-none">{active ? <Subscripted text={formatPrice(active.c)} /> : "—"}</span>
           <span className="label">{quoteSymbol}</span>
           {last && (
-            <span className={`num text-sm ${change >= 0 ? "text-flare" : "text-rose"}`}>
+            <span className={`num text-sm font-medium ${change >= 0 ? "text-verdigris" : "text-rose"}`}>
               {change >= 0 ? "+" : ""}
               {change.toFixed(2)}%
             </span>
           )}
         </div>
-        <div className="flex gap-1 rounded-full border border-bone/10 p-0.5">
+        <div className="flex gap-0.5 rounded-full bg-raised p-1">
           {RANGES.map((r) => (
             <button
               key={r.key}
               type="button"
+              aria-pressed={range === r.key}
               onClick={() => setRange(r.key)}
-              className={`num rounded-full px-2.5 py-0.5 text-[11px] transition-colors duration-fast ${
-                range === r.key ? "bg-bone/10 text-bone" : "text-bone/50 hover:text-bone"
+              className={`num rounded-full px-2.5 py-0.5 text-xs transition-colors duration-fast ${
+                range === r.key ? "bg-knob font-medium text-bone shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
               }`}
             >
               {labels.ranges[r.key]}
@@ -135,7 +152,7 @@ export function PriceChart({
       </div>
       {!hasTrades ? (
         <div
-          className="flex items-center justify-center rounded-panel border border-dashed border-bone/10 text-sm text-bone/40"
+          className="flex items-center justify-center rounded-xl border border-dashed border-line text-sm text-subtle"
           style={{ height }}
         >
           {everTraded ? (labels.emptyRange ?? labels.empty) : labels.empty}
@@ -160,9 +177,9 @@ export function PriceChart({
             const y = yP(p);
             return (
               <g key={f}>
-                <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="currentColor" strokeOpacity="0.07" />
-                <text x={W - padR + 8} y={y + 3.5} fontSize="10" fill="currentColor" fillOpacity="0.45" className="num">
-                  {formatPrice(p)}
+                <line x1={padL} x2={W - padR} y1={y} y2={y} stroke="rgb(var(--c-line))" />
+                <text x={W - padR + 10} y={y + 4} fontSize="11.5" fill={axis} className="num">
+                  <SvgSubscripted text={formatPrice(p)} />
                 </text>
               </g>
             );
@@ -175,7 +192,7 @@ export function PriceChart({
               y1={yP(last.c)}
               y2={yP(last.c)}
               stroke={last.c >= last.o ? up : down}
-              strokeOpacity="0.45"
+              strokeOpacity="0.55"
               strokeDasharray="2 4"
             />
           )}
@@ -190,8 +207,8 @@ export function PriceChart({
                   x2={x(i) + bodyW / 2}
                   y1={yP(c.c)}
                   y2={yP(c.c)}
-                  stroke="currentColor"
-                  strokeOpacity={0.22 * dim}
+                  stroke="rgb(var(--c-faint))"
+                  strokeOpacity={0.7 * dim}
                   strokeWidth="1"
                 />
               );
@@ -228,14 +245,14 @@ export function PriceChart({
             </g>
           ))}
           {/* volume strip: total muted, buy share in flare */}
-          <text x={W - padR + 8} y={volTop + volH} fontSize="9.5" fill="currentColor" fillOpacity="0.4" className="num">
+          <text x={W - padR + 10} y={volTop + volH} fontSize="11" fill={axis} className="num">
             {labels.volume} {quoteSymbol}
           </text>
           {candles.map((c, i) =>
             c.v > 0 ? (
               <g key={`v${c.t}`}>
-                <rect x={x(i) - bodyW / 2} y={yV(c.v)} width={bodyW} height={yV(0) - yV(c.v)} fill="currentColor" fillOpacity="0.18" />
-                <rect x={x(i) - bodyW / 2} y={yV(c.buys)} width={bodyW} height={yV(0) - yV(c.buys)} fill={up} fillOpacity="0.55" />
+                <rect x={x(i) - bodyW / 2} y={yV(c.v)} width={bodyW} height={yV(0) - yV(c.v)} fill="rgb(var(--c-line-strong))" />
+                <rect x={x(i) - bodyW / 2} y={yV(c.buys)} width={bodyW} height={yV(0) - yV(c.buys)} fill={up} fillOpacity="0.6" />
               </g>
             ) : null,
           )}
@@ -244,10 +261,9 @@ export function PriceChart({
             <text
               key={`t${i}`}
               x={x(i)}
-              y={height - 5}
-              fontSize="10"
-              fill="currentColor"
-              fillOpacity="0.45"
+              y={height - 4}
+              fontSize="11.5"
+              fill={axis}
               textAnchor={i === n - 1 ? "end" : "middle"}
               className="num"
             >
@@ -257,19 +273,19 @@ export function PriceChart({
           {/* crosshair */}
           {hoverIdx !== null && active && (
             <g>
-              <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={padT} y2={volTop + volH} stroke="currentColor" strokeOpacity="0.25" strokeDasharray="2 3" />
-              <rect x={Math.min(x(hoverIdx) + 8, W - padR - 190)} y={padT} width="182" height="58" rx="10" fill="rgb(var(--c-surface))" stroke="currentColor" strokeOpacity="0.12" />
-              <text x={Math.min(x(hoverIdx) + 16, W - padR - 182)} y={padT + 16} fontSize="10" fill="currentColor" fillOpacity="0.55" className="num">
+              <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={padT} y2={volTop + volH} stroke="rgb(var(--c-line-strong))" strokeDasharray="2 3" />
+              <rect x={Math.min(x(hoverIdx) + 8, W - padR - 206)} y={padT} width="198" height="64" rx="10" fill="rgb(var(--c-raised))" stroke="rgb(var(--c-line-strong))" />
+              <text x={Math.min(x(hoverIdx) + 18, W - padR - 196)} y={padT + 18} fontSize="11.5" fill={axis} className="num">
                 {new Date(active.t * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                 {active.n > 0 ? ` · ${active.n}` : ""}
                 {active.myBuys > 0 && labels.myBuy ? ` · ${labels.myBuy}` : ""}
                 {active.mySells > 0 && labels.mySell ? ` · ${labels.mySell}` : ""}
               </text>
-              <text x={Math.min(x(hoverIdx) + 16, W - padR - 182)} y={padT + 32} fontSize="11" fill="currentColor" className="num">
-                O {formatPrice(active.o)}  C {formatPrice(active.c)}
+              <text x={Math.min(x(hoverIdx) + 18, W - padR - 196)} y={padT + 36} fontSize="12" fill="currentColor" className="num">
+                <SvgSubscripted text={`O ${formatPrice(active.o)}  C ${formatPrice(active.c)}`} />
               </text>
-              <text x={Math.min(x(hoverIdx) + 16, W - padR - 182)} y={padT + 48} fontSize="11" fill="currentColor" className="num">
-                H {formatPrice(active.h)}  L {formatPrice(active.l)}  V {active.v.toFixed(4)}
+              <text x={Math.min(x(hoverIdx) + 18, W - padR - 196)} y={padT + 53} fontSize="12" fill="currentColor" className="num">
+                <SvgSubscripted text={`H ${formatPrice(active.h)}  L ${formatPrice(active.l)}  V ${active.v.toFixed(4)}`} />
               </text>
             </g>
           )}

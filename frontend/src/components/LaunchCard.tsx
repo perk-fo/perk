@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Kv } from "@/components/ui/Kv";
 import { formatAmount, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { Subscripted } from "@/components/ui/Subscripted";
 
 /** Gallery card for one launch (home "trending", "my launches"): seal, name, status, curve or pool summary. */
 export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string }) {
@@ -33,18 +34,18 @@ export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string 
         <HashSeal hash={item.configHash} moduleBitmap={BigInt(item.moduleBitmap)} size={56} className="shrink-0" hover={hover} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-display text-xl leading-tight">{item.name || "…"}</div>
-          <div className="num mt-0.5 text-xs text-bone/50">{item.symbol}</div>
+          <div className="num mt-0.5 text-xs text-subtle">{item.symbol}</div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             <Pill tone="muted">{symbol}</Pill>
             <Pill tone={pill.tone}>{pill.label}</Pill>
             {item.lpGrantEnabled && <Pill tone="muted">LP Grant</Pill>}
           </div>
         </div>
-        <div className="num shrink-0 text-right text-[12px] leading-tight text-bone/60">
+        <div className="num shrink-0 text-right text-[13px] leading-tight text-muted">
           {price !== null && price > 0 ? (
             <>
-              <div className="text-bone">{formatPrice(price, locale)}</div>
-              <div className="mt-0.5 text-[11px]">{symbol}</div>
+              <div className="text-bone"><Subscripted text={formatPrice(price, locale)} /></div>
+              <div className="mt-0.5 text-xs">{symbol}</div>
             </>
           ) : null}
         </div>

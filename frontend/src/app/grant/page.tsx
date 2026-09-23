@@ -76,10 +76,10 @@ export default function GrantHubPage() {
     <div className="space-y-8">
       <header>
         <h1 className="font-display text-4xl leading-none">{t("nav.grant")}</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-bone/60">{t("grant.hub.sub")}</p>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-bone/45">
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">{t("grant.hub.sub")}</p>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-subtle">
           {t("grant.hub.vsPool")}{" "}
-          <Link href="/pool" className="text-bone/70 underline decoration-dotted underline-offset-4 hover:text-bone">
+          <Link href="/pool" className="text-muted underline decoration-dotted underline-offset-4 hover:text-bone">
             {t("grant.hub.toPool")} →
           </Link>
         </p>
@@ -105,11 +105,11 @@ export default function GrantHubPage() {
             <section key={g}>
               <div className="mb-3 flex items-baseline gap-3">
                 <h2 className="label">{t(`grant.hub.group.${g}`)}</h2>
-                <span className="num text-xs text-bone/40">{list.length}</span>
+                <span className="num text-xs text-subtle">{list.length}</span>
               </div>
-              <p className="mb-4 text-xs text-bone/45">{t(`grant.hub.group.${g}Hint`)}</p>
+              <p className="mb-4 text-xs text-subtle">{t(`grant.hub.group.${g}Hint`)}</p>
               {list.length === 0 ? (
-                <Panel className="py-8 text-center text-sm text-bone/50">{t("grant.hub.noneActive")}</Panel>
+                <Panel className="py-8 text-center text-sm text-subtle">{t("grant.hub.noneActive")}</Panel>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {list.map((r) => (
@@ -151,16 +151,17 @@ function CampaignCard({ row, group, claimable }: { row: Row; group: Group; claim
       <div className="flex items-start gap-3">
         <HashSeal hash={launch.configHash} moduleBitmap={BigInt(launch.moduleBitmap)} size={44} className="shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-lg leading-tight">{launch.name}</div>
-          <div className="num mt-0.5 text-xs text-bone/45">
+          {/* two lines before truncating: next to a long status pill one line held about eight characters */}
+          <div className="line-clamp-2 break-words font-display text-lg leading-tight">{launch.name}</div>
+          <div className="num mt-0.5 text-xs text-subtle">
             {launch.symbol} / {launch.quoteSymbol}
           </div>
         </div>
         <Pill tone={pill.tone}>{pill.label}</Pill>
       </div>
-      <p className="num mt-4 text-[13px] text-bone/70">{detail}</p>
+      <p className="num mt-4 text-[13px] text-muted">{detail}</p>
       {campaign && (
-        <p className="num mt-1 text-[12px] text-bone/45">
+        <p className="num mt-1 text-[13px] text-subtle">
           {t("grant.hub.positions", { n: campaign.activePositions })}
         </p>
       )}
@@ -171,7 +172,7 @@ function CampaignCard({ row, group, claimable }: { row: Row; group: Group; claim
               {t("grant.hub.myClaimable", { amount: formatAmount(claimable, launch.decimals, { locale, maxFrac: 0 }), symbol: launch.symbol })}
             </p>
           ) : (
-            <p className="text-sm text-bone/40">{t("grant.hub.notEligible")}</p>
+            <p className="text-sm text-subtle">{t("grant.hub.notEligible")}</p>
           )
         ) : null}
       </div>

@@ -35,14 +35,14 @@ export function TxToasts() {
         // cancelling in the wallet is a choice, not a failure: grey, not red
         const cancelled = failed && isUserRejection(a.error);
         return (
-          <div key={a.id} className="panel pointer-events-auto fade-up p-4 shadow-2xl">
+          <div key={a.id} className="popover pointer-events-auto fade-up p-4">
             <div className="flex items-start gap-3">
-              <span className={`mt-0.5 ${done ? "text-verdigris" : cancelled ? "text-bone/50" : failed ? "text-rose" : "text-flare"}`}>
+              <span className={`mt-0.5 ${done ? "text-verdigris" : cancelled ? "text-subtle" : failed ? "text-rose" : "text-flare"}`}>
                 {done ? "✓" : failed ? "✕" : <Spinner size={16} />}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-bone">{t(a.label.key, a.label.vars)}</p>
-                <p className={`mt-0.5 text-[12px] ${failed && !cancelled ? "text-rose" : "text-bone/60"}`}>
+                <p className={`mt-0.5 text-[13px] ${failed && !cancelled ? "text-rose" : "text-muted"}`}>
                   {failed ? decodeErrorMessage(a.error, t) : t(`tx.phase.${a.phase}`)}
                 </p>
                 {a.hash && (
@@ -50,7 +50,7 @@ export function TxToasts() {
                     href={explorerTxUrl(DEFAULT_CHAIN.id, a.hash)}
                     target="_blank"
                     rel="noreferrer"
-                    className="num mt-1 inline-block text-[11px] text-bone/50 underline decoration-dotted underline-offset-4 hover:text-flare"
+                    className="mono mt-1 inline-block text-xs text-subtle underline decoration-dotted underline-offset-4 hover:text-flare"
                   >
                     {shortHash(a.hash)} ↗
                   </a>
@@ -59,7 +59,7 @@ export function TxToasts() {
               <button
                 type="button"
                 onClick={() => txActivity.dismiss(a.id)}
-                className="text-bone/35 hover:text-bone"
+                className="text-faint hover:text-bone"
                 aria-label={t("tx.dismiss")}
               >
                 ×
@@ -71,7 +71,7 @@ export function TxToasts() {
                   <span
                     key={s}
                     className={`h-1 rounded-full ${
-                      i < step || done ? "bg-verdigris/80" : i === step ? "tx-step-active bg-flare" : "bg-bone/10"
+                      i < step || done ? "bg-verdigris/80" : i === step ? "tx-step-active bg-flare" : "bg-raised"
                     }`}
                   />
                 ))}

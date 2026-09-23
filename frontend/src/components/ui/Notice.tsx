@@ -12,12 +12,11 @@ export function Notice({
   children: ReactNode;
   className?: string;
 }) {
-  const border = tone === "amber" ? "border-amber" : "border-rose";
-  const bg = tone === "amber" ? "bg-amber/10" : "bg-rose/10";
+  const box = tone === "amber" ? "border-amber/25 bg-amber/[0.07]" : "border-rose/25 bg-rose/[0.07]";
   return (
-    <div className={`rounded-r-[10px] border-l-2 ${border} ${bg} px-3.5 py-2.5 text-sm leading-relaxed text-bone/85 ${className ?? ""}`}>
+    <div className={`rounded-xl border ${box} px-4 py-3 text-sm leading-relaxed text-bone ${className ?? ""}`}>
       {title !== undefined && (
-        <p className={`label-en mb-1 ${tone === "amber" ? "text-amber" : "text-rose"}`}>{title}</p>
+        <p className={`mb-1 text-[13px] font-medium ${tone === "amber" ? "text-amber" : "text-rose"}`}>{title}</p>
       )}
       {children}
     </div>
