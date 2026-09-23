@@ -27,6 +27,7 @@ import { ImageDrop, imageProblem } from "@/components/ImageDrop";
 import { Spinner } from "@/components/ui/Spinner";
 import { buildMetadata, DESCRIPTION_MAX, normalizeLink, uploadImage, uploadMetadata, type MediaUpload, type TokenLinks } from "@/lib/media";
 import { useT } from "@/i18n/provider";
+import { usePauseFlags } from "@/lib/pause";
 
 function randomSalt(): Hex {
   const bytes = new Uint8Array(32);
@@ -167,6 +168,7 @@ export default function CreatePage() {
   const approved =
     !needsApprove || (allowance.data !== undefined && devBuyQuote !== null && allowance.data >= devBuyQuote);
 
+  const pause = usePauseFlags();
   const canSubmit =
     !!deployment &&
     isConnected &&
@@ -175,6 +177,7 @@ export default function CreatePage() {
     image.status === "done" &&
     launchStep === "idle" &&
     devBuyQuote !== null &&
+    !pause.isPaused("launch") &&
     approved &&
     !createTx.isPending &&
     !createTx.isConfirming;
@@ -435,6 +438,8 @@ export default function CreatePage() {
                     <Spinner size={14} />
                     {t(launchStep === "uploading" ? "launch.step.uploading" : "launch.step.previewing")}
                   </span>
+                ) : pause.isPaused("launch") ? (
+                  t("pause.cta.launch")
                 ) : (
                   t("create.submit.cta")
                 )}

@@ -19,7 +19,8 @@ import {HolderRewardDistributor} from "../../src/rewards/HolderRewardDistributor
 import {FeeRouter} from "../../src/fees/FeeRouter.sol";
 import {BondingCurve} from "../../src/curve/BondingCurve.sol";
 import {PerkComposableHookV1} from "../../src/hook/PerkComposableHookV1.sol";
-import {GraduationManager} from "../../src/graduation/GraduationManager.sol";
+import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManager.sol";
+import {GraduationDeployer} from "./GraduationDeployer.sol";
 import {InitialLpLocker} from "../../src/graduation/InitialLpLocker.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
 import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
@@ -29,8 +30,10 @@ import {PosmDeployer} from "./PosmDeployer.sol";
 import {MockERC20} from "./MockERC20.sol";
 
 /// @dev Deploys and wires the full V1 topology for tests (and later scripts).
-abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer {
+abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer, GraduationDeployer {
     uint256 internal constant DEFAULT_TIMELOCK = 7 days;
+    /// @dev Graduation rescue delay used by every test topology.
+    uint64 internal constant RESCUE_DELAY = 3 days;
 
     struct Topology {
         address owner;
@@ -45,7 +48,7 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer {
         BondingCurve curve;
         PerkComposableHookV1 hook;
         address graduationManager;
-        GraduationManager graduation;
+        IPerkGraduationManager graduation;
         InitialLpLocker locker;
         IPositionManager positionManager;
         IAllowanceTransfer permit2;
@@ -103,7 +106,7 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer {
 
         (t.positionManager, t.permit2) = deployPosm(IPoolManager(poolManager_));
         t.locker = new InitialLpLocker(address(t.positionManager), address(t.treasury));
-        t.graduation = new GraduationManager(
+        t.graduation = deployGraduation(
             owner,
             address(t.factory),
             address(t.curve),
@@ -111,7 +114,8 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer {
             poolManager_,
             address(t.positionManager),
             address(t.templateRegistry),
-            address(t.locker)
+            address(t.locker),
+            RESCUE_DELAY
         );
         t.graduationManager = address(t.graduation);
         t.vault = deployVault(

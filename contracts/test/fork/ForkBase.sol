@@ -24,7 +24,6 @@ import {CommunityTreasury} from "../../src/treasury/CommunityTreasury.sol";
 import {HolderRewardDistributor} from "../../src/rewards/HolderRewardDistributor.sol";
 import {FeeRouter} from "../../src/fees/FeeRouter.sol";
 import {BondingCurve} from "../../src/curve/BondingCurve.sol";
-import {GraduationManager} from "../../src/graduation/GraduationManager.sol";
 import {InitialLpLocker} from "../../src/graduation/InitialLpLocker.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
 import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
@@ -110,7 +109,7 @@ abstract contract ForkBase is PerkDeployer {
         topo.referral = new ReferralRegistry();
 
         topo.locker = new InitialLpLocker(address(topo.positionManager), address(topo.treasury));
-        topo.graduation = new GraduationManager(
+        topo.graduation = deployGraduation(
             owner,
             address(topo.factory),
             address(topo.curve),
@@ -118,7 +117,8 @@ abstract contract ForkBase is PerkDeployer {
             topo.poolManager,
             address(topo.positionManager),
             address(topo.templateRegistry),
-            address(topo.locker)
+            address(topo.locker),
+            3 days
         );
         topo.graduationManager = address(topo.graduation);
         topo.vault = deployVault(

@@ -28,7 +28,7 @@ export const CANDLE_SECONDS: Record<CandleInterval, number> = {
 const INTERVALS = new Set<string>(Object.keys(CANDLE_SECONDS));
 
 /**
- * GET /v1/launches?status=1,2,3&quote=0x..&creator=0x..&sort=newest|volume|progress|trades&limit=50&offset=0
+ * GET /v1/launches?status=1,2,3,4&quote=0x..&creator=0x..&sort=newest|volume|progress|trades&limit=50&offset=0
  *   → { launches: LaunchSummary[], total } — max-age 5.
  * GET /v1/launches/:meme → LaunchDetail (404 if unknown) — max-age 3.
  * GET /v1/launches/:meme/trades?limit=50&before=<block>:<logIndex> → TradesPage (newest first) — max-age 3.
@@ -45,7 +45,7 @@ export function launchRoutes(): Hono<AppEnv> {
     const { db, config } = c.get("deps");
     const limit = intParam(c.req.query("limit"), 50, 1, 200, "limit");
     const offset = intParam(c.req.query("offset"), 0, 0, 100_000, "offset");
-    const statuses = parseStatusList(c.req.query("status"), 0, 3);
+    const statuses = parseStatusList(c.req.query("status"), 0, 4);
     const quoteRaw = c.req.query("quote");
     const creatorRaw = c.req.query("creator");
     const quote = quoteRaw ? addressParam(quoteRaw, "quote") : undefined;

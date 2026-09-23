@@ -141,6 +141,8 @@ interface IPerkLPGrantVault {
     event GrantFinalized(address indexed meme, uint256 unactivatedMemeBurned);
     event IncentiveSwept(address indexed meme, uint256 toTreasury);
     event Wired(address indexed graduationManager);
+    /// @notice The grant publisher changed: the one address besides the owner that may propose or cancel roots.
+    event PublisherUpdated(address indexed previous, address indexed current);
 
     error NotGraduationManager();
     error NotPublisher();
@@ -174,6 +176,10 @@ interface IPerkLPGrantVault {
     // ---- wiring ----
     /// @notice One-time wiring of the GraduationManager (owner only).
     function wire(address graduationManager) external;
+    /// @notice Owner only. Appoints the grant publisher: an automated key that may propose and cancel roots and do
+    ///         nothing else, so the owner key never has to sit on a server. Zero leaves publishing to the owner.
+    function setPublisher(address publisher) external;
+    function publisher() external view returns (address);
     function config() external view returns (Config memory);
     function graduationManager() external view returns (address);
 
@@ -181,9 +187,11 @@ interface IPerkLPGrantVault {
     /// @notice GraduationManager only, at the DONE stage of a grant-enabled launch.
     function initCampaign(address meme, PoolKey calldata key, bool memeIsCurrency0, int24 tickLower, int24 tickUpper)
         external;
-    /// @notice Publisher only. Starts the public recomputation window (ADR-008).
+    /// @notice Publisher or owner. Starts the public recomputation window (ADR-008), during which the owner can
+    ///         still cancel a root the publisher got wrong.
     function proposeRoot(address meme, bytes32 root, string calldata uri, uint256 totalBase, uint256 totalInviteeBoost)
         external;
+    /// @notice Publisher or owner, while the root is still under review.
     function cancelRoot(address meme) external;
     /// @notice Anyone, after the delay. Sets t0 = now.
     function activateRoot(address meme) external;

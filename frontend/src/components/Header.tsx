@@ -14,6 +14,7 @@ import { Sparkle } from "@/components/art/Sparkle";
 import { CheckIcon, ChevronDownIcon, GlobeIcon, MoonIcon, SunIcon, SystemIcon } from "@/components/ui/Icon";
 import { SyncStatus } from "@/components/SyncStatus";
 import { AccountMenu } from "@/components/AccountMenu";
+import { useCoreAdmin } from "@/lib/admin";
 
 const THEME_KEY = "perk-theme";
 const PALETTE_KEY = "perk-palette";
@@ -248,6 +249,7 @@ export function Header() {
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
+  const coreAdmin = useCoreAdmin();
 
   const configured = DEFAULT_CHAIN;
   const configuredName = configured.testnet ? t("header.network.testnet") : configured.name;
@@ -262,6 +264,10 @@ export function Header() {
     { href: "/grant", label: t("nav.grant"), match: (p: string) => p.startsWith("/grant") },
     // launching is rare next to trading / LP: a plain entry, not a highlighted button
     { href: "/launch", label: t("nav.launch"), match: (p: string) => p.startsWith("/launch") },
+    // only the wallet that owns the contracts sees the admin entry (the page itself is open, read-only)
+    ...(coreAdmin.isCoreAdmin
+      ? [{ href: "/admin", label: t("nav.admin"), match: (p: string) => p.startsWith("/admin") }]
+      : []),
   ];
 
   useEffect(() => {

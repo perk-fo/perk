@@ -104,6 +104,10 @@ contract BondingCurve is IPerkBondingCurve, ReentrancyGuard {
         nonReentrant
         returns (uint256 memeOut, uint256 quoteUsed, uint256 quoteRefund)
     {
+        // emergency pause stops buying only; `sell` has no pause check, so holders can always exit
+        if (IPerkLaunchFactory(factory).isPaused(PerkConstants.PAUSE_BUY)) {
+            revert IPerkLaunchFactory.Paused(PerkConstants.PAUSE_BUY);
+        }
         CurveState storage st = _states[meme];
         _requireActive(st);
         if (quoteIn == 0) revert ZeroAmount();

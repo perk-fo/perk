@@ -17,7 +17,7 @@ import {HolderRewardDistributor} from "../src/rewards/HolderRewardDistributor.so
 import {FeeRouter} from "../src/fees/FeeRouter.sol";
 import {BondingCurve} from "../src/curve/BondingCurve.sol";
 import {PerkComposableHookV1} from "../src/hook/PerkComposableHookV1.sol";
-import {GraduationManager} from "../src/graduation/GraduationManager.sol";
+import {IPerkGraduationManager} from "../src/interfaces/IPerkGraduationManager.sol";
 import {InitialLpLocker} from "../src/graduation/InitialLpLocker.sol";
 import {MockERC20} from "../test/utils/MockERC20.sol";
 
@@ -54,7 +54,7 @@ contract DeployPerk is Script {
     FeeRouter public feeRouter;
     BondingCurve public curve;
     InitialLpLocker public locker;
-    GraduationManager public graduationManager;
+    IPerkGraduationManager public graduationManager;
     PerkComposableHookV1 public hook;
     bytes32 public hookSalt;
     ReferralRegistry public referralRegistry;
@@ -129,15 +129,23 @@ contract DeployPerk is Script {
         curve = new BondingCurve(address(factory), address(feeRouter));
 
         locker = new InitialLpLocker(positionManager, address(treasury));
-        graduationManager = new GraduationManager(
-            deployer,
-            address(factory),
-            address(curve),
-            address(feeRouter),
-            poolManager,
-            positionManager,
-            address(templateRegistry),
-            address(locker)
+        graduationManager = IPerkGraduationManager(
+            ArtifactDeployer.deploy(
+                vm,
+                "GraduationManager.sol:GraduationManager",
+                abi.encode(
+                    deployer,
+                    address(factory),
+                    address(curve),
+                    address(feeRouter),
+                    poolManager,
+                    positionManager,
+                    address(templateRegistry),
+                    address(locker),
+                    // delay between proposing and executing a rescue of a stuck graduation
+                    uint64(vm.envOr("GRAD_RESCUE_DELAY_SECONDS", uint256(3 days)))
+                )
+            )
         );
         referralRegistry = new ReferralRegistry();
         lpGrantVault = IPerkLPGrantVault(

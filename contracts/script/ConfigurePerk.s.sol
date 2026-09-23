@@ -13,7 +13,8 @@ import {AssetRegistry} from "../src/registry/AssetRegistry.sol";
 import {CommunityTreasury} from "../src/treasury/CommunityTreasury.sol";
 import {LaunchFactory} from "../src/factory/LaunchFactory.sol";
 import {FeeRouter} from "../src/fees/FeeRouter.sol";
-import {GraduationManager} from "../src/graduation/GraduationManager.sol";
+import {IPerkGraduationManager} from "../src/interfaces/IPerkGraduationManager.sol";
+import {IPerkLPGrantVault} from "../src/interfaces/IPerkLPGrantVault.sol";
 import {PerkConstants} from "../src/libraries/PerkConstants.sol";
 import {PerkTemplates} from "../src/libraries/PerkTemplates.sol";
 import {PerkTypes} from "../src/libraries/PerkTypes.sol";
@@ -41,15 +42,19 @@ contract ConfigurePerk is Script {
         CommunityTreasury treasury = CommunityTreasury(payable(vm.parseJsonAddress(json, ".treasury")));
         LaunchFactory factory = LaunchFactory(payable(vm.parseJsonAddress(json, ".factory")));
         FeeRouter feeRouter = FeeRouter(payable(vm.parseJsonAddress(json, ".feeRouter")));
-        GraduationManager graduationManager =
-            GraduationManager(payable(vm.parseJsonAddress(json, ".graduationManager")));
+        IPerkGraduationManager graduationManager =
+            IPerkGraduationManager(vm.parseJsonAddress(json, ".graduationManager"));
         Ownable2Step grantReserve = Ownable2Step(vm.parseJsonAddress(json, ".lpGrantVault"));
         address xdogToken = vm.parseJsonAddress(json, ".xdogToken");
+
+        // the grant publisher: an automated key that may propose and cancel grant roots and nothing else
+        address publisher = vm.envOr("GRANT_PUBLISHER", address(0));
 
         vm.startBroadcast(pk);
         _registerModules(moduleRegistry, xdogToken);
         _registerAssets(assetRegistry, xdogToken);
         _registerTemplates(templateRegistry);
+        if (publisher != address(0)) IPerkLPGrantVault(address(grantReserve)).setPublisher(publisher);
         _transferOwnerships(
             protocolOwner,
             moduleRegistry,
@@ -168,7 +173,7 @@ contract ConfigurePerk is Script {
         CommunityTreasury treasury,
         LaunchFactory factory,
         FeeRouter feeRouter,
-        GraduationManager graduationManager,
+        IPerkGraduationManager graduationManager,
         Ownable2Step grantReserve
     ) internal {
         Ownable2Step(address(templateRegistry)).transferOwnership(protocolOwner);

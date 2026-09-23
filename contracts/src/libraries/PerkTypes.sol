@@ -12,7 +12,10 @@ library PerkTypes {
         NONE,
         CURVE_ACTIVE,
         GRADUATION_PENDING,
-        GRADUATED
+        GRADUATED,
+        /// @dev Graduation never completed and the launch was rescued: holders redeem their tokens for their share
+        ///      of the launch's quote (GraduationManager.redeem).
+        REFUNDING
     }
 
     enum FeeSource {

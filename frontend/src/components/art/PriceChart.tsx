@@ -256,8 +256,11 @@ export function PriceChart({
               </g>
             ) : null,
           )}
-          {/* time axis */}
-          {ticks.map((i) => (
+          {/* time axis: at least 64px between labels, counted back from the latest, so a young market's few
+              candles do not stack their labels on top of one another */}
+          {ticks
+            .reduceRight<number[]>((kept, i) => (kept.length === 0 || x(kept[0]) - x(i) >= 64 ? [i, ...kept] : kept), [])
+            .map((i) => (
             <text
               key={`t${i}`}
               x={x(i)}

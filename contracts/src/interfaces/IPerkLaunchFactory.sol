@@ -33,6 +33,8 @@ interface IPerkLaunchFactory {
     );
     event LaunchStatusUpdated(address indexed meme, PerkTypes.LaunchStatus status, PoolId poolId);
     event DevBuyExecuted(address indexed meme, address indexed creator, uint256 quoteIn, uint256 memeOut);
+    /// @notice The emergency pause areas now in force (PerkConstants.PAUSE_*; zero means nothing is paused).
+    event PauseUpdated(uint256 flags);
 
     error ConfigHashMismatch(bytes32 expected, bytes32 actual);
     error TemplateNotActive();
@@ -45,6 +47,10 @@ interface IPerkLaunchFactory {
     error NativeAmountMismatch();
     error MemeAddressMismatch();
     error ZeroAddress();
+    /// @notice The action belongs to an emergency-paused area (PerkConstants.PAUSE_*). Shared by the curve, the
+    ///         graduation manager and the grant vault, which all read the factory's flags.
+    error Paused(uint256 area);
+    error UnknownPauseArea(uint256 flags);
 
     function previewLaunch(PerkTypes.CreateLaunchParams calldata params)
         external
@@ -74,8 +80,16 @@ interface IPerkLaunchFactory {
         uint256 totalSupply
     ) external view returns (address);
 
-    /// @notice Curve (-> GRADUATION_PENDING) or GraduationManager (-> GRADUATED) only.
+    /// @notice Curve (-> GRADUATION_PENDING) or GraduationManager (-> GRADUATED, or -> REFUNDING on a rescue) only.
     function setLaunchStatus(address meme, PerkTypes.LaunchStatus status, PoolId poolId) external;
+
+    /// @notice Owner (core admin) only. Sets the paused areas as a whole (PerkConstants.PAUSE_*, zero to resume).
+    ///         Only entry points can be paused; exits have no pause check at all.
+    function setPaused(uint256 flags) external;
+    /// @notice The paused areas, as PerkConstants.PAUSE_* bits.
+    function pausedFlags() external view returns (uint256);
+    /// @notice True when any bit of `area` is paused.
+    function isPaused(uint256 area) external view returns (bool);
 
     function getLaunch(address meme) external view returns (PerkTypes.LaunchRecord memory);
     function launchByLaunchId(bytes32 launchId) external view returns (address meme);

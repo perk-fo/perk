@@ -67,7 +67,7 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        vm.expectRevert(IPerkLPGrantVault.NotPublisher.selector);
         t.vault.proposeRoot(meme, root, "ipfs://dataset", _defaultTotalBase(), BOB_BOOST);
 
         vm.expectRevert(IPerkLPGrantVault.RootBudgetExceeded.selector);

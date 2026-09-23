@@ -37,10 +37,6 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
 
-    error AlreadyWired();
-    error LeftoverPolicyNotImplemented();
-    error ZeroAddress();
-
     /// @inheritdoc IPerkGraduationManager
     address public immutable override factory;
     /// @inheritdoc IPerkGraduationManager
@@ -58,6 +54,11 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
     IAllowanceTransfer internal immutable PERMIT2;
 
     /// @inheritdoc IPerkGraduationManager
+    uint64 public immutable override rescueDelay;
+    /// @dev A rescue can never be executed sooner than this after it is proposed, whatever the deployment says.
+    uint64 internal constant MIN_RESCUE_DELAY = 1 hours;
+
+    /// @inheritdoc IPerkGraduationManager
     address public override hook;
 
     mapping(address meme => Graduation) private _graduations;
@@ -71,6 +72,7 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
     /// @param positionManager_ Uniswap v4 PositionManager used to mint locked LP.
     /// @param templateRegistry_ Template registry (tick range, leftover policy, fees).
     /// @param initialLpLocker_ Recipient of the locked position NFTs.
+    /// @param rescueDelay_ Delay between proposing and executing a rescue (at least MIN_RESCUE_DELAY).
     constructor(
         address owner_,
         address factory_,
@@ -79,7 +81,8 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         address poolManager_,
         address positionManager_,
         address templateRegistry_,
-        address initialLpLocker_
+        address initialLpLocker_,
+        uint64 rescueDelay_
     ) Ownable(_nonZero(owner_)) {
         if (
             factory_ == address(0) || curve_ == address(0) || feeRouter_ == address(0) || poolManager_ == address(0)
@@ -95,6 +98,8 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         templateRegistry = templateRegistry_;
         initialLpLocker = initialLpLocker_;
         PERMIT2 = Permit2Forwarder(positionManager_).permit2();
+        if (rescueDelay_ < MIN_RESCUE_DELAY) revert RescueDelayTooShort();
+        rescueDelay = rescueDelay_;
     }
 
     /// @notice Accepts native quote transferred by the curve and fee router at FUNDED.
@@ -123,6 +128,9 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
 
     /// @inheritdoc IPerkGraduationManager
     function graduate(address meme) external nonReentrant {
+        if (IPerkLaunchFactory(factory).isPaused(PerkConstants.PAUSE_GRADUATION)) {
+            revert IPerkLaunchFactory.Paused(PerkConstants.PAUSE_GRADUATION);
+        }
         PerkTypes.LaunchRecord memory rec = IPerkLaunchFactory(factory).getLaunch(meme);
         if (rec.status != PerkTypes.LaunchStatus.GRADUATION_PENDING) revert NotGraduationPending();
 
@@ -404,6 +412,12 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
 
         IPerkLaunchFactory(factory).setLaunchStatus(meme, PerkTypes.LaunchStatus.GRADUATED, g.poolId);
         g.stage = Stage.DONE;
+        if (g.rescueExecutableAt != 0) {
+            // it graduated during the rescue delay: the rescue no longer applies
+            g.rescueExecutableAt = 0;
+            // forge-lint: disable-next-line(reentrancy-events)
+            emit RescueCancelled(meme);
+        }
         if (tmpl.grant.enabled && lpGrantVault != address(0)) {
             IPerkLPGrantVault(lpGrantVault)
                 .initCampaign(meme, g.key, !(rec.quote == g.key.currency0), tmpl.pool.tickLower, tmpl.pool.tickUpper);
@@ -433,6 +447,104 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
             IERC20(Currency.unwrap(quote)).forceApprove(treasury, quoteDust);
             IPerkCommunityTreasury(treasury).deposit(quote, quoteDust, launchId);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Rescue: a launch stuck before its liquidity was added
+    // ---------------------------------------------------------------------
+
+    /// @inheritdoc IPerkGraduationManager
+    function proposeRescue(address meme) external onlyOwner {
+        if (IPerkLaunchFactory(factory).getLaunch(meme).status != PerkTypes.LaunchStatus.GRADUATION_PENDING) {
+            revert NotGraduationPending();
+        }
+        Graduation storage g = _graduations[meme];
+        if (!_rescuable(g.stage)) revert NotRescuable(g.stage);
+        if (g.rescueExecutableAt != 0) revert RescueAlreadyProposed();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint64 at = uint64(block.timestamp) + rescueDelay;
+        g.rescueExecutableAt = at;
+        emit RescueProposed(meme, at);
+    }
+
+    /// @inheritdoc IPerkGraduationManager
+    function cancelRescue(address meme) external onlyOwner {
+        Graduation storage g = _graduations[meme];
+        if (g.rescueExecutableAt == 0) revert RescueNotProposed();
+        if (g.stage == Stage.REFUNDING) revert NotRescuable(g.stage);
+        g.rescueExecutableAt = 0;
+        emit RescueCancelled(meme);
+    }
+
+    /// @inheritdoc IPerkGraduationManager
+    /// @dev Permissionless: the owner decided when proposing, the delay let everyone see it coming, and the money
+    ///      can only go back to holders.
+    function executeRescue(address meme) external nonReentrant {
+        Graduation storage g = _graduations[meme];
+        uint64 at = g.rescueExecutableAt;
+        if (at == 0) revert RescueNotProposed();
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < at) revert RescueNotReady(at);
+        if (IPerkLaunchFactory(factory).getLaunch(meme).status != PerkTypes.LaunchStatus.GRADUATION_PENDING) {
+            revert NotGraduationPending();
+        }
+        if (!_rescuable(g.stage)) revert NotRescuable(g.stage);
+
+        if (g.stage == Stage.NONE) {
+            // the holders' money is still in the curve: take it out exactly as the FUNDED stage would
+            (uint256 m, uint256 q) = IPerkBondingCurve(curve).finalizeForGraduation(meme, address(this));
+            q += IPerkFeeRouter(feeRouter).releaseLpReserve(meme, address(this));
+            g.memeReceived = m;
+            g.quoteReceived = q;
+            g.quoteHeld = q;
+        }
+        // No pool will be seeded, so this launch's unsold and reserved tokens have no purpose left. Burning them
+        // also keeps them out of the supply that shares the refund.
+        uint256 memeBurned = IERC20(meme).balanceOf(address(this));
+        if (memeBurned > 0) PerkMemeToken(meme).burn(memeBurned);
+        g.stage = Stage.REFUNDING;
+        IPerkLaunchFactory(factory).setLaunchStatus(meme, PerkTypes.LaunchStatus.REFUNDING, PoolId.wrap(bytes32(0)));
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit RescueExecuted(meme, g.quoteHeld, memeBurned);
+    }
+
+    /// @inheritdoc IPerkGraduationManager
+    function redeem(address meme, uint256 amount) external nonReentrant returns (uint256 quoteOut) {
+        Graduation storage g = _graduations[meme];
+        if (g.stage != Stage.REFUNDING) revert NotRefunding();
+        quoteOut = _redeemQuote(meme, g.quoteHeld, amount);
+        if (quoteOut == 0) revert NothingToRedeem();
+        g.quoteHeld -= quoteOut;
+        IERC20(meme).safeTransferFrom(msg.sender, address(this), amount);
+        PerkMemeToken(meme).burn(amount);
+        emit Redeemed(meme, msg.sender, amount, quoteOut);
+        IPerkLaunchFactory(factory).getLaunch(meme).quote.transfer(msg.sender, quoteOut);
+    }
+
+    /// @inheritdoc IPerkGraduationManager
+    function previewRedeem(address meme, uint256 amount) external view returns (uint256 quoteOut) {
+        Graduation storage g = _graduations[meme];
+        if (g.stage != Stage.REFUNDING) return 0;
+        return _redeemQuote(meme, g.quoteHeld, amount);
+    }
+
+    /// @dev `amount` as a share of the tokens that can still be redeemed, applied to the quote that is left.
+    ///      Outstanding supply excludes the grant reserve (never handed out) and anything sitting in this contract,
+    ///      so tokens that are burned, stranded or sent here only raise everyone else's share. Pricing each
+    ///      redemption on what is left makes the order irrelevant: the last holder takes exactly the remainder.
+    function _redeemQuote(address meme, uint256 quoteLeft, uint256 amount) private view returns (uint256) {
+        if (amount == 0) return 0;
+        IERC20 token = IERC20(meme);
+        uint256 outstanding = token.totalSupply() - token.balanceOf(address(this))
+            - token.balanceOf(IPerkLaunchFactory(factory).grantReserveHolder());
+        if (amount > outstanding) return 0;
+        return Math.mulDiv(amount, quoteLeft, outstanding);
+    }
+
+    /// @dev Stuck before any liquidity reached the pool: the funds are still in the curve or in this contract. From
+    ///      LIQUIDITY_ADDED on, the pool is live and holders can sell there.
+    function _rescuable(Stage stage) private pure returns (bool) {
+        return stage == Stage.NONE || stage == Stage.FUNDED || stage == Stage.POOL_INITIALIZED;
     }
 
     /// @dev sqrt(token1/token0) * 2^96 from the curve's virtual reserves (quote per meme = vQuote / vMeme).

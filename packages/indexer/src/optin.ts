@@ -13,8 +13,11 @@ export interface RawLog {
 /** Anything that can page eth_getLogs — a viem PublicClient adapter in production, an in-memory fake in tests. */
 export type LogFetcher = (fromBlock: bigint, toBlock: bigint) => Promise<RawLog[]>;
 
-/** Alchemy caps eth_getLogs on X Layer at 1,000 blocks per request. */
-export const LOG_PAGE_SIZE = 1000n;
+/**
+ * Blocks per eth_getLogs request. Alchemy allows 1,000 on X Layer; the public X Layer endpoints allow 100. Set with
+ * LOG_PAGE, the same variable the backend indexer reads, so both follow whichever RPC is configured.
+ */
+export const LOG_PAGE_SIZE = BigInt(process.env.LOG_PAGE ?? "1000");
 
 /** Page through [fromBlock, toBlock] in ranges of at most `pageSize` blocks. */
 export async function fetchLogsPaged(

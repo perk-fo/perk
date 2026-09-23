@@ -102,7 +102,8 @@ export async function call(
 
 /** Tops every demo wallet up to `target` OKB from the deployer. Skips wallets that already hold enough. */
 export async function fundWallets(cfg: DriverConfig, target: bigint, log: (m: string) => void): Promise<void> {
-  const wallets = [cfg.creator, ...cfg.traders, ...cfg.participants];
+  // the grant publisher needs gas too; it never needs the ERC-20 quote assets
+  const wallets = [cfg.creator, ...cfg.traders, ...cfg.participants, cfg.publisher];
   for (const w of wallets) {
     const balance = await cfg.publicClient.getBalance({ address: w.address });
     if (balance >= target) continue;
@@ -459,7 +460,7 @@ export async function proposeRoot(
   totalBase: bigint,
   totalBoost: bigint,
 ): Promise<Hex> {
-  return call(cfg, cfg.deployer, {
+  return call(cfg, cfg.publisher, {
     address: cfg.deployment.lpGrantVault,
     abi: lpGrantVaultAbi,
     functionName: "proposeRoot",
@@ -468,7 +469,7 @@ export async function proposeRoot(
 }
 
 export async function activateRoot(cfg: DriverConfig, meme: Address): Promise<Hex> {
-  return call(cfg, cfg.deployer, {
+  return call(cfg, cfg.publisher, {
     address: cfg.deployment.lpGrantVault,
     abi: lpGrantVaultAbi,
     functionName: "activateRoot",
@@ -477,7 +478,7 @@ export async function activateRoot(cfg: DriverConfig, meme: Address): Promise<He
 }
 
 export async function finalizeGrant(cfg: DriverConfig, meme: Address): Promise<Hex> {
-  return call(cfg, cfg.deployer, {
+  return call(cfg, cfg.publisher, {
     address: cfg.deployment.lpGrantVault,
     abi: lpGrantVaultAbi,
     functionName: "finalizeGrant",

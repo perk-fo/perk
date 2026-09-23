@@ -15,7 +15,6 @@ import {HookAddress} from "../../script/lib/HookAddress.sol";
 import {PerkComposableHookV1} from "../../src/hook/PerkComposableHookV1.sol";
 import {LaunchFactory} from "../../src/factory/LaunchFactory.sol";
 import {BondingCurve} from "../../src/curve/BondingCurve.sol";
-import {GraduationManager} from "../../src/graduation/GraduationManager.sol";
 import {FeeRouter} from "../../src/fees/FeeRouter.sol";
 import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManager.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
@@ -88,7 +87,7 @@ contract DeployScriptsTest is Test, Deployers, PosmDeployer {
 
         LaunchFactory factory = deploy.factory();
         BondingCurve curve = deploy.curve();
-        GraduationManager graduation = deploy.graduationManager();
+        IPerkGraduationManager graduation = deploy.graduationManager();
         FeeRouter feeRouter = deploy.feeRouter();
         Currency native = Currency.wrap(address(0));
 

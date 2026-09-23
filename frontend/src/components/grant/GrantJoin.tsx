@@ -15,6 +15,7 @@ import { TxStatus } from "@/components/TxStatus";
 import { Spinner } from "@/components/ui/Spinner";
 import { fmtCountdown, formatAmount } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { usePauseFlags } from "@/lib/pause";
 
 type Proof = { leaf: { account: Address; baseAllocation: string; inviteeBoost: string }; proof: Hex[] };
 
@@ -148,6 +149,8 @@ export function GrantJoin(props: {
 
   const inFlight = (tx: typeof registerTx) => tx.phase === "preparing" || tx.phase === "signing" || tx.phase === "confirming";
   const busy = inFlight(registerTx) || inFlight(activateTx) || chainActivate;
+  // an emergency pause can stop new grant positions; exits and fee collection are never paused
+  const joinPaused = usePauseFlags().isPaused("grantJoin");
   const activeTx = inFlight(registerTx) || (chainActivate && !inFlight(activateTx)) ? registerTx : activateTx;
   const twoStep = !registered || chainActivate;
   const busyLabel =
@@ -268,13 +271,17 @@ export function GrantJoin(props: {
           <button
             type="button"
             onClick={start}
-            disabled={!open || busy || total === 0n || quoteMax === undefined || short || (!registered && !proof)}
+            disabled={
+              !open || busy || total === 0n || quoteMax === undefined || short || (!registered && !proof) || joinPaused
+            }
             className="btn-primary w-full px-6 py-3 text-[15px]"
           >
             {busy ? (
               <span className="inline-flex items-center gap-2">
                 <Spinner size={15} /> {busyLabel}
               </span>
+            ) : joinPaused ? (
+              t("pause.cta.grantJoin")
             ) : (
               t("join.start")
             )}

@@ -20,6 +20,7 @@ import {IPerkBondingCurve} from "../interfaces/IPerkBondingCurve.sol";
 import {PerkMemeToken} from "../token/PerkMemeToken.sol";
 import {BondingCurve} from "../curve/BondingCurve.sol";
 import {PerkTypes} from "../libraries/PerkTypes.sol";
+import {PerkConstants} from "../libraries/PerkConstants.sol";
 
 /// @title LaunchFactory
 /// @notice Deploys a meme per launch from an ACTIVE template and commits its configHash.
@@ -95,8 +96,23 @@ contract LaunchFactory is IPerkLaunchFactory, Ownable2Step, ReentrancyGuard {
         treasury = treasury_;
     }
 
+    /// @inheritdoc IPerkLaunchFactory
+    uint256 public override pausedFlags;
+
     /// @notice Accepts native quote refunded by the curve on a graduating dev buy.
     receive() external payable {}
+
+    /// @inheritdoc IPerkLaunchFactory
+    function setPaused(uint256 flags) external override onlyOwner {
+        if (flags & ~PerkConstants.PAUSE_ALL != 0) revert UnknownPauseArea(flags);
+        pausedFlags = flags;
+        emit PauseUpdated(flags);
+    }
+
+    /// @inheritdoc IPerkLaunchFactory
+    function isPaused(uint256 area) public view override returns (bool) {
+        return pausedFlags & area != 0;
+    }
 
     /// @notice One-time wiring of contracts deployed after the factory. Owner only.
     /// @dev Also calls `BondingCurve.wire(graduationManager)` (curve `wire` is `onlyFactory`).
@@ -154,6 +170,7 @@ contract LaunchFactory is IPerkLaunchFactory, Ownable2Step, ReentrancyGuard {
         nonReentrant
         returns (address meme, bytes32 launchId)
     {
+        if (isPaused(PerkConstants.PAUSE_LAUNCH)) revert Paused(PerkConstants.PAUSE_LAUNCH);
         address creator = msg.sender;
         ValidatedLaunch memory v = _validate(params, creator);
         if (params.expectedConfigHash != v.configHash) {
@@ -233,10 +250,9 @@ contract LaunchFactory is IPerkLaunchFactory, Ownable2Step, ReentrancyGuard {
                 revert InvalidStatusTransition();
             }
         } else if (msg.sender == graduationManager) {
-            if (rec.status != PerkTypes.LaunchStatus.GRADUATION_PENDING || status != PerkTypes.LaunchStatus.GRADUATED) {
-                revert InvalidStatusTransition();
-            }
-            rec.poolId = poolId;
+            if (rec.status != PerkTypes.LaunchStatus.GRADUATION_PENDING) revert InvalidStatusTransition();
+            if (status == PerkTypes.LaunchStatus.GRADUATED) rec.poolId = poolId;
+            else if (status != PerkTypes.LaunchStatus.REFUNDING) revert InvalidStatusTransition();
         } else {
             revert NotStatusUpdater();
         }

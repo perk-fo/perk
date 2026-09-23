@@ -33,4 +33,13 @@ library PerkConstants {
     bytes32 internal constant TEMPLATE_STANDARD_CURVE_V1 = keccak256("STANDARD_CURVE_V1");
 
     address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    // ---- Emergency pause areas (LaunchFactory.pausedFlags) ----
+    // Entry points only. Nothing that lets someone take their money out (curve sells, grant exits, fee and reward
+    // claims, refunds, pool swaps) can be paused: a pause may stop new money coming in, never lock anyone in.
+    uint256 internal constant PAUSE_LAUNCH = 1 << 0; // LaunchFactory.createLaunch
+    uint256 internal constant PAUSE_BUY = 1 << 1; // BondingCurve.buy
+    uint256 internal constant PAUSE_GRADUATION = 1 << 2; // GraduationManager.graduate
+    uint256 internal constant PAUSE_GRANT_JOIN = 1 << 3; // LPGrantVault.activateGrant
+    uint256 internal constant PAUSE_ALL = PAUSE_LAUNCH | PAUSE_BUY | PAUSE_GRADUATION | PAUSE_GRANT_JOIN;
 }

@@ -13,6 +13,15 @@ contract MockFactoryStatus {
     }
 
     StatusCall[] internal _calls;
+    uint256 public pausedFlags;
+
+    function setPaused(uint256 flags) external {
+        pausedFlags = flags;
+    }
+
+    function isPaused(uint256 area) external view returns (bool) {
+        return pausedFlags & area != 0;
+    }
 
     function setLaunchStatus(address meme, PerkTypes.LaunchStatus status, PoolId poolId) external {
         _calls.push(StatusCall({meme: meme, status: status, poolId: poolId}));

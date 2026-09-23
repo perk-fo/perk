@@ -359,6 +359,25 @@ export const launchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "isPaused",
+    "inputs": [
+      {
+        "name": "area",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "launchByLaunchId",
     "inputs": [
       {
@@ -411,6 +430,19 @@ export const launchFactoryAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pausedFlags",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -605,6 +637,19 @@ export const launchFactoryAbi = [
         "name": "poolId",
         "type": "bytes32",
         "internalType": "PoolId"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setPaused",
+    "inputs": [
+      {
+        "name": "flags",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -893,6 +938,19 @@ export const launchFactoryAbi = [
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "PauseUpdated",
+    "inputs": [
+      {
+        "name": "flags",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "AlreadyWired",
     "inputs": []
@@ -978,6 +1036,17 @@ export const launchFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "Paused",
+    "inputs": [
+      {
+        "name": "area",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "QuoteNotAllowed",
     "inputs": []
   },
@@ -1001,6 +1070,17 @@ export const launchFactoryAbi = [
     "type": "error",
     "name": "TemplateNotActive",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnknownPauseArea",
+    "inputs": [
+      {
+        "name": "flags",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",
@@ -1718,6 +1798,17 @@ export const bondingCurveAbi = [
     "type": "error",
     "name": "NotGraduationManager",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Paused",
+    "inputs": [
+      {
+        "name": "area",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",
@@ -4394,6 +4485,11 @@ export const graduationManagerAbi = [
         "name": "initialLpLocker_",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "rescueDelay_",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "nonpayable"
@@ -4411,6 +4507,19 @@ export const graduationManagerAbi = [
   },
   {
     "type": "function",
+    "name": "cancelRescue",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "curve",
     "inputs": [],
     "outputs": [
@@ -4421,6 +4530,19 @@ export const graduationManagerAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "executeRescue",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -4586,6 +4708,11 @@ export const graduationManagerAbi = [
             "name": "quoteHeld",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "rescueExecutableAt",
+            "type": "uint64",
+            "internalType": "uint64"
           }
         ]
       }
@@ -4685,10 +4812,84 @@ export const graduationManagerAbi = [
   },
   {
     "type": "function",
+    "name": "previewRedeem",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "quoteOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proposeRescue",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "redeem",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "quoteOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "rescueDelay",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -4894,6 +5095,94 @@ export const graduationManagerAbi = [
   },
   {
     "type": "event",
+    "name": "Redeemed",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "holder",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "memeIn",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "quoteOut",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RescueCancelled",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RescueExecuted",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "quoteForHolders",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "memeBurned",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RescueProposed",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "executableAt",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "VaultWired",
     "inputs": [
       {
@@ -4938,6 +5227,27 @@ export const graduationManagerAbi = [
   },
   {
     "type": "error",
+    "name": "NotRefunding",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotRescuable",
+    "inputs": [
+      {
+        "name": "current",
+        "type": "uint8",
+        "internalType": "enum IPerkGraduationManager.Stage"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NothingToRedeem",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "OwnableInvalidOwner",
     "inputs": [
       {
@@ -4960,8 +5270,45 @@ export const graduationManagerAbi = [
   },
   {
     "type": "error",
+    "name": "Paused",
+    "inputs": [
+      {
+        "name": "area",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "ReentrancyGuardReentrantCall",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RescueAlreadyProposed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RescueDelayTooShort",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RescueNotProposed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RescueNotReady",
+    "inputs": [
+      {
+        "name": "executableAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
   },
   {
     "type": "error",
@@ -7261,6 +7608,19 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "function",
+    "name": "publisher",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "quoteRequired",
     "inputs": [
       {
@@ -7345,6 +7705,19 @@ export const lpGrantVaultAbi = [
     "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setPublisher",
+    "inputs": [
+      {
+        "name": "publisher_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -7887,6 +8260,25 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "event",
+    "name": "PublisherUpdated",
+    "inputs": [
+      {
+        "name": "previous",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "current",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ReferralCreditCapped",
     "inputs": [
       {
@@ -8045,6 +8437,17 @@ export const lpGrantVaultAbi = [
         "name": "account",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "Paused",
+    "inputs": [
+      {
+        "name": "area",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },

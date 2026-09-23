@@ -47,6 +47,8 @@ import { TxStatus } from "@/components/TxStatus";
 import { OrderPanel, type PoolKeyShape } from "@/components/meme/OrderPanel";
 import { TradeTable } from "@/components/meme/TradeTable";
 import { HolderList } from "@/components/meme/HolderList";
+import { RefundPanel } from "@/components/meme/RefundPanel";
+import { usePauseFlags } from "@/lib/pause";
 import { RoleGate } from "@/components/RoleGate";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
@@ -186,6 +188,9 @@ export default function MemePage() {
   const launchFees = onchain?.[0]?.result;
   const graduationOnchain = onchain?.[1]?.result;
   const graduationStage = Number((graduationOnchain as { stage?: number } | undefined)?.stage ?? 0);
+  // a rescue proposed for a launch stuck before its pool: when refunds may start (0 when none is pending)
+  const rescueAt = Number((graduationOnchain as { rescueExecutableAt?: bigint } | undefined)?.rescueExecutableAt ?? 0n);
+  const pause = usePauseFlags();
 
   const quoteMeta: QuoteInfo | undefined = useMemo(() => {
     const q = findQuote(quotes, launch?.quote as Address | undefined);
@@ -345,6 +350,12 @@ export default function MemePage() {
         </div>
       </header>
 
+      {status === 2 && rescueAt > 0 && (
+        <Notice tone="amber">
+          {t("meme.rescue.proposed", { time: fmtTime(rescueAt, locale), symbol: quoteSymbol })}
+        </Notice>
+      )}
+
       <Panel title={t("meme.facts.title")}>
         <div className="grid gap-x-10 sm:grid-cols-2">
           <div className="divide-y divide-line">
@@ -469,7 +480,7 @@ export default function MemePage() {
               <div className="mt-4">
                 <Button
                   tx={graduateTx}
-                  disabled={graduateTx.isPending || graduateTx.isConfirming}
+                  disabled={graduateTx.isPending || graduateTx.isConfirming || pause.isPaused("graduation")}
                   onClick={() =>
                     graduateTx.write({
                       address: deployment.graduationManager,
@@ -482,15 +493,15 @@ export default function MemePage() {
                     })
                   }
                 >
-                  {t("meme.graduate.cta")}
+                  {pause.isPaused("graduation") ? t("pause.cta.graduation") : t("meme.graduate.cta")}
                 </Button>
                 <TxStatus
                   tx={graduateTx}
-                  successTone={graduationStage >= 4 ? "verdigris" : "amber"}
+                  successTone={graduationStage === 4 ? "verdigris" : "amber"}
                   successText={
                     // The transaction succeeding and the launch graduating are different things: graduate() mines
                     // even when a stage fails inside it. Report the stage the chain is actually at.
-                    graduationStage >= 4
+                    graduationStage === 4
                       ? t("meme.graduate.success")
                       : t("meme.graduate.stalled", { n: graduationStage, of: 4 })
                   }
@@ -502,6 +513,15 @@ export default function MemePage() {
                 )}
               </div>
             </Panel>
+          )}
+          {status === 4 && quoteMeta && (
+            <RefundPanel
+              meme={meme}
+              memeSymbol={memeSymbol}
+              memeDecimals={memeDecimals}
+              quoteMeta={quoteMeta}
+              graduationManager={deployment.graduationManager}
+            />
           )}
           {(status === 1 || status === 3) && quoteMeta && (
             <OrderPanel

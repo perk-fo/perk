@@ -14,6 +14,12 @@ export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", ".."
 export const TRADER_COUNT = 4;
 /** Wallets that register a grant allocation and provide subsidised liquidity. */
 export const PARTICIPANT_COUNT = 3;
+/**
+ * Mnemonic index of the grant publisher: the key the vault accepts for proposing and cancelling grant roots and
+ * nothing else (appointed at deploy through GRANT_PUBLISHER). Kept well clear of the creator, trader and
+ * participant indexes.
+ */
+export const PUBLISHER_INDEX = 40;
 
 export interface Deployment {
   chainId: number;
@@ -57,7 +63,7 @@ export function buildConfig() {
   const transport = http(rpcUrl, { batch: true });
   const publicClient = createPublicClient({ chain, transport });
 
-  // The deployer owns the vault (proposeRoot / activateRoot) and funds everyone else.
+  // The deployer funds everyone else. Grant roots are published by the separate publisher key below.
   const deployer = privateKeyToAccount(requireEnv("DEPLOYER_PRIVATE_KEY") as Hex);
   const mnemonic = requireEnv("TEST_MNEMONIC");
   // index 0 is the creator, then traders, then grant participants
@@ -68,6 +74,7 @@ export function buildConfig() {
   const participants = Array.from({ length: PARTICIPANT_COUNT }, (_, i) =>
     mnemonicToAccount(mnemonic, { addressIndex: 1 + TRADER_COUNT + i }),
   );
+  const publisher = mnemonicToAccount(mnemonic, { addressIndex: PUBLISHER_INDEX });
 
   const wallet = (account: Parameters<typeof createWalletClient>[0]["account"]) =>
     createWalletClient({ account, chain, transport });
@@ -82,6 +89,7 @@ export function buildConfig() {
     creator,
     traders,
     participants,
+    publisher,
     wallet,
     /** keccak256 of the template name, matching TEST_TEMPLATE in .env.dev */
     templateName: process.env.TEST_TEMPLATE ?? "TEST_FAST_V1",

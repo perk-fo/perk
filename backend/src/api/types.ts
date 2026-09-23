@@ -83,7 +83,8 @@ export interface Graduation {
   sqrtPriceX96: Uint | null;
 }
 
-export type LaunchStatus = 0 | 1 | 2 | 3;
+/** 0 none, 1 curve active, 2 graduation pending, 3 graduated, 4 refunding (a stuck graduation was rescued). */
+export type LaunchStatus = 0 | 1 | 2 | 3 | 4;
 
 export interface LaunchSummary {
   meme: Address;

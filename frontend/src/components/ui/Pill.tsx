@@ -25,7 +25,7 @@ export function Pill({ tone = "muted", children }: { tone?: PillTone; children: 
   );
 }
 
-/** Launch status -> pill (CURVE_ACTIVE amber, GRADUATION_PENDING flare, GRADUATED verdigris). */
+/** Launch status -> pill (CURVE_ACTIVE amber, GRADUATION_PENDING flare, GRADUATED verdigris, REFUNDING rose). */
 export function launchStatusPill(status: number | undefined, t: TFn): { tone: PillTone; label: string } {
   switch (status) {
     case 1:
@@ -34,6 +34,8 @@ export function launchStatusPill(status: number | undefined, t: TFn): { tone: Pi
       return { tone: "flare", label: t("status.launch.pending") };
     case 3:
       return { tone: "verdigris", label: t("status.launch.graduated") };
+    case 4:
+      return { tone: "rose", label: t("status.launch.refunding") };
     default:
       return { tone: "muted", label: "—" };
   }

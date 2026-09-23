@@ -123,8 +123,13 @@ by the same pre-paint script as the theme.
   danger), `ui/Field` (sunken input with a focus ring; `mono` for identifiers, `numeric` for amounts),
   `ui/Segmented`, `ui/Notice` for risk disclosures (a tinted, outlined box), `ui/Icon` for the few line icons, and
   `ui/Subscripted` for small prices. The header carries the logo, circle-cropped at 28px, beside the wordmark.
-- Status pills: CURVE_ACTIVE amber, GRADUATION_PENDING flare, GRADUATED verdigris. Grant campaigns: AWAITING_ROOT
-  muted, ROOT_PROPOSED amber, ACTIVE verdigris, EXPIRED muted, CANCELLED rose.
+- Status pills: CURVE_ACTIVE amber, GRADUATION_PENDING flare, GRADUATED verdigris, REFUNDING rose. Grant campaigns:
+  AWAITING_ROOT muted, ROOT_PROPOSED amber, ACTIVE verdigris, EXPIRED muted, CANCELLED rose.
+- `PauseBanner`: an amber bar under the header while the core admin has paused any area, naming what is paused and
+  saying that selling, withdrawing and claiming still work. Buttons for a paused action say so and are disabled
+  (`lib/pause`); exits never need this, because the contracts cannot pause them.
+- `meme/RefundPanel`: replaces the order panel on a REFUNDING launch; approve, then redeem the whole balance for its
+  pro-rata share of the launch's quote.
 
 ## Pages
 
@@ -144,6 +149,12 @@ by the same pre-paint script as the theme.
   graduation through root proposal, activation and close, drawn with hairlines and dots; allocation split into base,
   boost and credit; the activation form; positions as ticket stubs; and risk disclosures itemised in a Notice.
 - Empty and loading states use the seal's outline as a skeleton rather than flashing grey blocks.
+
+- **Admin** (`/admin`) - the core admin's on-chain controls: the emergency pause (entry points only), the grant
+  publisher, allocation lists under review (cancel), stuck graduations (propose, cancel or execute a rescue) and
+  refunds in progress, and who holds each role. Anyone can open it and read the state; the navigation entry and the
+  working buttons appear only for the wallet that owns the contracts (read on-chain, `lib/admin`), and the contracts
+  reject everyone else anyway.
 
 ## Copy
 

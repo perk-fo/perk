@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { Sparkle } from "@/components/art/Sparkle";
 import { useT } from "@/i18n/provider";
+import { usePauseFlags } from "@/lib/pause";
 
 const NATIVE_GAS_HEADROOM = 1_000_000_000_000_000n; // 0.001 OKB
 const SLIP_PRESETS = [50, 100, 200] as const;
@@ -100,6 +101,7 @@ export function OrderPanel({
   const [customSlip, setCustomSlip] = useState("");
   const [slipCustom, setSlipCustom] = useState(false);
   const [flash, setFlash] = useState(false);
+  const pause = usePauseFlags();
 
   const parsed = useMemo(() => {
     if (!input.trim()) return 0n;
@@ -352,9 +354,14 @@ export function OrderPanel({
 
   let cta = mode === "buy" ? t("meme.trade.buy") : t("meme.trade.sell");
   let ctaDisabled = false;
+  // an emergency pause can stop buying on the curve; selling (and trading in a graduated pool) always stays open
+  const buyPaused = mode === "buy" && status === 1 && pause.isPaused("buy");
   if (flash) cta = t("meme.order.confirmed");
   else if (pending) cta = t("meme.order.pending");
-  else if (!isConnected) cta = t("meme.order.connect");
+  else if (buyPaused) {
+    cta = t("pause.cta.buy");
+    ctaDisabled = true;
+  } else if (!isConnected) cta = t("meme.order.connect");
   else if (wrongChain) {
     cta = t("meme.order.wrongNetwork");
     ctaDisabled = true;
@@ -374,7 +381,8 @@ export function OrderPanel({
     !insufficient &&
     !needsApprove &&
     !pending &&
-    !flash;
+    !flash &&
+    !buyPaused;
 
   const setPct = (pct: bigint, isMax: boolean) => {
     if (spendBal === undefined) return;

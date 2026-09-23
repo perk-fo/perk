@@ -16,7 +16,6 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {Deployers} from "v4-core/test/utils/Deployers.sol";
 import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 
-import {GraduationManager} from "../../src/graduation/GraduationManager.sol";
 import {InitialLpLocker} from "../../src/graduation/InitialLpLocker.sol";
 import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManager.sol";
 import {IPerkComposableHook} from "../../src/interfaces/IPerkComposableHook.sol";
@@ -252,7 +251,7 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
     }
 
     function test_wire_reverts_alreadyWired() public {
-        vm.expectRevert(GraduationManager.AlreadyWired.selector);
+        vm.expectRevert(IPerkGraduationManager.AlreadyWired.selector);
         t.graduation.wire(address(t.hook));
     }
 

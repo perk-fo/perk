@@ -5,6 +5,7 @@ import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/
 import { Providers } from "./providers";
 import { Header } from "@/components/Header";
 import { InviteBar } from "@/components/InviteBar";
+import { PauseBanner } from "@/components/PauseBanner";
 import { TxToasts } from "@/components/TxToasts";
 import { SiteFooter } from "@/components/SiteFooter";
 import { LOCALE_COOKIE, MESSAGES, detectLocale, type Locale } from "@/i18n/locales";
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body>
         <Providers locale={locale}>
           <Header />
+          <PauseBanner />
           <InviteBar />
           <TxToasts />
           <main className="mx-auto w-full max-w-page px-4 pb-24 pt-8 sm:px-6">{children}</main>

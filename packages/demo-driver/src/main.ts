@@ -117,20 +117,21 @@ async function stepToken(
 
   // --- curve trading until the threshold is reached --------------------------
   if (ts.stage === "trading") {
+    // The launch status comes first and is the authoritative signal. A token can reach its threshold before its
+    // schedule of curve trades runs out; every trade after that reverts, because the curve has closed, and checking
+    // the schedule first retried one of those trades for ever and never got to graduation. (`progressBps` is no
+    // help either: it drops back to 0 the moment the curve graduates.)
+    const status = await launchStatus(cfg, meme);
     const due = spec.tradeAt
       .map((at, i) => ({ at, i }))
       .filter(({ at, i }) => at <= t && !ts.tradesDone.includes(i));
-    if (due.length > 0) {
+    if (status < 2 && due.length > 0) {
       const { i } = due[0]!;
       const trader = cfg.traders[i % cfg.traders.length]!;
       await curveTrade(cfg, meme, spec.quote, trader, targetProgress(spec, t), rand, (m) => log(m));
       ts.tradesDone.push(i);
       return true;
     }
-    // The launch status is the authoritative signal here. `progressBps` drops back to 0 the moment the curve
-    // graduates, so gating on it means a token whose graduation did not complete first time can never be retried:
-    // it reads 0, decides it is behind, and tries to buy a curve that no longer accepts buys, for ever.
-    const status = await launchStatus(cfg, meme);
     if (status >= 2) {
       try {
         await graduate(cfg, meme, (m) => log(m));

@@ -62,6 +62,8 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     Config private _config;
 
     address public graduationManager;
+    /// @inheritdoc IPerkLPGrantVault
+    address public publisher;
 
     mapping(address meme => Campaign) private _campaigns;
     mapping(address meme => mapping(address account => Allocation)) private _allocations;
@@ -102,6 +104,18 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         if (graduationManager_ == address(0)) revert ZeroAddress();
         graduationManager = graduationManager_;
         emit Wired(graduationManager_);
+    }
+
+    /// @inheritdoc IPerkLPGrantVault
+    function setPublisher(address publisher_) external onlyOwner {
+        emit PublisherUpdated(publisher, publisher_);
+        publisher = publisher_;
+    }
+
+    /// @dev Roots are published by the appointed publisher (an automated key) or by the owner.
+    modifier onlyPublisher() {
+        if (msg.sender != publisher && msg.sender != owner()) revert NotPublisher();
+        _;
     }
 
     /// @inheritdoc IPerkLPGrantVault
@@ -155,7 +169,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     /// @inheritdoc IPerkLPGrantVault
     function proposeRoot(address meme, bytes32 root, string calldata uri, uint256 totalBase, uint256 totalInviteeBoost)
         external
-        onlyOwner
+        onlyPublisher
     {
         Campaign storage c = _campaigns[meme];
         if (c.status != CampaignStatus.AWAITING_ROOT && c.status != CampaignStatus.ROOT_PROPOSED) {
@@ -175,7 +189,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     }
 
     /// @inheritdoc IPerkLPGrantVault
-    function cancelRoot(address meme) external onlyOwner {
+    function cancelRoot(address meme) external onlyPublisher {
         Campaign storage c = _campaigns[meme];
         if (c.status != CampaignStatus.ROOT_PROPOSED) revert InvalidStatus(c.status);
         bytes32 old = c.root;
@@ -304,6 +318,10 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     ) external payable nonReentrant returns (uint256 positionId) {
         Campaign storage c = _campaigns[meme];
         if (c.status != CampaignStatus.ACTIVE || block.timestamp >= c.endTime) revert WindowClosed();
+        // emergency pause stops new positions only: exits, fee collection and incentives stay open
+        if (IPerkLaunchFactory(factory).isPaused(PerkConstants.PAUSE_GRANT_JOIN)) {
+            revert IPerkLaunchFactory.Paused(PerkConstants.PAUSE_GRANT_JOIN);
+        }
         uint256 total = baseAmount + boostAmount + creditAmount;
         if (total == 0) revert ZeroAmount();
         if (total < _config.minActivation) revert BelowMinimumActivation();
