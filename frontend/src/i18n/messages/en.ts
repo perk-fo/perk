@@ -149,6 +149,8 @@ const messages: Record<string, string> = {
   "create.section.template": "Launch template",
   "create.section.devBuy": "Optional dev buy",
   "create.field.name": "Name",
+  "create.field.namePh": "e.g. Moon Frog",
+  "create.field.symbolPh": "e.g. MFROG",
   "create.field.uriHint": "Off-chain JSON: image, description, social links",
   "create.quote.rwaNotice":
     "Tokenised US stocks may be subject to trading hours, issuer permissions, freezes, redemption limits and jurisdictional requirements.",
@@ -543,7 +545,7 @@ const messages: Record<string, string> = {
   "launch.link.x": "X (optional)",
   "launch.link.xPh": "@handle",
   "launch.link.telegram": "Telegram (optional)",
-  "launch.link.telegramPh": "t.me/group",
+  "launch.link.telegramPh": "t.me/yourgroup",
   "launch.link.website": "Website (optional)",
   "launch.link.websitePh": "example.com",
   "launch.link.invalid": "Not a valid link; it will be left out",

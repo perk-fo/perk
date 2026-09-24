@@ -247,8 +247,8 @@ export default function CreatePage() {
         <div className="space-y-6">
           <Panel title={t("create.section.basic")}>
             <div className="space-y-4">
-              <Field label={t("create.field.name")} value={name} onChange={(e) => setName(e.target.value)} placeholder="Perk Smoke" />
-              <Field label="Symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="SMOKE" />
+              <Field label={t("create.field.name")} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("create.field.namePh")} />
+              <Field label="Symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={t("create.field.symbolPh")} />
               <FieldRow label={t("launch.image.title")}>
                 <ImageDrop
                   previewUrl={image.upload?.url ?? null}

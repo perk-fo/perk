@@ -151,6 +151,8 @@ const messages: Record<string, string> = {
   "create.section.template": "ローンチトテンプレート",
   "create.section.devBuy": "オプションの Dev Buy",
   "create.field.name": "名称",
+  "create.field.namePh": "例：Moon Frog",
+  "create.field.symbolPh": "例：MFROG",
   "create.field.uriHint": "オフチェーン JSON：画像、紹介、ソーシャルリンク",
   "create.quote.rwaNotice":
     "トークン化米国株には、取引時間、発行者権限、凍結、償還制限、法域要件が存在する場合があります。",
@@ -547,7 +549,7 @@ const messages: Record<string, string> = {
   "launch.link.x": "X（任意）",
   "launch.link.xPh": "@handle",
   "launch.link.telegram": "Telegram（任意）",
-  "launch.link.telegramPh": "t.me/グループ",
+  "launch.link.telegramPh": "t.me/yourgroup",
   "launch.link.website": "ウェブサイト（任意）",
   "launch.link.websitePh": "example.com",
   "launch.link.invalid": "無効なリンクのため省略されます",
