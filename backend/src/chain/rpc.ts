@@ -22,7 +22,9 @@ export function createClient(rpcUrl: string, transport?: Transport): Client {
     transport:
       transport ??
       http(rpcUrl, {
-        batch: { batchSize: 50, wait: 10 },
+        // X Layer's public RPC rejects a JSON-RPC batch of more than 10 calls ("too many RPC calls in batch
+        // request", as a single error object that viem cannot match to the calls); 10 is also fine for Alchemy.
+        batch: { batchSize: 10, wait: 10 },
         retryCount: 3,
         retryDelay: 500,
         timeout: 30_000,
