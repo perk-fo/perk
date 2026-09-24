@@ -4,8 +4,11 @@ import { join } from "node:path";
 import type { AppConfig } from "../config";
 import type { MediaUpload } from "../api/types";
 
-/** Classic Pinata pin-file endpoint. Authorization: Bearer <PINATA_JWT>. */
-export const PINATA_PIN_FILE_URL = "https://api.pinata.cloud/pinning/pinFileToIPFS";
+/**
+ * Pinata's upload endpoint (Files API v3). Authorization: Bearer <PINATA_JWT>. Keys created today are scoped to this
+ * API; the older pinning endpoint (api.pinata.cloud/pinning/pinFileToIPFS) refuses them with NO_SCOPES_FOUND.
+ */
+export const PINATA_UPLOAD_URL = "https://uploads.pinata.cloud/v3/files";
 
 export const MEDIA_FILE_RE = /^[0-9a-f]{64}\.(png|jpg|webp|gif|json)$/;
 
@@ -137,8 +140,11 @@ class PinataStore implements MediaStore {
     const sha = sha256Hex(bytes);
     const filename = `${sha}.${ext}`;
     const form = new FormData();
-    form.append("file", new Blob([new Uint8Array(bytes)]), filename);
-    const res = await this.fetchImpl(PINATA_PIN_FILE_URL, {
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: CONTENT_TYPES[ext] ?? "application/octet-stream" }), filename);
+    // public: the file is served by every IPFS gateway, which is what an on-chain ipfs:// link needs
+    form.append("network", "public");
+    form.append("name", filename);
+    const res = await this.fetchImpl(PINATA_UPLOAD_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${jwt}` },
       body: form,

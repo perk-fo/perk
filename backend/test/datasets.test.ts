@@ -106,6 +106,7 @@ describe("fetchDataset", () => {
     const json = { ok: true };
     const body = await fetchDataset("ipfs://QmTestCid/dataset.json", {
       chainId: CHAIN,
+      ipfsGateway: "https://ipfs.io/ipfs/",
       fetch: (async (url) => {
         requested = String(url);
         return new Response(JSON.stringify(json), { status: 200 });

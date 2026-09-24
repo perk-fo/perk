@@ -5,7 +5,7 @@ import type { Db } from "../src/db/client";
 import { createApp } from "../src/api/server";
 import type { ApiError, LaunchDetail, MediaUpload } from "../src/api/types";
 import { loadConfig } from "../src/config";
-import { createMediaStore, PINATA_PIN_FILE_URL, type FetchLike } from "../src/media/store";
+import { createMediaStore, PINATA_UPLOAD_URL, type FetchLike } from "../src/media/store";
 import { resolvePendingMetadata } from "../src/media/resolver";
 import { CHAIN, resetDb, testConfig, TEST_DEPLOYMENT, ZERO } from "./api-helpers";
 
@@ -295,7 +295,9 @@ describe("pinata driver", () => {
       calls.push({ url, auth: headers.get("authorization") });
       expect(init?.method).toBe("POST");
       expect(init?.body).toBeInstanceOf(FormData);
-      return new Response(JSON.stringify({ IpfsHash: "bafyTestCid", PinSize: 12 }), {
+      // files go to the public IPFS network, so any gateway can serve the on-chain ipfs:// link
+      expect((init?.body as FormData).get("network")).toBe("public");
+      return new Response(JSON.stringify({ data: { id: "f1", cid: "bafyTestCid", network: "public" } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -315,7 +317,7 @@ describe("pinata driver", () => {
     expect(body.uri).toBe("ipfs://bafyTestCid");
     expect(body.url).toBe("https://ipfs.io/ipfs/bafyTestCid");
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(PINATA_PIN_FILE_URL);
+    expect(calls[0].url).toBe(PINATA_UPLOAD_URL);
     expect(calls[0].auth).toBe("Bearer test-jwt-token");
 
     const metaRes = await postMeta({ name: "Perk", symbol: "PRK", image: "ipfs://bafyTestCid" }, pinataApp);

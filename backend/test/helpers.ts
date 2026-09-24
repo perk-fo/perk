@@ -76,6 +76,10 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     port: 0,
     corsOrigins: ["http://localhost:3000"],
     mediaDriver: "local",
+    // pinned here because Bun loads backend/.env into tests: a developer's own settings must not change results
+    ipfsGateway: "https://ipfs.io/ipfs/",
+    pinataJwt: undefined,
+    publicApiUrl: "http://localhost:0",
     ...overrides,
   });
 }
