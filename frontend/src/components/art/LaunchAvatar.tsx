@@ -12,8 +12,8 @@ import { HatchlingArt } from "./Hatchling";
  *              shell and the creature peeks out; moving away closes it again.
  *   cracking   threshold reached, graduation pending: the shell is ajar and trembles.
  *   hatched    graduated: the creature itself, centred in a round frame and never moved or resized to make room for
- *              anything; the shell lies around it in pieces (the egg's own colours and pattern, a few showing the pale
- *              inside), outside the frame. The token page plays the hatch once.
+ *              anything; a few flat pieces of shell (the egg's own colours and pattern) lie on the ground to either
+ *              side of its base. The token page plays the hatch once.
  *   refunding  the egg stays sealed and goes grey.
  *
  * `mode="detail"` (the token page) swaps the hover peek for an X-ray lens that follows the pointer (a tap toggles it
@@ -39,34 +39,31 @@ const BOTTOM_CLIP = `M0 120 V58 L${ZZ} L120 58 V120 Z`;
 /** The round frame a hatched creature sits in: centred in the picture, so the artwork is never displaced. */
 const FRAME_R = 45;
 
+/** Where the pieces of a hatched egg lie: one ground line for all of them, just under the frame. */
+const GROUND = 112;
+
 /**
- * The pieces of a hatched egg. `cut` is a region with a jagged break line; intersected with the egg, each piece keeps
- * a stretch of the shell's curved edge and the egg's own pattern. `c` is the piece's middle (egg coordinates); `at`,
- * `rot` and `s` lay it on the ground below and beside the frame, partly tucked behind its rim so no piece ever covers
- * the artwork. `inside` pieces landed face down and show the pale inside of the shell. Small pictures keep the
- * pieces marked `keep`.
+ * The pieces of a hatched egg, seen from the side as they lie on the ground: each has a flat bottom on GROUND and a
+ * low, jagged top, like a flake of shell fallen flat. `shape` is the outline with its base at y = 0; `x` is where its
+ * left end lies. Neighbouring pieces overlap as fallen pieces do. `src` picks which part of the egg's pattern the
+ * piece carries; `inside` pieces landed face up and show the pale inside of the shell. Small pictures keep the
+ * pieces marked `keep`. Later pieces lie on top of earlier ones.
  */
 const SHARDS: ReadonlyArray<{
-  cut: string;
-  c: readonly [number, number];
-  at: readonly [number, number];
-  rot: number;
-  s: number;
+  shape: string;
+  x: number;
+  src: readonly [number, number];
   inside?: boolean;
   keep?: boolean;
 }> = [
-  // the upper left of the shell: curved top, broken along the right and underneath
-  { cut: "M0 0 H63 L56 12 L64 22 L55 31 L61 40 L50 47 L42 38 L33 48 L24 39 L0 45 Z", c: [42, 30], at: [17, 101], rot: -24, s: 0.56, keep: true },
-  // a slice of the right side, lying on its long edge
-  { cut: "M120 40 H95 L88 51 L97 60 L86 69 L95 79 L85 89 L120 93 Z", c: [92, 66], at: [103, 106], rot: 76, s: 0.52, keep: true },
-  // a slice of the left side, landed face down
-  { cut: "M0 58 L29 55 L36 65 L27 74 L37 84 L29 95 L0 96 Z", c: [27, 76], at: [27, 114], rot: -78, s: 0.36, inside: true },
-  // a piece of the base
-  { cut: "M22 94 L34 90 L44 99 L56 91 L67 100 L79 91 L90 99 L104 94 V120 H22 Z", c: [62, 101], at: [88, 114], rot: 8, s: 0.34, keep: true },
-  // chips
-  { cut: "M48 58 L60 52 L68 61 L59 70 L50 67 Z", c: [58, 61], at: [44, 117], rot: 24, s: 0.42 },
-  { cut: "M66 76 L76 73 L79 83 L69 86 Z", c: [72, 79], at: [114, 114], rot: -30, s: 0.5, inside: true },
-  { cut: "M30 64 L38 60 L41 68 Z", c: [36, 64], at: [5, 110], rot: 40, s: 0.6 },
+  // left of the frame
+  { shape: "M0 0 L2.8 -3.6 L5.6 -3.7 L8.3 -6.0 L11.1 -5.1 L13.9 -6.5 L16.7 -4.6 L19.4 -5.1 L22.2 -2.2 L25.0 0 Z", x: 8, src: [34, 40], keep: true },
+  { shape: "M0 0 L2.5 -2.2 L5.0 -4.6 L7.5 -3.8 L10.0 -4.6 L12.5 -2.2 L15.0 0 Z", x: 28, src: [60, 80], inside: true },
+  { shape: "M0 0 L2.0 -2.4 L4.0 -1.6 L6.0 0 Z", x: 3, src: [70, 60] },
+  // right of the frame
+  { shape: "M0 0 L2.8 -2.3 L5.5 -5.2 L8.2 -4.7 L11.0 -6.4 L13.8 -4.7 L16.5 -5.2 L19.2 -2.3 L22.0 0 Z", x: 86, src: [80, 50], keep: true },
+  { shape: "M0 0 L2.4 -3.3 L4.8 -3.3 L7.2 -4.4 L9.6 -2.2 L12.0 0 Z", x: 77, src: [44, 90] },
+  { shape: "M0 0 L2.0 -1.7 L4.0 -2.5 L6.0 0 Z", x: 107, src: [50, 30], inside: true },
 ];
 
 export function LaunchAvatar({
@@ -175,7 +172,7 @@ export function LaunchAvatar({
         {state === "hatched" &&
           SHARDS.map((sh, i) => (
             <clipPath key={i} id={id(`shard-${i}`)}>
-              <path d={sh.cut} />
+              <path d={sh.shape} />
             </clipPath>
           ))}
         <radialGradient id={id("shade")} cx="38%" cy="32%" r="75%">
@@ -201,7 +198,7 @@ export function LaunchAvatar({
       {state === "hatched" ? (
         <>
           {/* the ground the pieces lie on */}
-          <ellipse cx="60" cy="114" rx="58" ry="5" fill="currentColor" opacity="0.08" />
+          <ellipse cx="60" cy={GROUND + 1} rx="56" ry="3" fill="currentColor" opacity="0.07" />
           {!small && (
             <g stroke="#F9C23C" strokeWidth="3" strokeLinecap="round" className="la-sparks">
               <path d="M108 12v10M103 17h10" />
@@ -210,35 +207,25 @@ export function LaunchAvatar({
           )}
           {SHARDS.filter((sh) => !small || sh.keep).map((sh) => {
             const i = SHARDS.indexOf(sh);
-            // the piece itself: the egg's shell (or its pale inside) where the egg and the cut overlap
-            const piece = (fill: ReactNode) => (
-              <g clipPath={`url(#${id("egg")})`}>
-                <g clipPath={`url(#${id(`shard-${i}`)})`}>{fill}</g>
-              </g>
-            );
             return (
               <g
                 key={i}
                 className="la-shard"
-                style={{ "--from-x": `${(60 - sh.at[0]).toFixed(1)}px`, "--from-y": `${(60 - sh.at[1]).toFixed(1)}px` } as CSSProperties}
+                style={{ "--from-x": `${(60 - sh.x - 8).toFixed(1)}px`, "--from-y": `${(60 - GROUND).toFixed(1)}px` } as CSSProperties}
               >
-                <g transform={`translate(${sh.at[0]} ${sh.at[1]}) rotate(${sh.rot}) scale(${sh.s}) translate(${-sh.c[0]} ${-sh.c[1]})`}>
-                  {/* the shell's thickness, seen along the broken edge */}
-                  <g transform="translate(1.2 2.6)">{piece(<rect width="120" height="120" fill="#000" opacity="0.28" />)}</g>
-                  {piece(
-                    sh.inside ? (
-                      <>
-                        <rect width="120" height="120" fill="#EFE6D2" />
-                        <path d={path} fill={`url(#${id("shade")})`} />
-                      </>
+                <g transform={`translate(${sh.x} ${GROUND})`}>
+                  <g clipPath={`url(#${id(`shard-${i}`)})`}>
+                    {sh.inside ? (
+                      <rect x="-2" y="-10" width="32" height="12" fill="#EFE6D2" />
                     ) : (
-                      <>
-                        <path d={path} fill={look.fill} />
+                      // the egg's own shell at half size, so the pattern reads at the piece's scale
+                      <g transform={`scale(0.5) translate(${-sh.src[0]} ${-sh.src[1]})`}>
+                        <rect width="240" height="240" fill={look.fill} />
                         {decoration(look.kind, look.b, look.ink, look.accent)}
-                        <path d={path} fill={`url(#${id("shade")})`} />
-                      </>
-                    ),
-                  )}
+                      </g>
+                    )}
+                  </g>
+                  <path d={sh.shape} fill="none" stroke="#1C1C1C" strokeOpacity="0.2" strokeWidth="0.8" strokeLinejoin="round" />
                 </g>
               </g>
             );
