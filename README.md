@@ -5,8 +5,8 @@ transaction. It trades on a bonding curve until the curve raises its graduation 
 official Uniswap v4 pool that carries the Perk hook, with its initial liquidity locked. Every launch's configuration
 is committed on-chain as a `configHash`, so the rules a token was created with can be verified by anyone.
 
-The live deployment is on X Layer testnet (chain 1952): the web app at <https://perk-xdog.netlify.app> and the API
-at <https://perk-api-s54de.ondigitalocean.app>. Mainnet (chain 196) is not deployed yet.
+The live deployment is on X Layer testnet (chain 1952): the web app at <https://testnet.perk.fo> and the API at
+<https://testnet-api.perk.fo>. Mainnet (chain 196) is not deployed yet.
 
 ## Features
 
