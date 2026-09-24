@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type PointerEvent, type ReactNode } from "react";
+import { useId, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { decoration, eggLook, eggPath } from "./HashEgg";
 import { HatchlingArt } from "./Hatchling";
 
@@ -11,7 +11,9 @@ import { HatchlingArt } from "./Hatchling";
  *   sealed     on the curve: the egg. In lists, hovering it (or the card or row around it) lifts the top of the
  *              shell and the creature peeks out; moving away closes it again.
  *   cracking   threshold reached, graduation pending: the shell is ajar and trembles.
- *   hatched    graduated: the creature itself, standing in the broken shell. The token page plays the hatch once.
+ *   hatched    graduated: the creature itself, centred in a round frame and never moved or resized to make room for
+ *              anything; the shell lies around it in pieces (the egg's own colours and pattern, a few showing the pale
+ *              inside), outside the frame. The token page plays the hatch once.
  *   refunding  the egg stays sealed and goes grey.
  *
  * `mode="detail"` (the token page) swaps the hover peek for an X-ray lens that follows the pointer (a tap toggles it
@@ -33,6 +35,39 @@ const ZIGZAG: ReadonlyArray<readonly [number, number]> = [
 const ZZ = ZIGZAG.map(([x, y]) => `${x} ${y}`).join(" L");
 const CAP_CLIP = `M0 0 H120 V58 L${[...ZIGZAG].reverse().map(([x, y]) => `${x} ${y}`).join(" L")} L0 58 Z`;
 const BOTTOM_CLIP = `M0 120 V58 L${ZZ} L120 58 V120 Z`;
+
+/** The round frame a hatched creature sits in: centred in the picture, so the artwork is never displaced. */
+const FRAME_R = 45;
+
+/**
+ * The pieces of a hatched egg. `cut` is a region with a jagged break line; intersected with the egg, each piece keeps
+ * a stretch of the shell's curved edge and the egg's own pattern. `c` is the piece's middle (egg coordinates); `at`,
+ * `rot` and `s` lay it on the ground below and beside the frame, partly tucked behind its rim so no piece ever covers
+ * the artwork. `inside` pieces landed face down and show the pale inside of the shell. Small pictures keep the
+ * pieces marked `keep`.
+ */
+const SHARDS: ReadonlyArray<{
+  cut: string;
+  c: readonly [number, number];
+  at: readonly [number, number];
+  rot: number;
+  s: number;
+  inside?: boolean;
+  keep?: boolean;
+}> = [
+  // the upper left of the shell: curved top, broken along the right and underneath
+  { cut: "M0 0 H63 L56 12 L64 22 L55 31 L61 40 L50 47 L42 38 L33 48 L24 39 L0 45 Z", c: [42, 30], at: [17, 101], rot: -24, s: 0.56, keep: true },
+  // a slice of the right side, lying on its long edge
+  { cut: "M120 40 H95 L88 51 L97 60 L86 69 L95 79 L85 89 L120 93 Z", c: [92, 66], at: [103, 106], rot: 76, s: 0.52, keep: true },
+  // a slice of the left side, landed face down
+  { cut: "M0 58 L29 55 L36 65 L27 74 L37 84 L29 95 L0 96 Z", c: [27, 76], at: [27, 114], rot: -78, s: 0.36, inside: true },
+  // a piece of the base
+  { cut: "M22 94 L34 90 L44 99 L56 91 L67 100 L79 91 L90 99 L104 94 V120 H22 Z", c: [62, 101], at: [88, 114], rot: 8, s: 0.34, keep: true },
+  // chips
+  { cut: "M48 58 L60 52 L68 61 L59 70 L50 67 Z", c: [58, 61], at: [44, 117], rot: 24, s: 0.42 },
+  { cut: "M66 76 L76 73 L79 83 L69 86 Z", c: [72, 79], at: [114, 114], rot: -30, s: 0.5, inside: true },
+  { cut: "M30 64 L38 60 L41 68 Z", c: [36, 64], at: [5, 110], rot: 40, s: 0.6 },
+];
 
 export function LaunchAvatar({
   hash,
@@ -73,37 +108,27 @@ export function LaunchAvatar({
     </g>
   );
 
-  /** The creature placed inside the egg (sealed) or free and larger (hatched). */
-  const creature = (hatched: boolean): ReactNode => {
-    if (art) {
-      const r = hatched ? 40 : 27;
-      const cy = hatched ? 48 : 70;
-      return (
-        <g>
-          <circle cx="60" cy={cy} r={r + 2} fill="#FFFEFA" />
-          <image
-            href={art}
-            x={60 - r}
-            y={cy - r}
-            width={r * 2}
-            height={r * 2}
-            preserveAspectRatio="xMidYMid slice"
-            clipPath={`url(#${id(hatched ? "art-big" : "art")})`}
-            onError={() => setFailed(art)}
-          />
-        </g>
-      );
-    }
-    return hatched ? (
-      <g transform="translate(16.8 14) scale(1.35)">
-        <HatchlingArt hash={hash} />
+  /** The creature inside the sealed egg: the artwork in a small round window, or the hatchling. */
+  const creature = (): ReactNode =>
+    art ? (
+      <g>
+        <circle cx="60" cy="70" r="29" fill="#FFFEFA" />
+        <image
+          href={art}
+          x={33}
+          y={43}
+          width={54}
+          height={54}
+          preserveAspectRatio="xMidYMid slice"
+          clipPath={`url(#${id("art")})`}
+          onError={() => setFailed(art)}
+        />
       </g>
     ) : (
       <g transform="translate(28 38)">
         <HatchlingArt hash={hash} />
       </g>
     );
-  };
 
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
     if (mode !== "detail" || state === "hatched" || e.pointerType !== "mouse") return;
@@ -144,9 +169,15 @@ export function LaunchAvatar({
         <clipPath id={id("art")}>
           <circle cx="60" cy="70" r="27" />
         </clipPath>
-        <clipPath id={id("art-big")}>
-          <circle cx="60" cy="48" r="40" />
+        <clipPath id={id("frame")}>
+          <circle cx="60" cy="60" r={FRAME_R} />
         </clipPath>
+        {state === "hatched" &&
+          SHARDS.map((sh, i) => (
+            <clipPath key={i} id={id(`shard-${i}`)}>
+              <path d={sh.cut} />
+            </clipPath>
+          ))}
         <radialGradient id={id("shade")} cx="38%" cy="32%" r="75%">
           <stop offset="55%" stopColor="#000" stopOpacity="0" />
           <stop offset="100%" stopColor="#000" stopOpacity="0.2" />
@@ -169,26 +200,76 @@ export function LaunchAvatar({
 
       {state === "hatched" ? (
         <>
-          {/* a soft halo in the shell's colour; the charcoal shell lends its accent instead, grey would look muddy */}
-          <circle cx="60" cy="58" r="52" fill={look.fill === "#34342F" ? look.accent : look.fill} opacity="0.28" />
+          {/* the ground the pieces lie on */}
+          <ellipse cx="60" cy="114" rx="58" ry="5" fill="currentColor" opacity="0.08" />
           {!small && (
             <g stroke="#F9C23C" strokeWidth="3" strokeLinecap="round" className="la-sparks">
-              <path d="M104 18v10M99 23h10" />
-              <path d="M16 30v8M12 34h8" />
+              <path d="M108 12v10M103 17h10" />
+              <path d="M12 16v8M8 20h8" />
             </g>
           )}
-          <g className="la-creature">{creature(true)}</g>
-          {/* it stands in the bottom half of its shell; the top lies beside it */}
-          {!small && (
-            <g transform="translate(78 70) rotate(28) scale(0.42)">
-              <g className="la-frag la-frag-cap">{shellPiece("cap")}</g>
+          {SHARDS.filter((sh) => !small || sh.keep).map((sh) => {
+            const i = SHARDS.indexOf(sh);
+            // the piece itself: the egg's shell (or its pale inside) where the egg and the cut overlap
+            const piece = (fill: ReactNode) => (
+              <g clipPath={`url(#${id("egg")})`}>
+                <g clipPath={`url(#${id(`shard-${i}`)})`}>{fill}</g>
+              </g>
+            );
+            return (
+              <g
+                key={i}
+                className="la-shard"
+                style={{ "--from-x": `${(60 - sh.at[0]).toFixed(1)}px`, "--from-y": `${(60 - sh.at[1]).toFixed(1)}px` } as CSSProperties}
+              >
+                <g transform={`translate(${sh.at[0]} ${sh.at[1]}) rotate(${sh.rot}) scale(${sh.s}) translate(${-sh.c[0]} ${-sh.c[1]})`}>
+                  {/* the shell's thickness, seen along the broken edge */}
+                  <g transform="translate(1.2 2.6)">{piece(<rect width="120" height="120" fill="#000" opacity="0.28" />)}</g>
+                  {piece(
+                    sh.inside ? (
+                      <>
+                        <rect width="120" height="120" fill="#EFE6D2" />
+                        <path d={path} fill={`url(#${id("shade")})`} />
+                      </>
+                    ) : (
+                      <>
+                        <path d={path} fill={look.fill} />
+                        {decoration(look.kind, look.b, look.ink, look.accent)}
+                        <path d={path} fill={`url(#${id("shade")})`} />
+                      </>
+                    ),
+                  )}
+                </g>
+              </g>
+            );
+          })}
+          {/* the creature, centred: the uploaded artwork as it is, cropped only by the circle, or the hatchling */}
+          <g className="la-creature">
+            <g clipPath={`url(#${id("frame")})`}>
+              {art ? (
+                <image
+                  href={art}
+                  x={60 - FRAME_R}
+                  y={60 - FRAME_R}
+                  width={FRAME_R * 2}
+                  height={FRAME_R * 2}
+                  preserveAspectRatio="xMidYMid slice"
+                  onError={() => setFailed(art)}
+                />
+              ) : (
+                <>
+                  <circle cx="60" cy="60" r={FRAME_R} fill="#FFFEFA" />
+                  <circle cx="60" cy="60" r={FRAME_R} fill={look.fill === "#34342F" ? look.accent : look.fill} opacity="0.35" />
+                  {/* eyes on the centre, the body running out of the bottom of the frame like a portrait */}
+                  <g transform="translate(12 38) scale(1.5)">
+                    <HatchlingArt hash={hash} />
+                  </g>
+                </>
+              )}
             </g>
-          )}
-          <g transform="translate(22.8 49) scale(0.62)">
-            <g className="la-frag la-frag-cup">
-              {shellPiece("bottom")}
-              <path d={`M${ZZ}`} fill="none" stroke="#1C1C1C" strokeOpacity="0.18" strokeWidth="1.6" strokeLinejoin="round" clipPath={`url(#${id("egg")})`} />
-            </g>
+            {/* the frame: a ring in the shell's colour around the artwork; nothing is painted behind the artwork, so a
+                transparent logo shows exactly as uploaded */}
+            <circle cx="60" cy="60" r={FRAME_R + 1.5} fill="none" stroke={look.fill === "#34342F" ? look.accent : look.fill} strokeWidth="3" />
           </g>
         </>
       ) : (
@@ -198,7 +279,7 @@ export function LaunchAvatar({
             <g className="la-egg">
               {/* the inside of the shell, seen when the top lifts */}
               <path d={path} fill="#2B2620" />
-              <g className="la-creature">{creature(false)}</g>
+              <g className="la-creature">{creature()}</g>
               <g className="la-bottom">
                 {shellPiece("bottom")}
                 <path d={`M${ZZ}`} fill="none" stroke="#1C1C1C" strokeOpacity="0.18" strokeWidth="1.4" strokeLinejoin="round" clipPath={`url(#${id("egg")})`} />
@@ -212,7 +293,7 @@ export function LaunchAvatar({
                   <g clipPath={`url(#${id("lens")})`}>
                     <rect width="120" height="120" fill="#0F2533" />
                     <g filter={`url(#${id("xray")})`} opacity="0.95">
-                      {creature(false)}
+                      {creature()}
                     </g>
                     <rect width="120" height="120" fill={`url(#${id("scan")})`} />
                   </g>

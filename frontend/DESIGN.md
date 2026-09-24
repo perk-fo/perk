@@ -17,8 +17,11 @@ the home page; every other page follows the same system.
   token page lists these as traits. Graduation hatches it.
 - Egg states (`art/LaunchAvatar`): **sealed** on the curve; in lists, hovering the egg or the card or row around it
   tips the lid open on a hinge and the creature peeks out, then it closes again. **Cracking** while graduation is
-  pending: the lid sits ajar and the egg trembles. **Hatched** once graduated: the creature stands in the bottom of
-  its shell with the lid lying beside it, and hops on hover; the token page plays the hatch once. **Refunding**: the
+  pending: the lid sits ajar and the egg trembles. **Hatched** once graduated: the creature alone, centred in a round
+  frame (uploaded artwork is shown as it is, cropped only by the circle, never moved or resized to make room for
+  anything), with the shell broken into pieces lying on the ground in the lower corners and along the bottom, outside
+  the frame; hovering grows it slightly from its centre, and the token page plays the hatch once (the pieces burst
+  out and settle). **Refunding**: the
   egg stays sealed and turns grey. On the token page an X-ray lens follows the pointer (a tap toggles it on touch
   screens) to peek inside a sealed egg; the artwork is public metadata anyway, so this is play, not secrecy.
 - The chick is the brand's voice. It appears in the lockup, loading states, empty states, transaction toasts and the

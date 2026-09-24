@@ -464,7 +464,7 @@ button:hover .nudge,
 .launch-avatar .la-egg,
 .launch-avatar .la-cap,
 .launch-avatar .la-creature,
-.launch-avatar .la-frag,
+.launch-avatar .la-shard,
 .launch-avatar .la-sparks path {
   transform-box: fill-box;
 }
@@ -516,25 +516,33 @@ button:hover .nudge,
   filter: grayscale(1);
   opacity: 0.7;
 }
-/* hatched: a happy hop on hover; on the token page the hatch plays once */
+/* hatched: the creature stays centred; hovering grows it a little from its centre, the pieces lie still. On the
+   token page the hatch plays once. */
+.launch-avatar[data-state="hatched"] .la-creature {
+  transform-origin: 50% 50%;
+}
 .launch-avatar[data-state="hatched"]:hover .la-creature,
 .group:hover .launch-avatar[data-state="hatched"] .la-creature {
-  animation: chick-hop 720ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: scale(1.05);
 }
 .launch-avatar[data-state="hatched"][data-mode="detail"] .la-creature {
   animation: la-pop 900ms cubic-bezier(0.34, 1.56, 0.64, 1) 150ms backwards;
 }
-.launch-avatar[data-state="hatched"][data-mode="detail"] .la-frag-cap {
+/* the pieces burst out from where the egg stood and settle on the ground around the frame */
+.launch-avatar[data-state="hatched"][data-mode="detail"] .la-shard {
   transform-origin: 50% 50%;
-  animation: la-fly-cap 800ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation: la-burst 760ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.launch-avatar[data-state="hatched"][data-mode="detail"] .la-shard:nth-of-type(2n) {
+  animation-delay: 60ms;
 }
 @keyframes la-pop {
-  from { transform: translateY(22px) scale(0.7); opacity: 0; }
+  from { transform: scale(0.6); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
-@keyframes la-fly-cap {
-  from { transform: translate(-60px, -70px) rotate(-60deg); opacity: 0; }
-  40% { opacity: 1; }
+@keyframes la-burst {
+  from { transform: translate(var(--from-x), var(--from-y)) rotate(-90deg) scale(0.4); opacity: 0; }
+  35% { opacity: 1; }
   to { transform: none; }
 }
 .launch-avatar .la-sparks path {
