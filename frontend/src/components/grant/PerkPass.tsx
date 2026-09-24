@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useAccount, useReadContracts } from "wagmi";
-import { keccak256, type Address } from "viem";
+import type { Address } from "viem";
 import { referralRegistryAbi } from "@/generated/abis";
 import { useDeployment, useTx } from "@/lib/hooks";
 import { useInvite } from "@/lib/use-referral";
 import { forgetInviter } from "@/lib/referral";
-import { HashSeal } from "@/components/art/HashSeal";
+import { GoldenEgg } from "@/components/art/GoldenEgg";
 import { Sparkle } from "@/components/art/Sparkle";
 import { Spinner } from "@/components/ui/Spinner";
 import { InviteLinkRow } from "@/components/InviteLinkRow";
@@ -105,9 +105,6 @@ export function PerkPass() {
   const bindOnly = () =>
     bindTx.write({ address: deployment.referralRegistry, abi: referralRegistryAbi, functionName: "bindInviter", args: [invite.pending!] });
 
-  // the stub's seal is generated from the holder's address: every pass is one of a kind
-  const sealHash = address ? keccak256(address) : undefined;
-
   return (
     <section className={`pass ${issued ? "pass-issued" : ""} ${celebrate ? "pass-celebrate" : ""}`} aria-label={t("pass.aria")}>
       <div className="pass-body">
@@ -172,8 +169,8 @@ export function PerkPass() {
 
         {/* stub */}
         <div className="pass-stub">
-          <div className={`relative ${issued ? "" : "opacity-45 grayscale"}`}>
-            <HashSeal hash={sealHash} size={92} hover={issued} />
+          <div className="relative">
+            <GoldenEgg size={104} lit={issued} />
             {issued && <span className="pass-stamp">{t("pass.stamp")}</span>}
           </div>
           <div className="mt-4 text-center">
@@ -205,7 +202,7 @@ export function PerkPass() {
   );
 }
 
-/** Placeholder ticket while the pass state resolves: same frame, shimmering lines, a slowly turning seal. */
+/** Placeholder ticket while the pass state resolves: same frame, shimmering lines, a wobbling unlit golden egg. */
 function PassLoading({ label }: { label: string }) {
   return (
     <section className="pass pass-loading" aria-busy="true" aria-label={label}>
@@ -223,9 +220,7 @@ function PassLoading({ label }: { label: string }) {
           </p>
         </div>
         <div className="pass-stub">
-          <div className="pass-seal-spin opacity-40">
-            <HashSeal size={92} />
-          </div>
+          <GoldenEgg size={104} lit={false} wobble />
           <div className="skel mt-5 h-3 w-16" />
           <div className="skel mt-2 h-5 w-24" />
         </div>

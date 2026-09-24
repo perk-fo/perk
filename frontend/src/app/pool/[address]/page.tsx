@@ -11,7 +11,7 @@ import { Panel } from "@/components/ui/Panel";
 import { Kv } from "@/components/ui/Kv";
 import { Notice } from "@/components/ui/Notice";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { HashSeal } from "@/components/art/HashSeal";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { LiquidityPanel } from "@/components/meme/LiquidityPanel";
 import type { PoolKey } from "@/lib/pool";
 import { formatAmount, formatPrice } from "@/lib/format";
@@ -65,7 +65,7 @@ export default function PoolDetailPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <HashSeal hash={d.configHash} moduleBitmap={BigInt(d.moduleBitmap)} size={48} className="shrink-0" />
+          <LaunchAvatar hash={d.configHash} image={d.metadata?.image} status={d.status} size={52} title={d.name} />
           <div>
             <h1 className="font-display text-3xl leading-none">
               {d.symbol} <span className="text-subtle">/</span> {d.quoteSymbol}

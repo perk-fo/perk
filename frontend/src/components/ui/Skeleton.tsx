@@ -1,7 +1,7 @@
-import { HashSeal } from "@/components/art/HashSeal";
+import { HashEgg } from "@/components/art/HashEgg";
 
 /**
- * Loading placeholder: the outline of a seal plus hairline bars — no grey shimmer (DESIGN.md).
+ * Loading placeholder: the dashed outline of an egg plus hairline bars — no grey shimmer (DESIGN.md).
  */
 export function Skeleton({
   size = 56,
@@ -9,13 +9,13 @@ export function Skeleton({
   className,
 }: {
   size?: number;
-  /** Hairline text bars next to the seal outline; 0 renders the seal alone. */
+  /** Hairline text bars next to the egg outline; 0 renders the egg alone. */
   lines?: number;
   className?: string;
 }) {
   return (
     <div className={`flex items-center gap-4 text-bone ${className ?? ""}`} aria-hidden>
-      <HashSeal size={size} />
+      <HashEgg size={size} />
       {lines > 0 && (
         <div className="min-w-0 flex-1 space-y-2.5">
           {Array.from({ length: lines }, (_, i) => (

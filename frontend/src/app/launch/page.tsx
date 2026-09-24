@@ -11,7 +11,8 @@ import { NATIVE_QUOTE } from "@/lib/deployments";
 import { TEMPLATE_BASES, templateIdFor } from "@/lib/templates";
 import { findQuote, isLaunchable, quoteNotice, useQuotes } from "@/lib/quotes";
 import { formatAmount } from "@/lib/format";
-import { HashSeal } from "@/components/art/HashSeal";
+import { HashEgg } from "@/components/art/HashEgg";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { Panel } from "@/components/ui/Panel";
 import { ChoiceCard } from "@/components/ui/ChoiceCard";
 import { Pill } from "@/components/ui/Pill";
@@ -406,16 +407,21 @@ export default function CreatePage() {
         {/* right: sticky preview */}
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Panel title={t("create.preview.title")}>
-            {/* the seal is stamped afresh each time the configuration (and so its hash) changes */}
-            <div className="relative isolate flex flex-col items-center overflow-hidden rounded-2xl bg-yolk/15 py-6">
+            {/* the egg is laid afresh each time the configuration (and so its hash) changes; hovering the preview lifts
+                its lid on the uploaded image, or on the hatchling drawn from the same hash */}
+            <div className="group relative isolate flex flex-col items-center overflow-hidden rounded-2xl bg-yolk/15 py-6">
               <div className="grid-paper absolute inset-0 -z-10" aria-hidden />
               <span key={configHash ?? "empty"} className="twinkle">
-                <HashSeal
-                  hash={configHash}
-                  moduleBitmap={moduleBitmap}
-                  size={128}
-                  title={name || symbol ? `${name} (${symbol})` : t("create.preview.sealTitle")}
-                />
+                {configHash ? (
+                  <LaunchAvatar
+                    hash={configHash}
+                    image={image.upload?.url}
+                    size={128}
+                    title={name || symbol ? `${name} (${symbol})` : t("create.preview.eggTitle")}
+                  />
+                ) : (
+                  <HashEgg size={128} title={t("create.preview.eggTitle")} />
+                )}
               </span>
               <p className="mt-3 font-display text-[22px]">{name.trim() || t("create.preview.unnamed")}</p>
               <p className="num font-mono text-xs tracking-wider text-subtle">{symbol.trim() || "—"}</p>

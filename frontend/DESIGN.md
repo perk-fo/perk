@@ -9,15 +9,24 @@ the home page; every other page follows the same system.
 
 ## Concepts
 
-- Each launch is a **market credential**. The home page's credential card is a concept piece; each real launch has
-  its `HashSeal`, a stamp generated from its configHash, which matches only when the preview's hash matches the
-  chain's.
+- Each launch is a **market credential**, and **every launch is an egg until it graduates**. The home page's
+  credential card is a concept piece; each real launch has its own Easter egg, generated from its configHash (shell
+  colour, pattern, width, tilt), so the preview on /launch matches the chain only when the hashes match. Inside the
+  egg is the creature: the artwork the creator uploaded or, without one, a hatchling drawn from the same hash (eight
+  species, colourways and accessories; one in sixteen wears a crown). It blends a meme with a small collectible: the
+  token page lists these as traits. Graduation hatches it.
+- Egg states (`art/LaunchAvatar`): **sealed** on the curve; in lists, hovering the egg or the card or row around it
+  tips the lid open on a hinge and the creature peeks out, then it closes again. **Cracking** while graduation is
+  pending: the lid sits ajar and the egg trembles. **Hatched** once graduated: the creature stands in the bottom of
+  its shell with the lid lying beside it, and hops on hover; the token page plays the hatch once. **Refunding**: the
+  egg stays sealed and turns grey. On the token page an X-ray lens follows the pointer (a tap toggles it on touch
+  screens) to peek inside a sealed egg; the artwork is public metadata anyway, so this is play, not secrecy.
 - The chick is the brand's voice. It appears in the lockup, loading states, empty states, transaction toasts and the
   not-found page, and nowhere as decoration for its own sake.
-- The eight-spoke asterisk (`art/Sparkle`) is the only ornament: section kicker, the corner of the hero scene, the
-  heart of every seal.
-- Shape language: buttons and inputs are 12px rounded rectangles, cards 20px, badges fully round, seals zigzag
-  stamps. Stacked, slightly rotated cards are the signature composition.
+- The eight-spoke asterisk (`art/Sparkle`) is the main ornament: section kicker, the corner of the hero scene, one of
+  the egg patterns.
+- Shape language: buttons and inputs are 12px rounded rectangles, cards 20px, badges fully round, eggs split along
+  a zigzag crack. Stacked, slightly rotated cards are the signature composition.
 
 ## Colour
 
@@ -86,11 +95,11 @@ Everything here stops under `prefers-reduced-motion`.
 - The hero credential card leans toward the pointer (up to 12 degrees), its backing cards fan out while it is
   hovered, the orbit rings turn slowly, the plus signs float, and the corner asterisk spins.
 - Linked cards lift 4px with a longer shadow and a honey border on a springy curve; their icons wiggle, arrows
-  (`.nudge`) slide up and right, launch-card seals tilt.
+  (`.nudge`) slide up and right, launch eggs open (see Concepts).
 - Buttons rise 2px on hover and press to 97%; the primary one gains a tangerine glow.
 - Entrances fade up (staggered in grids) with `animation-fill-mode: backwards`, so a finished entrance never pins
   `transform` and blocks hover motion.
-- The CountUp figures, the choice-card check (pops in), the seal preview on /launch (re-stamped when the hash
+- The CountUp figures, the choice-card check (pops in), the egg preview on /launch (laid afresh when the hash
   changes) and live-status dots (a soft pulse) complete the set. Nothing else loops forever.
 
 ## Components (`src/components/`)
@@ -98,16 +107,23 @@ Everything here stops under `prefers-reduced-motion`.
 - `brand/PerkChick` the mark on a 64-unit grid, `brand/PerkBrand` the lockup, `brand/PerkLoader` the loading state.
   The favicon (`app/icon.svg`, `public/brand/perk-chick.svg`) is the static chick; `app/apple-icon.png` is rendered
   from it.
-- `art/HashSeal` the credential stamp: a zigzag-rimmed plate in one of six brand colour schemes, three-fold bars and
-  dots, an outer dot ring and the asterisk heart, all derived from the hash, with the module bits as rim ticks.
-  Without a hash it draws its outline (loading placeholder).
+- `art/HashEgg` the egg on its own, derived from the hash: ten shell colours, eight patterns (speckles, zigzag band,
+  stripes, polka dots, waves, sparkles, a two-tone dip, a hairline crack), width and tilt, with the module bits as
+  dots in the nest from 44px. Without a hash it draws a dashed outline (loading placeholder). `eggLook` and
+  `decoration` are shared with the avatar.
+- `art/Hatchling` the fallback creature: chick, duckling, penguin, owlet, dino, croc, turtle or dragon, each with
+  colourways, an accessory (none, party hat, shades, bow, or a rare crown) and a happy or plain face, from bytes of the
+  hash the egg does not use.
+- `art/LaunchAvatar` the launch in its egg with the four states above; `mode="detail"` swaps the hover peek for the
+  X-ray lens. An image that fails to load falls back to the hatchling. `meme/LaunchTraits` lists the traits.
+- `art/GoldenEgg` the LP Grant pass: a gold egg with a cream zigzag band, lit once the pass is issued.
 - `art/Sparkle` the asterisk (`spin` for the slow turn), `art/CurveChart`, `art/PriceChart`, `art/DecayRing`.
 - `ui/Panel` (bold title, right slot), `ui/PageHeader` and `ui/SectionHeading`, `ui/Stat`, `ui/Kv`,
   `ui/ModuleBlocks`, `ui/Ticket`, `ui/Pill` (tinted badges; `yolk` for "graduation pending"), `ui/Button` (primary /
   ghost / danger), `ui/Field`, `ui/Segmented`, `ui/Notice`, `ui/EmptyState`, `ui/FeeSplitBar`, `ui/Icon`,
   `ui/Subscripted`.
-- `LaunchCard` the gallery card (token image or seal, price, status, curve with a progress bar, or the pool),
-  `meme/TokenAvatar` the token image with its seal as a corner badge, `market/MarketTable` the market list.
+- `LaunchCard` the gallery card (the launch's egg, price, status, curve with a progress bar, or the pool),
+  `market/MarketTable` the market list.
 - `PauseBanner` and `InviteBar`: yolk-tinted bars under the header. Buttons for a paused action say so and are
   disabled (`lib/pause`); exits never need this, because the contracts cannot pause them.
 - Header menus (theme, language, account) are transient: a press anywhere outside, Escape, or moving keyboard focus
@@ -133,19 +149,17 @@ Everything here stops under `prefers-reduced-motion`.
   plus native OKB while the API is unreachable): the ones allowed on-chain, with active templates, and offered by the
   admins, showing display name or symbol, decimals, category and icon, with the admins' risk notice in the reader's
   language (tokenised stocks get the standard one when none is written). Templates are filtered by quote, and Perk Launch is
-  marked Recommended with a summary of what LP Grant on or off means. Right, a sticky preview: the seal updating
-  live with the form, then the predicted address, hook, module blocks, the fee rate and its split, and the config
+  marked Recommended with a summary of what LP Grant on or off means. Right, a sticky preview: the egg updating
+  live with the form (hover it to see the uploaded image or the hatchling inside), then the predicted address, hook, module blocks, the fee rate and its split, and the config
   hash. Signing is enabled only while the preview hash still matches the chain.
-- **Token** - header seal, name, status pill and the immutable facts. When the token's metadata has an image it takes
-  the seal's place at 72px with the seal as a small badge on its corner (`meme/TokenAvatar`, back to the seal alone if
-  the image fails to load); the description (three lines) and link
-  pills sit under the pills. A launch the admins hid shows a notice saying it is still on-chain and can be sold. While bonding the main area is the curve with
+- **Token** - the launch's egg at 104px with the X-ray lens (hatched once graduated), name, status pill, traits and
+  the immutable facts; the description (three lines) and link pills sit under the pills. A launch the admins hid shows a notice saying it is still on-chain and can be sold. While bonding the main area is the curve with
   the order panel beside it; after graduation it is pool information and the swap panel. Below sit quote rewards,
   creator revenue, and where fees go.
 - **Grant** - the decay ring as the headline number, with remaining allocation and countdown; a timeline from
   graduation through root proposal, activation and close, drawn with hairlines and dots; allocation split into base,
   boost and credit; the activation form; positions as ticket stubs; and risk disclosures itemised in a Notice.
-- Page-level loading shows the hatching chick (`brand/PerkLoader`); list placeholders use the seal's outline and soft
+- Page-level loading shows the hatching chick (`brand/PerkLoader`); list placeholders use an egg's dashed outline and soft
   bars; empty states show the idling chick on a dashed well (`ui/EmptyState`); the not-found page makes the chick
   the zero of "404".
 

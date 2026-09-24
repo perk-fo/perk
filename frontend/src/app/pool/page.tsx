@@ -9,7 +9,7 @@ import { API_URL, isApiUnreachable } from "@/lib/api";
 import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { HashSeal } from "@/components/art/HashSeal";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { formatAmount, formatNumber, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
@@ -142,11 +142,11 @@ export default function PoolPage() {
                     <tr
                       key={item.meme}
                       onClick={() => router.push(href)}
-                      className="cursor-pointer border-b border-line transition-colors duration-fast last:border-0 hover:bg-raised"
+                      className="group cursor-pointer border-b border-line transition-colors duration-fast last:border-0 hover:bg-raised"
                     >
                       <td className="py-3 pl-5 pr-2">
                         <span className="flex items-center gap-3">
-                          <HashSeal hash={item.configHash} moduleBitmap={BigInt(item.moduleBitmap)} size={30} className="shrink-0" />
+                          <LaunchAvatar hash={item.configHash} image={item.metadata?.image} status={item.status} size={34} title={item.name} />
                           <span className="min-w-0">
                             <span className="block text-[14px] text-bone">
                               {item.symbol} <span className="text-faint">/</span> {item.quoteSymbol}

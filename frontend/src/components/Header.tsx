@@ -212,11 +212,11 @@ export function Header() {
                     active ? "text-bone" : "text-muted hover:text-bone"
                   }`}
                 >
-                  {/* a highlighter stroke under the current section; it draws in on hover elsewhere */}
+                  {/* an underline beneath the word (never over it) marks the current section; it draws in on hover */}
                   <span
                     aria-hidden
-                    className={`absolute inset-x-2 bottom-[9px] h-[7px] origin-left rounded-full bg-yolk/80 transition-transform duration-300 ease-spring ${
-                      active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100 group-hover:bg-yolk/50"
+                    className={`absolute inset-x-2.5 bottom-0 h-[3px] origin-left rounded-full transition-transform duration-300 ease-spring ${
+                      active ? "scale-x-100 bg-tangerine dark:bg-yolk" : "scale-x-0 bg-honey group-hover:scale-x-100"
                     }`}
                   />
                   <span className="relative">{item.label}</span>

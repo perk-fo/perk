@@ -32,7 +32,8 @@ import {
   signedPct,
 } from "@/lib/format";
 import { explorerAddressUrl } from "@/lib/chains";
-import { TokenAvatar } from "@/components/meme/TokenAvatar";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
+import { LaunchTraits } from "@/components/meme/LaunchTraits";
 import { CurveChart } from "@/components/art/CurveChart";
 import { PriceChart } from "@/components/art/PriceChart";
 import { Panel } from "@/components/ui/Panel";
@@ -267,9 +268,13 @@ export default function MemePage() {
       </Link>
       <header className="fade-up flex flex-col gap-5 lg:flex-row lg:items-start">
         <div className="flex min-w-0 items-start gap-5 lg:max-w-[42%]">
-          <span className="transition-transform duration-500 ease-spring hover:-rotate-6 hover:scale-105">
-            <TokenAvatar image={media?.image} configHash={launch.configHash} moduleBitmap={launch.moduleBitmap} />
-          </span>
+          {/* the launch in its egg; until it hatches, an X-ray lens shows what is inside */}
+          <div className="flex shrink-0 flex-col items-center">
+            <LaunchAvatar hash={launch.configHash} image={media?.image} status={launch.status} size={104} mode="detail" title={memeName} />
+            {launch.status !== 3 && (
+              <p className="mt-1 max-w-[120px] text-center text-[10px] leading-tight text-subtle">{t("meme.avatar.xrayHint")}</p>
+            )}
+          </div>
           <div className="min-w-0">
             <h1 className="font-display text-[34px] leading-tight sm:text-[42px]">{memeName ?? "…"}</h1>
             <div className="num mt-1 font-mono text-[12px] tracking-wider text-subtle">{memeSymbol}</div>
@@ -285,6 +290,7 @@ export default function MemePage() {
                 </Link>
               )}
             </div>
+            <LaunchTraits hash={launch.configHash} hasArt={!!media?.image} className="mt-2" />
             {media?.description && (
               <p className="mt-3 line-clamp-3 max-w-prose break-words text-sm leading-relaxed text-muted" title={media.description}>
                 {media.description}

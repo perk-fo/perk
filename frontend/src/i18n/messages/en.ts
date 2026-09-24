@@ -5,7 +5,7 @@
 const messages: Record<string, string> = {
   "meta.description": "Perk — a modular hook launchpad on X Layer. Choose the launch. Compose the market.",
   "footer.note":
-    "Each launch's template, modules and parameters form a configHash at creation and cannot be replaced once the official pool is initialized. The seal shown here is generated from that hash.",
+    "Each launch's template, modules and parameters form a configHash at creation and cannot be replaced once the official pool is initialized. Each launch's egg, and the creature in it when no artwork is uploaded, is generated from that hash.",
 
   "common.invalidAmount": "Invalid amount",
   "common.modules": "Modules",
@@ -126,7 +126,7 @@ const messages: Record<string, string> = {
   "home.hero.line1": "Choose the launch.",
   "home.hero.line2": "Compose the market.",
   "home.hero.sub":
-    "Every launch is a public, fixed, verifiable market certificate: the template, modules and parameters form a configHash at creation, and the seal is the certificate.",
+    "Every launch is a public, fixed, verifiable market certificate: the template, modules and parameters form a configHash at creation, and its egg is drawn from it.",
   "home.cta.browse": "Browse launches",
   "home.stats.launches": "Launches",
   "home.stats.graduated": "Graduated",
@@ -142,7 +142,7 @@ const messages: Record<string, string> = {
 
   "create.title": "Launch a token",
   "create.subtitle":
-    "Parameters form the configHash before submission; the signature is only valid when the seal on the right matches the on-chain preview.",
+    "Parameters form the configHash before submission; the signature is only valid when the egg on the right matches the on-chain preview.",
   "create.network.body": "No synced deployment on the current chain, so launches cannot be created. Switch to X Layer Testnet (1952).",
   "create.section.basic": "Basic info",
   "create.section.quote": "Quote asset",
@@ -161,10 +161,10 @@ const messages: Record<string, string> = {
   "create.devBuy.hint": "Includes a 1.00% fee; 0 means no purchase",
   "create.devBuy.approve": "Approve Factory to spend {amount} {symbol}",
   "create.preview.title": "Certificate preview",
-  "create.preview.sealTitle": "Preview seal",
+  "create.preview.eggTitle": "Preview egg",
   "create.preview.unnamed": "Untitled",
   "create.preview.predicted": "Predicted address",
-  "create.preview.connectHint": "Connect a wallet to generate the seal and predicted address",
+  "create.preview.connectHint": "Connect a wallet to generate the egg and predicted address",
   "create.preview.loading": "Computing preview…",
   "create.preview.error": "Preview failed: {msg}",
   "create.submit.cta": "Sign and create",
@@ -172,7 +172,7 @@ const messages: Record<string, string> = {
   "create.submit.success": "Created",
   "create.submit.goto": "Go to the Meme page →",
   "create.submit.hint":
-    "Fill in the name and symbol to generate the preview; the button activates when the seal matches the on-chain configHash.",
+    "Fill in the name and symbol to generate the preview; the button activates when the egg matches the on-chain configHash.",
 
   "tpl.perk.row1.label": "LP Grant",
   "tpl.perk.row1.value": "ON (Recommended)",
@@ -768,7 +768,7 @@ const messages: Record<string, string> = {
   "admin.moderation.hide": "Hide from every list on this site",
   "admin.moderation.hideHint": "Also withholds its image and text. Its own page shows a notice instead.",
   "admin.moderation.hideMedia": "Withhold its image, description and links",
-  "admin.moderation.hideMediaHint": "It stays listed and is shown with its seal only.",
+  "admin.moderation.hideMediaHint": "It stays listed and is shown with its generated egg and hatchling only.",
   "admin.moderation.reason": "Reason (admins only)",
   "admin.moderation.reasonHint": "For other admins. Visitors see only a general notice.",
   "admin.moderation.reasonShown": "Reason: {reason}",
@@ -907,6 +907,40 @@ const messages: Record<string, string> = {
   "page.pool.eyebrow": "Liquidity",
   "page.me.eyebrow": "Your wallet",
   "page.admin.eyebrow": "Operations",
+  // the egg and the creature inside (components/art): traits drawn from the configHash
+  "meme.traits.title": "Traits",
+  "meme.traits.rare": "rare",
+  "meme.avatar.xrayHint": "Hover or tap the egg to X-ray it",
+  "egg.shell.yolk": "Yolk shell",
+  "egg.shell.tangerine": "Tangerine shell",
+  "egg.shell.mint": "Mint shell",
+  "egg.shell.sky": "Sky shell",
+  "egg.shell.lilac": "Lilac shell",
+  "egg.shell.pink": "Pink shell",
+  "egg.shell.cream": "Cream shell",
+  "egg.shell.charcoal": "Charcoal shell",
+  "egg.shell.white": "White shell",
+  "egg.shell.honey": "Honey shell",
+  "egg.pattern.speckles": "Speckles",
+  "egg.pattern.zigzag": "Zigzag band",
+  "egg.pattern.stripes": "Stripes",
+  "egg.pattern.polka": "Polka dots",
+  "egg.pattern.waves": "Waves",
+  "egg.pattern.sparkles": "Sparkles",
+  "egg.pattern.dipped": "Two-tone dip",
+  "egg.pattern.crack": "Hairline crack",
+  "egg.species.chick": "Chick",
+  "egg.species.duckling": "Duckling",
+  "egg.species.penguin": "Penguin chick",
+  "egg.species.owlet": "Owlet",
+  "egg.species.dino": "Baby dino",
+  "egg.species.croc": "Baby croc",
+  "egg.species.turtle": "Baby turtle",
+  "egg.species.dragon": "Baby dragon",
+  "egg.accessory.hat": "Party hat",
+  "egg.accessory.shades": "Shades",
+  "egg.accessory.bow": "Bow",
+  "egg.accessory.crown": "Crown",
 };
 
 export default messages;

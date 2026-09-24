@@ -8,7 +8,7 @@ import { Pill, launchStatusPill } from "@/components/ui/Pill";
 import { formatAmount, formatNumber, formatPrice, signedPct } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
-import { TokenAvatar } from "@/components/meme/TokenAvatar";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 
 /**
  * The market as a dense table (DEX-style): one row per launch, whole row clickable to its trading page.
@@ -49,9 +49,7 @@ export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; 
                   <td className="num py-3 pl-5 pr-2 text-subtle">{startRank + i}</td>
                   <td className="px-2 py-3">
                     <Link href={href} className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                      <span className="transition-transform duration-300 ease-spring group-hover:-rotate-6 group-hover:scale-110">
-                        <TokenAvatar image={item.metadata?.image} configHash={item.configHash} moduleBitmap={BigInt(item.moduleBitmap)} size={34} />
-                      </span>
+                      <LaunchAvatar hash={item.configHash} image={item.metadata?.image} status={item.status} size={38} title={item.name} />
                       <span className="min-w-0">
                         <span className="block max-w-[180px] truncate text-[14px] font-bold text-bone">{item.name || "…"}</span>
                         <span className="num flex items-center gap-1.5 text-xs text-subtle">

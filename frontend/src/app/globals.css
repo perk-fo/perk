@@ -390,7 +390,7 @@ button:hover .nudge,
 .chick-host:hover .chick[data-mode="idle"] .chick-bird,
 .chick[data-mode="follow"]:hover .chick-bird,
 .chick-host:hover .chick[data-mode="follow"] .chick-bird {
-  animation: chick-hop 640ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: chick-hop 720ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .chick[data-mode="idle"]:hover .chick-wing-l,
 .chick-host:hover .chick[data-mode="idle"] .chick-wing-l,
@@ -432,10 +432,11 @@ button:hover .nudge,
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(-9deg); }
 }
+/* high enough that the belly clears the crack, so the hop shows a whole chick */
 @keyframes chick-hop {
   0% { transform: translateY(0); }
-  35% { transform: translateY(-5px) scaleY(1.04); }
-  70% { transform: translateY(0.6px) scaleY(0.97); }
+  38% { transform: translateY(-10px) scaleY(1.04); }
+  72% { transform: translateY(0.8px) scaleY(0.96); }
   100% { transform: translateY(0); }
 }
 @keyframes chick-flap-l {
@@ -457,6 +458,123 @@ button:hover .nudge,
   0%, 12% { transform: translateY(11px); }
   45%, 78% { transform: translateY(-2px); }
   100% { transform: translateY(11px); }
+}
+
+/* ---- a launch in its egg (components/art/LaunchAvatar) ---- */
+.launch-avatar .la-egg,
+.launch-avatar .la-cap,
+.launch-avatar .la-creature,
+.launch-avatar .la-frag,
+.launch-avatar .la-sparks path {
+  transform-box: fill-box;
+}
+.launch-avatar .la-egg {
+  transform-origin: 50% 100%;
+}
+/* the lid hinges on the right end of the crack (the box is the whole egg, so 48% down is the crack line) and may
+   swing a little past the edge of the picture */
+.launch-avatar {
+  overflow: visible;
+}
+.launch-avatar .la-cap {
+  transform-origin: 100% 48%;
+  transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.launch-avatar .la-creature {
+  transform-origin: 50% 100%;
+  transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* lists: hovering the egg, or the card or row around it, lifts the top and the creature peeks out */
+.launch-avatar[data-mode="list"]:is([data-state="sealed"], [data-state="cracking"]):hover .la-cap,
+.group:hover .launch-avatar[data-mode="list"]:is([data-state="sealed"], [data-state="cracking"]) .la-cap {
+  transform: rotate(24deg);
+}
+.launch-avatar[data-mode="list"]:is([data-state="sealed"], [data-state="cracking"]):hover .la-creature,
+.group:hover .launch-avatar[data-mode="list"]:is([data-state="sealed"], [data-state="cracking"]) .la-creature {
+  transform: translateY(-14px);
+}
+.launch-avatar[data-mode="list"][data-state="sealed"]:hover .la-egg,
+.group:hover .launch-avatar[data-mode="list"][data-state="sealed"] .la-egg {
+  animation: chick-wobble 900ms ease-in-out;
+}
+/* graduation pending: the top sits ajar and the egg trembles */
+.launch-avatar[data-state="cracking"] .la-cap {
+  transform: rotate(7deg);
+}
+.launch-avatar[data-state="cracking"] .la-egg {
+  animation: la-tremble 2.4s ease-in-out infinite;
+}
+@keyframes la-tremble {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  66% { transform: rotate(-4deg); }
+  72% { transform: rotate(4deg); }
+  78% { transform: rotate(-2.5deg); }
+  84% { transform: rotate(2deg); }
+}
+/* refunding: sealed and grey */
+.launch-avatar[data-state="refunding"] {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+/* hatched: a happy hop on hover; on the token page the hatch plays once */
+.launch-avatar[data-state="hatched"]:hover .la-creature,
+.group:hover .launch-avatar[data-state="hatched"] .la-creature {
+  animation: chick-hop 720ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.launch-avatar[data-state="hatched"][data-mode="detail"] .la-creature {
+  animation: la-pop 900ms cubic-bezier(0.34, 1.56, 0.64, 1) 150ms backwards;
+}
+.launch-avatar[data-state="hatched"][data-mode="detail"] .la-frag-cap {
+  transform-origin: 50% 50%;
+  animation: la-fly-cap 800ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes la-pop {
+  from { transform: translateY(22px) scale(0.7); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes la-fly-cap {
+  from { transform: translate(-60px, -70px) rotate(-60deg); opacity: 0; }
+  40% { opacity: 1; }
+  to { transform: none; }
+}
+.launch-avatar .la-sparks path {
+  transform-origin: center;
+  animation: egg-spark 2.6s ease-in-out infinite;
+}
+.launch-avatar .la-sparks path:nth-child(2) { animation-delay: 1.3s; }
+.launch-avatar[data-mode="detail"]:not([data-state="hatched"]) {
+  cursor: crosshair;
+}
+
+/* ---- the LP Grant pass's golden egg (components/art/GoldenEgg) ---- */
+.golden-egg .golden-egg-body,
+.golden-egg .golden-egg-sparks path {
+  transform-box: fill-box;
+}
+.golden-egg .golden-egg-body {
+  transform-origin: 50% 100%;
+  transition: transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.golden-egg-wobble .golden-egg-body,
+.pass-stub:hover .golden-egg[data-lit="true"] .golden-egg-body {
+  animation: chick-wobble 1.6s ease-in-out infinite;
+}
+.golden-egg .golden-egg-sweep {
+  animation: egg-sweep 3.8s ease-in-out infinite;
+}
+@keyframes egg-sweep {
+  0%, 35% { transform: translateX(0); }
+  75%, 100% { transform: translateX(190px); }
+}
+.golden-egg .golden-egg-sparks path {
+  transform-origin: center;
+  animation: egg-spark 2.4s ease-in-out infinite;
+}
+.golden-egg .golden-egg-sparks path:nth-child(2) { animation-delay: 0.8s; }
+.golden-egg .golden-egg-sparks path:nth-child(3) { animation-delay: 1.6s; }
+@keyframes egg-spark {
+  0%, 100% { transform: scale(0.4); opacity: 0.2; }
+  50% { transform: scale(1.15); opacity: 1; }
 }
 
 /* ---- playful motion ---- */
@@ -769,8 +887,6 @@ textarea {
 }
 .pass-loading { border-color: rgb(var(--c-line)); }
 .pass-loading::before { display: none; }
-.pass-seal-spin { animation: pass-seal-spin 6s linear infinite; }
-@keyframes pass-seal-spin { to { transform: rotate(360deg); } }
 
 /* the zero count in a small price (0.0₁₀4297), kept in the surrounding face: see components/ui/Subscripted */
 sub.price-sub {

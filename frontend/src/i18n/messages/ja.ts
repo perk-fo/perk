@@ -5,7 +5,7 @@
 const messages: Record<string, string> = {
   "meta.description": "Perk — X Layer 上のモジュラー Hook Launchpad。ローンチを選び、市場を組み立てる。",
   "footer.note":
-    "各ローンチのテンプレート・モジュール・パラメータは発行時に configHash を形成し、公式プールの初期化後は変更できません。ページに表示される印章はこのハッシュから生成されます。",
+    "各ローンチのテンプレート・モジュール・パラメータは発行時に configHash を形成し、公式プールの初期化後は変更できません。各ローンチの卵（画像がない場合は中の生き物も）はこのハッシュから生成されます。",
 
   "common.invalidAmount": "数量の形式が正しくありません",
   "common.modules": "モジュール",
@@ -126,7 +126,7 @@ const messages: Record<string, string> = {
   "home.hero.line1": "ローンチを選ぶ。",
   "home.hero.line2": "市場を組み立てる。",
   "home.hero.sub":
-    "すべてのローンチは、公開・固定・検証可能なマーケット証書です。テンプレート・モジュール・パラメータは作成時に configHash を形成し、印章がその証書となります。",
+    "すべてのローンチは、公開・固定・検証可能なマーケット証書です。テンプレート・モジュール・パラメータは作成時に configHash を形成し、卵はそこから描かれます。",
   "home.cta.browse": "ローンチを見る",
   "home.stats.launches": "ローンチ数",
   "home.stats.graduated": "卒業済み",
@@ -143,7 +143,7 @@ const messages: Record<string, string> = {
 
   "create.title": "トークンをローンチ",
   "create.subtitle":
-    "パラメータは送信前に configHash を形成します。右の印章がオンチェーンのプレビューと一致する場合のみ、署名が有効です。",
+    "パラメータは送信前に configHash を形成します。右の卵がオンチェーンのプレビューと一致する場合のみ、署名が有効です。",
   "create.network.body":
     "現在のチェーンには同期済みのデプロイがないため、ローンチを作成できません。X Layer テストネット（1952）に切り替えてください。",
   "create.section.basic": "基本情報",
@@ -163,10 +163,10 @@ const messages: Record<string, string> = {
   "create.devBuy.hint": "1.00% の手数料を含みます。0 は購入なし",
   "create.devBuy.approve": "Factory に {amount} {symbol} の使用を承認",
   "create.preview.title": "証書プレビュー",
-  "create.preview.sealTitle": "プレビュー印章",
+  "create.preview.eggTitle": "プレビューの卵",
   "create.preview.unnamed": "無題",
   "create.preview.predicted": "予測アドレス",
-  "create.preview.connectHint": "ウォレットを接続すると印章と予測アドレスが生成されます",
+  "create.preview.connectHint": "ウォレットを接続すると卵と予測アドレスが生成されます",
   "create.preview.loading": "プレビュー計算中…",
   "create.preview.error": "プレビュー失敗：{msg}",
   "create.submit.cta": "署名して作成",
@@ -174,7 +174,7 @@ const messages: Record<string, string> = {
   "create.submit.success": "作成成功",
   "create.submit.goto": "Meme ページへ →",
   "create.submit.hint":
-    "名称と Symbol を入力するとプレビューが自動生成されます。印章がオンチェーンの configHash と一致するとボタンが有効になります。",
+    "名称と Symbol を入力するとプレビューが自動生成されます。卵がオンチェーンの configHash と一致するとボタンが有効になります。",
 
   "tpl.perk.row1.label": "LP Grant",
   "tpl.perk.row1.value": "オン（推奨）",
@@ -772,7 +772,7 @@ const messages: Record<string, string> = {
   "admin.moderation.hide": "このサイトのすべての一覧から非表示",
   "admin.moderation.hideHint": "画像とテキストも非表示になります。個別ページには告知が表示されます。",
   "admin.moderation.hideMedia": "画像・説明・リンクを非表示",
-  "admin.moderation.hideMediaHint": "一覧には残り、シールだけが表示されます。",
+  "admin.moderation.hideMediaHint": "一覧には残り、生成された卵とひなだけが表示されます。",
   "admin.moderation.reason": "理由（管理者のみ閲覧）",
   "admin.moderation.reasonHint": "ほかの管理者向けです。訪問者には一般的な告知だけが表示されます。",
   "admin.moderation.reasonShown": "理由：{reason}",
@@ -911,6 +911,40 @@ const messages: Record<string, string> = {
   "page.pool.eyebrow": "LIQUIDITY",
   "page.me.eyebrow": "YOUR WALLET",
   "page.admin.eyebrow": "OPERATIONS",
+  // the egg and the creature inside (components/art): traits drawn from the configHash
+  "meme.traits.title": "特徴",
+  "meme.traits.rare": "レア",
+  "meme.avatar.xrayHint": "卵にカーソルを合わせるかタップすると透視できます",
+  "egg.shell.yolk": "卵黄色の殻",
+  "egg.shell.tangerine": "みかん色の殻",
+  "egg.shell.mint": "ミントの殻",
+  "egg.shell.sky": "空色の殻",
+  "egg.shell.lilac": "ライラックの殻",
+  "egg.shell.pink": "桜色の殻",
+  "egg.shell.cream": "クリーム色の殻",
+  "egg.shell.charcoal": "チャコールの殻",
+  "egg.shell.white": "白い殻",
+  "egg.shell.honey": "はちみつ色の殻",
+  "egg.pattern.speckles": "そばかす模様",
+  "egg.pattern.zigzag": "ジグザグ帯",
+  "egg.pattern.stripes": "ストライプ",
+  "egg.pattern.polka": "水玉",
+  "egg.pattern.waves": "波模様",
+  "egg.pattern.sparkles": "きらめき",
+  "egg.pattern.dipped": "ツートン",
+  "egg.pattern.crack": "ひび模様",
+  "egg.species.chick": "ひよこ",
+  "egg.species.duckling": "子ガモ",
+  "egg.species.penguin": "ペンギンの子",
+  "egg.species.owlet": "子フクロウ",
+  "egg.species.dino": "子恐竜",
+  "egg.species.croc": "子ワニ",
+  "egg.species.turtle": "子ガメ",
+  "egg.species.dragon": "子ドラゴン",
+  "egg.accessory.hat": "パーティー帽",
+  "egg.accessory.shades": "サングラス",
+  "egg.accessory.bow": "リボン",
+  "egg.accessory.crown": "王冠",
 };
 
 export default messages;

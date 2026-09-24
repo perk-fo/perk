@@ -10,7 +10,7 @@ import type { GrantCampaign, LaunchSummary } from "@/lib/api-types";
 import { useLaunchList } from "@/lib/api-hooks";
 import { progressBpsOf } from "@/lib/api-adapters";
 import { useDeployment, useNow, useTabVisible } from "@/lib/hooks";
-import { HashSeal } from "@/components/art/HashSeal";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { PerkPass } from "@/components/grant/PerkPass";
 import { Pill, campaignStatusPill, launchStatusPill } from "@/components/ui/Pill";
 import { Panel } from "@/components/ui/Panel";
@@ -147,9 +147,9 @@ function CampaignCard({ row, group, claimable }: { row: Row; group: Group; claim
   else detail = pill.label;
 
   return (
-    <Link href={href} className="panel flex h-full flex-col p-5">
+    <Link href={href} className="panel group flex h-full flex-col p-5">
       <div className="flex items-start gap-3">
-        <HashSeal hash={launch.configHash} moduleBitmap={BigInt(launch.moduleBitmap)} size={44} className="shrink-0" />
+        <LaunchAvatar hash={launch.configHash} image={launch.metadata?.image} status={launch.status} size={48} title={launch.name} />
         <div className="min-w-0 flex-1">
           {/* two lines before truncating: next to a long status pill one line held about eight characters */}
           <div className="line-clamp-2 break-words font-display text-lg leading-tight">{launch.name}</div>

@@ -10,7 +10,7 @@ import { useLaunchList, useWalletSummary,
 } from "@/lib/api-hooks";
 import { useDeployment, useTx } from "@/lib/hooks";
 import type { LaunchSummary } from "@/lib/api-types";
-import { HashSeal } from "@/components/art/HashSeal";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { LaunchCard } from "@/components/LaunchCard";
 import { InviteLinkRow } from "@/components/InviteLinkRow";
 import { TxStatus } from "@/components/TxStatus";
@@ -153,8 +153,8 @@ export default function MePage() {
                   return (
                     <tr key={l.meme} className="border-t border-line">
                       <td className="py-3">
-                        <Link href={`/meme/${l.meme}`} className="flex items-center gap-3 hover:text-flare">
-                          <HashSeal hash={l.configHash} moduleBitmap={BigInt(l.moduleBitmap)} size={28} />
+                        <Link href={`/meme/${l.meme}`} className="group flex items-center gap-3 hover:text-flare">
+                          <LaunchAvatar hash={l.configHash} image={l.metadata?.image} status={l.status} size={32} title={l.name} />
                           <span>
                             <span className="block">{l.name}</span>
                             <span className="num text-xs text-subtle">{l.symbol}</span>
@@ -284,8 +284,8 @@ function ClaimRow({ claim, onDone }: { claim: Claim; onDone: () => void }) {
   const nothing = (r: unknown) => ((r as readonly [unknown, bigint])[1] === 0n ? "errors.precheck.nothingToClaim" : null);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-      <Link href={`/meme/${l.meme}`} className="flex min-w-0 items-center gap-3 hover:text-flare">
-        <HashSeal hash={l.configHash} moduleBitmap={BigInt(l.moduleBitmap)} size={28} />
+      <Link href={`/meme/${l.meme}`} className="group flex min-w-0 items-center gap-3 hover:text-flare">
+        <LaunchAvatar hash={l.configHash} image={l.metadata?.image} status={l.status} size={32} title={l.name} />
         <span className="min-w-0">
           <span className="block truncate text-sm">
             {l.name} · {claim.kind === "rewards" ? t("meme.rewards.title") : t("meme.dev.title")}

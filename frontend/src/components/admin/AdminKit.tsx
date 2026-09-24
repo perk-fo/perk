@@ -6,7 +6,7 @@ import type { Address } from "viem";
 import type { AdminRole, LaunchSummary, TokenMetadataView } from "@/lib/api-types";
 import { useAdminRoles, type AdminSection } from "@/lib/admin";
 import { useAdminSession } from "@/lib/admin-session";
-import { HashSeal } from "@/components/art/HashSeal";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { NotFoundView } from "@/components/NotFoundView";
 import { Panel } from "@/components/ui/Panel";
 import { Pill, type PillTone } from "@/components/ui/Pill";
@@ -58,7 +58,7 @@ export function RequireSession({ title, children }: { title?: string; children: 
   );
 }
 
-/** Seal, name and symbol of a launch, linking to its page. */
+/** Egg, name and symbol of a launch, linking to its page. */
 export function TokenCell({
   meme,
   launch,
@@ -68,12 +68,12 @@ export function TokenCell({
   meme: Address;
   launch: LaunchSummary | undefined;
   href?: string;
-  /** Shown beside the seal, for admins judging a launch's media. */
+  /** Shown beside the egg, uncropped by any shell, for admins judging a launch's media. */
   image?: string | null;
 }) {
   return (
-    <Link href={href ?? `/meme/${meme}`} className="flex min-w-0 items-center gap-3 hover:text-flare">
-      {launch && <HashSeal hash={launch.configHash} moduleBitmap={BigInt(launch.moduleBitmap)} size={28} className="shrink-0" />}
+    <Link href={href ?? `/meme/${meme}`} className="group flex min-w-0 items-center gap-3 hover:text-flare">
+      {launch && <LaunchAvatar hash={launch.configHash} image={launch.metadata?.image} status={launch.status} size={32} title={launch.name} />}
       {image && (
         // eslint-disable-next-line @next/next/no-img-element
         <img

@@ -1,26 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import type { LaunchSummary } from "@/lib/api-types";
 import { curveConfigShape, curveStateShape, progressBpsOf } from "@/lib/api-adapters";
 import { CurveChart } from "@/components/art/CurveChart";
-import { HashSeal } from "@/components/art/HashSeal";
-import { TokenAvatar } from "@/components/meme/TokenAvatar";
+import { HashEgg } from "@/components/art/HashEgg";
+import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { Pill, launchStatusPill } from "@/components/ui/Pill";
 import { formatAmount, formatPrice, fmtBps, shortHash } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
 
 /**
- * Gallery card for one launch (home, featured, "my launches"): the token's image (or its seal), name, price, status,
- * and either the curve with its progress while bonding or the pool once graduated. The card lifts and the seal's
- * module ticks light up on hover.
+ * Gallery card for one launch (home, featured, "my launches"): the launch in its egg (hatched once graduated), name,
+ * price, status, and either the curve with its progress while bonding or the pool once graduated. Hovering the card
+ * lifts the lid of the egg and the creature peeks out.
  */
 export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string }) {
   const { t, locale } = useT();
   const pill = launchStatusPill(item.status, t);
-  const [hover, setHover] = useState(false);
   const decimals = item.quoteDecimals;
   const symbol = item.quoteSymbol;
   const curveConfig = curveConfigShape(item);
@@ -31,19 +29,9 @@ export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string 
     <Link
       href={href ?? `/meme/${item.meme}`}
       className="panel group flex h-full flex-col p-5"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
     >
       <div className="flex items-start gap-4">
-        <span className="transition-transform duration-500 ease-spring group-hover:-rotate-6 group-hover:scale-105">
-          <TokenAvatar
-            image={item.metadata?.image}
-            configHash={item.configHash}
-            moduleBitmap={BigInt(item.moduleBitmap)}
-            size={56}
-            hover={hover}
-          />
-        </span>
+        <LaunchAvatar hash={item.configHash} image={item.metadata?.image} status={item.status} size={60} title={item.name} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-display text-[20px] leading-tight">{item.name || "…"}</div>
           <div className="num mt-0.5 font-mono text-[11px] tracking-wider text-subtle">{item.symbol}</div>
@@ -121,12 +109,12 @@ export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string 
   );
 }
 
-/** Placeholder while the list loads: the seal's outline and soft bars in the card's shape. */
+/** Placeholder while the list loads: an egg's outline and soft bars in the card's shape. */
 export function LaunchCardSkeleton() {
   return (
     <div className="panel p-5" aria-hidden>
       <div className="flex items-center gap-4 text-bone">
-        <HashSeal size={56} />
+        <HashEgg size={56} />
         <div className="flex-1 space-y-2.5">
           <div className="skel h-4 w-2/3" />
           <div className="skel h-3 w-1/3" />
