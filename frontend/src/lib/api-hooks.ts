@@ -1,10 +1,18 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Address, Hex } from "viem";
 import { api, isNotFound } from "./api";
-import type { CandleInterval, Health, LaunchDetail, Trade as ApiTrade, Holder as ApiHolder, TradesPage } from "./api-types";
+import type {
+  CandleInterval,
+  Health,
+  LaunchDetail,
+  LaunchSummary,
+  Trade as ApiTrade,
+  Holder as ApiHolder,
+  TradesPage,
+} from "./api-types";
 import { mergeTrades, perkSocket, type WsStatus } from "./ws";
 import type { Trade } from "./trades";
 import type { HolderRow } from "./holders";
@@ -208,4 +216,25 @@ export function useWalletSummary(address: Address | undefined) {
     queryFn: () => api.wallet(address!),
     refetchInterval: live(visible, 12_000),
   });
+}
+
+/**
+ * One wallet's trades across every meme, newest first, `pageSize` at a time; `fetchNextPage` loads older ones.
+ * `launches` maps each traded meme (lowercase) to its launch, for names, decimals and quote symbols.
+ */
+export function useWalletTrades(address: Address | undefined, pageSize = 20) {
+  const visible = useTabVisible();
+  const q = useInfiniteQuery({
+    queryKey: ["api", "wallet-trades", address?.toLowerCase(), pageSize],
+    enabled: !!address,
+    queryFn: ({ pageParam }) => api.walletTrades(address!, { limit: pageSize, before: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: live(visible, 20_000),
+  });
+  const pages = q.data?.pages ?? [];
+  const trades = pages.flatMap((p) => p.trades);
+  const launches = new Map<string, LaunchSummary>();
+  for (const p of pages) for (const l of p.launches) launches.set(l.meme.toLowerCase(), l);
+  return { ...q, trades, launches };
 }

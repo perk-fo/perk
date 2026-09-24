@@ -6,8 +6,9 @@ import { useAccount, useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import { feeRouterAbi, holderRewardDistributorAbi } from "@/generated/abis";
 import { useLaunchList, useWalletSummary,
-  useLpPositions,
+  useLpPositions, useWalletTrades,
 } from "@/lib/api-hooks";
+import { explorerTxUrl } from "@/lib/chains";
 import { useDeployment, useTx } from "@/lib/hooks";
 import type { LaunchSummary } from "@/lib/api-types";
 import { LaunchAvatar } from "@/components/art/LaunchAvatar";
@@ -20,7 +21,7 @@ import { Kv } from "@/components/ui/Kv";
 import { Notice } from "@/components/ui/Notice";
 import { Pill } from "@/components/ui/Pill";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { formatAmount, formatNumber, formatPrice, formatRelativeTime, shortAddress } from "@/lib/format";
+import { formatAmount, formatDate, formatNumber, formatPrice, formatRelativeTime, shortAddress } from "@/lib/format";
 import { useRoles, ROLE_ORDER } from "@/lib/roles";
 import { useNow } from "@/lib/hooks";
 import { useT } from "@/i18n/provider";
@@ -30,8 +31,9 @@ import { PerkLoader } from "@/components/brand/PerkLoader";
 type Claim = { kind: "rewards" | "dev"; launch: LaunchSummary; amount: bigint; payee?: Address };
 
 /**
- * My page (from the account menu): what I can claim across every token, what I hold, what I launched, my LP Grant
- * positions and my invites. Claim rows only list non-zero amounts; each claim is still pre-checked by useTx.
+ * My page (from the account menu): what I can claim across every token, what I hold, every trade I made, what I
+ * launched, my LP Grant positions and my invites. Claim rows only list non-zero amounts; each claim is still
+ * pre-checked by useTx.
  */
 export default function MePage() {
   const { t, locale } = useT();
@@ -175,6 +177,9 @@ export default function MePage() {
         )}
       </Panel>
 
+      {/* trade history */}
+      <TradeHistory address={address} total={s?.tradeCount} />
+
       {/* LP Grant positions */}
       <Panel title={t("me.positions.title")} right={<span className="num text-xs text-subtle">{s?.positions.length ?? 0}</span>}>
         {!s || s.positions.length === 0 ? (
@@ -256,7 +261,7 @@ export default function MePage() {
 
       {/* invites */}
       <Panel title={t("me.invites.title")}>
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="divide-y divide-line">
             <Kv label={t("me.invites.count")} value={formatNumber(s?.inviteeCount ?? 0, locale)} />
             <Kv label={t("grant.inviter.label")} value={s?.inviter ?? t("grant.inviter.unbound")} copy={!!s?.inviter} />
@@ -264,9 +269,6 @@ export default function MePage() {
           <InviteLinkRow address={address} />
         </div>
       </Panel>
-
-      {/* recent trades */}
-      {s && s.recentTrades.length > 0 && <RecentTrades trades={s.recentTrades} />}
     </div>
   );
 }
@@ -325,20 +327,99 @@ function ClaimRow({ claim, onDone }: { claim: Claim; onDone: () => void }) {
   );
 }
 
-function RecentTrades({ trades }: { trades: import("@/lib/api-types").Trade[] }) {
-  const { t } = useT();
-  const now = useNow();
+/**
+ * Every trade the connected wallet made, newest first, across all tokens: curve buys and sells and pool swaps
+ * (a swap counts for the wallet that sent the transaction). Older pages load on demand.
+ */
+function TradeHistory({ address, total }: { address: Address; total: number | undefined }) {
+  const { t, locale } = useT();
+  const { chainId } = useDeployment();
+  const now = useNow(15_000);
+  const q = useWalletTrades(address);
   return (
-    <Panel title={t("me.trades.title")}>
-      <div className="divide-y divide-line">
-        {trades.slice(0, 10).map((tr) => (
-            <div key={tr.id} className="flex items-center justify-between py-2.5 text-[13px]">
-              <span className="num text-subtle">{formatRelativeTime(tr.timestamp, now, t)}</span>
-              <Pill tone={tr.side === "buy" ? "flare" : "rose"}>{tr.side === "buy" ? t("meme.trade.buy") : t("meme.trade.sell")}</Pill>
-              <span className="num text-muted">{tr.source === "pool" ? "Pool" : "Curve"}</span>
-            </div>
-        ))}
-      </div>
+    <Panel
+      title={t("me.trades.title")}
+      right={<span className="num text-xs text-subtle">{formatNumber(total ?? q.trades.length, locale)}</span>}
+    >
+      {q.error && <Notice tone="rose">{q.error.message}</Notice>}
+      {q.isLoading ? (
+        <Skeleton size={32} lines={3} />
+      ) : q.trades.length === 0 ? (
+        <p className="text-sm text-subtle">
+          {t("me.trades.none")}{" "}
+          <Link href="/trade" className="text-flare underline decoration-flare/40">
+            {t("nav.trade")} →
+          </Link>
+        </p>
+      ) : (
+        <>
+          <div className="-mx-1 overflow-x-auto px-1">
+            <table className="w-full whitespace-nowrap text-[13px]">
+              <thead>
+                <tr className="label text-left">
+                  <th className="pb-2 pr-3 font-normal">{t("meme.trades.time")}</th>
+                  <th className="px-2 pb-2 font-normal">{t("trade.col.token")}</th>
+                  <th className="px-2 pb-2 font-normal">{t("meme.trades.side")}</th>
+                  <th className="px-2 pb-2 text-right font-normal">{t("me.trades.amount")}</th>
+                  <th className="px-2 pb-2 text-right font-normal">{t("me.trades.total")}</th>
+                  <th className="pb-2 pl-2 text-right font-normal">{t("me.trades.venue")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {q.trades.map((tr) => {
+                  const l = q.launches.get(tr.meme.toLowerCase());
+                  return (
+                    <tr key={tr.id} className="border-t border-line">
+                      <td className="py-3 pr-3">
+                        <a
+                          href={explorerTxUrl(chainId, tr.txHash)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`${formatDate(tr.timestamp, locale)} · ${t("meme.trades.tx")} ${shortAddress(tr.txHash)}`}
+                          className="num text-muted underline decoration-dotted decoration-line-strong underline-offset-4 hover:text-flare hover:decoration-flare"
+                        >
+                          {formatRelativeTime(tr.timestamp, now, t)}
+                        </a>
+                      </td>
+                      <td className="px-2 py-3">
+                        <Link href={`/meme/${tr.meme}`} className="group flex items-center gap-2.5 hover:text-flare">
+                          {l && <LaunchAvatar hash={l.configHash} image={l.metadata?.image} status={l.status} size={24} title={l.name} />}
+                          <span className="num">{l?.symbol || shortAddress(tr.meme)}</span>
+                        </Link>
+                      </td>
+                      <td className="px-2 py-3">
+                        <Pill tone={tr.side === "buy" ? "verdigris" : "rose"}>
+                          {tr.side === "buy" ? t("meme.trade.buy") : t("meme.trade.sell")}
+                        </Pill>
+                      </td>
+                      <td className="num px-2 py-3 text-right">
+                        {l ? formatAmount(BigInt(tr.memeAmount), l.decimals, { locale, maxFrac: 2 }) : "—"}
+                      </td>
+                      <td className="num px-2 py-3 text-right">
+                        {l ? `${formatAmount(BigInt(tr.quoteAmount), l.quoteDecimals, { locale, maxFrac: 6 })} ${l.quoteSymbol}` : "—"}
+                      </td>
+                      <td className="py-3 pl-2 text-right text-muted">
+                        {tr.source === "pool" ? t("me.trades.pool") : t("me.trades.curve")}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {q.hasNextPage && (
+            <Button
+              variant="ghost"
+              className="mt-4"
+              pending={q.isFetchingNextPage}
+              disabled={q.isFetchingNextPage}
+              onClick={() => void q.fetchNextPage()}
+            >
+              {t("meme.trades.loadMore")}
+            </Button>
+          )}
+        </>
+      )}
     </Panel>
   );
 }

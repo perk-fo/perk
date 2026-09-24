@@ -1,12 +1,13 @@
 import { Hono } from "hono";
-import { addressParam, type AppEnv } from "../server";
+import { addressParam, intParam, type AppEnv } from "../server";
 import type { WalletRoles,
-  LpPosition, WalletSummary } from "../types";
+  LpPosition, WalletSummary, WalletTradesPage } from "../types";
 import { mapGrantPosition, mapLaunchSummary, mapTrade, mapWalletRoles,
-  mapLpPosition } from "../mappers";
+  mapLpPosition, mapWalletTrade } from "../mappers";
 import { addr, num, uint } from "../serialize";
 import { selectAdminRoles } from "../../admin/roles";
 import {
+  parseTradeCursor,
   selectLaunchesByMemes,
   selectPositionsForWallet,
   selectLpPositionsForWallet,
@@ -22,6 +23,8 @@ import {
  *   Admins the Core Admin appointed; isAdmin = any of them. creatorOf from launches.creator; lpOf from grant_positions;
  *   allocatedIn from grant_allocations; inviter/optInBlock from referrals/opt_ins.
  * GET /v1/wallets/:address → WalletSummary (roles + launches + positions + last 20 trades + claims + holdings) — max-age 5.
+ * GET /v1/wallets/:address/trades?limit=50&before=<block>:<logIndex> → WalletTradesPage: the wallet's trades across
+ *   every meme, newest first, with the launch of each meme traded on the page — max-age 5.
  */
 export function walletRoutes(): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
@@ -44,6 +47,26 @@ export function walletRoutes(): Hono<AppEnv> {
     const rows = await selectLpPositionsForWallet(db, config.chainId, address);
     c.header("Cache-Control", "public, max-age=5");
     return c.json<{ positions: LpPosition[] }>({ positions: rows.map(mapLpPosition) });
+  });
+
+  r.get("/:address/trades", async (c) => {
+    const { db, config } = c.get("deps");
+    const address = addressParam(c.req.param("address"));
+    const limit = intParam(c.req.query("limit"), 50, 1, 200, "limit");
+    const cursor = parseTradeCursor(c.req.query("before"));
+    const now = Math.floor(Date.now() / 1000);
+    const rows = await selectWalletTrades(db, config.chainId, address, limit, cursor);
+    const memes = [...new Set(rows.map((t) => t.meme.toLowerCase()))];
+    const launchRows = await selectLaunchesByMemes(db, config.chainId, memes, now);
+    const last = rows[rows.length - 1];
+    const nextCursor =
+      rows.length === limit && last ? `${Number(last.block_number)}:${Number(last.log_index)}` : null;
+    c.header("Cache-Control", "public, max-age=5");
+    return c.json<WalletTradesPage>({
+      trades: rows.map(mapWalletTrade),
+      launches: launchRows.map(mapLaunchSummary),
+      nextCursor,
+    });
   });
 
   r.get("/:address", async (c) => {
@@ -92,4 +115,4 @@ export function walletRoutes(): Hono<AppEnv> {
   return r;
 }
 
-export type { WalletRoles, WalletSummary };
+export type { WalletRoles, WalletSummary, WalletTradesPage };

@@ -22,6 +22,7 @@ import type {
   TradesPage,
   WalletRoles,
   WalletSummary,
+  WalletTradesPage,
   LpPosition,
 } from "./api-types";
 
@@ -100,6 +101,8 @@ export const api = {
   walletRoles: (address: string) => get<WalletRoles>(`/v1/wallets/${address}/roles`),
   wallet: (address: string) => get<WalletSummary>(`/v1/wallets/${address}`),
   lpPositions: (address: string) => get<{ positions: LpPosition[] }>(`/v1/wallets/${address}/lp-positions`),
+  walletTrades: (address: string, params: { limit?: number; before?: string } = {}) =>
+    get<WalletTradesPage>(`/v1/wallets/${address}/trades`, params),
   grantProof: (meme: string, account: string) => get<GrantAllocationProof>(`/v1/grants/${meme}/proof/${account}`),
   quoteAssets: () => get<{ assets: QuoteAsset[] }>("/v1/quote-assets"),
   featured: () => get<{ launches: LaunchSummary[] }>("/v1/launches/featured"),

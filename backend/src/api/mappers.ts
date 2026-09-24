@@ -17,6 +17,7 @@ import type {
   TokenMetadataView,
   Trade,
   WalletRoles,
+  WalletTrade,
 } from "./types";
 import { addr, asBigInt, hexNull, num, numNull, uint, uintNull } from "./serialize";
 
@@ -98,6 +99,11 @@ export interface TradeRow {
   price_quote: string | bigint;
   price_meme: string | bigint;
   price: number | string | bigint;
+}
+
+/** A trades row with the meme it belongs to (wallet views span every meme). */
+export interface WalletTradeRow extends TradeRow {
+  meme: string;
 }
 
 export interface CandleRow {
@@ -361,6 +367,10 @@ export function mapTrade(row: TradeRow): Trade {
     priceMeme: uint(row.price_meme),
     price: num(row.price),
   };
+}
+
+export function mapWalletTrade(row: WalletTradeRow): WalletTrade {
+  return { ...mapTrade(row), meme: addr(row.meme) };
 }
 
 export function mapCandle(row: CandleRow): Candle {

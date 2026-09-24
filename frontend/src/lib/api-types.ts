@@ -215,6 +215,20 @@ export interface TradesPage {
   nextCursor: string | null;
 }
 
+/** A trade by one wallet, across every meme: a Trade plus the meme it traded. */
+export interface WalletTrade extends Trade {
+  meme: Address;
+}
+
+/** GET /v1/wallets/:address/trades: one wallet's trades, newest first. */
+export interface WalletTradesPage {
+  trades: WalletTrade[];
+  /** The launch of every meme in `trades`, once each, so a client can name and format the rows. */
+  launches: LaunchSummary[];
+  /** Pass as `before` to fetch the next (older) page; null at the end. */
+  nextCursor: string | null;
+}
+
 export type CandleInterval = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
 export interface Candle {

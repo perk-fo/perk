@@ -9,6 +9,7 @@ import type {
   HolderRow,
   LaunchRow,
   TradeRow,
+  WalletTradeRow,
 } from "./mappers";
 import { asBigInt } from "./serialize";
 
@@ -268,12 +269,23 @@ export async function selectTradesInRange(
   `;
 }
 
-export async function selectWalletTrades(db: Db, chainId: number, wallet: string, limit: number): Promise<TradeRow[]> {
-  return db<TradeRow[]>`
-    select tx_hash, log_index, block_number, ts, side, source, wallet, router,
+/**
+ * A wallet's trades across every meme, newest first, older than `cursor` when given. `wallet` is the trader the
+ * indexer recorded: the buyer or seller on the curve, the transaction's sender for pool swaps.
+ */
+export async function selectWalletTrades(
+  db: Db,
+  chainId: number,
+  wallet: string,
+  limit: number,
+  cursor?: { block: bigint; logIndex: number },
+): Promise<WalletTradeRow[]> {
+  return db<WalletTradeRow[]>`
+    select tx_hash, log_index, meme, block_number, ts, side, source, wallet, router,
            quote_amount, meme_amount, fee, price_quote, price_meme, price
     from trades
     where chain_id = ${chainId} and wallet = ${wallet}
+      ${cursor ? db`and (block_number < ${cursor.block} or (block_number = ${cursor.block} and log_index < ${cursor.logIndex}))` : db``}
     order by block_number desc, log_index desc
     limit ${limit}
   `;

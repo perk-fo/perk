@@ -21,6 +21,8 @@ import type {
   TradesPage,
   WalletRoles,
   WalletSummary,
+  WalletTrade,
+  WalletTradesPage,
 } from "../src/api/types";
 import {
   ADMIN,
@@ -40,6 +42,7 @@ import {
   MEME_CURVE,
   MEME_GRAD,
   PLAIN,
+  ROUTER,
   START_BLOCK,
   TRADER,
   WOKB,
@@ -817,6 +820,109 @@ describe("GET /v1/wallets/:address", () => {
     const { body } = await json<WalletSummary>(`/v1/wallets/${CREATOR_CURVE}`);
     expect(body.launches.length).toBe(1);
     expect(body.launches[0].meme).toBe(MEME_CURVE);
+  });
+});
+
+function newerThan(a: WalletTrade, b: WalletTrade): boolean {
+  return a.blockNumber > b.blockNumber || (a.blockNumber === b.blockNumber && a.logIndex > b.logIndex);
+}
+
+describe("GET /v1/wallets/:address/trades", () => {
+  test("test_wallet_trades_happy", async () => {
+    const { body, res } = await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades`);
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=5");
+    expect(body.trades.length).toBe(meta.gradTradeCount + meta.curveTradeCount);
+    expect(body.nextCursor).toBeNull();
+    for (const t of body.trades) {
+      expectTrade(t);
+      expectAddr(t.meme);
+      expect(t.wallet).toBe(TRADER);
+    }
+    for (let i = 1; i < body.trades.length; i++) expect(newerThan(body.trades[i - 1], body.trades[i])).toBe(true);
+    // one wallet, two memes: the curve launch's trades are the newest (blocks 2000+), then the graduated one's
+    expect(body.trades.filter((t) => t.meme === MEME_CURVE).length).toBe(meta.curveTradeCount);
+    expect(body.trades.filter((t) => t.meme === MEME_GRAD).length).toBe(meta.gradTradeCount);
+    expect(body.trades[0].meme).toBe(MEME_CURVE);
+    expect(body.trades[body.trades.length - 1].meme).toBe(MEME_GRAD);
+    // pool swaps keep the router they went through; curve trades have none
+    const pool = body.trades.filter((t) => t.source === "pool");
+    expect(pool.length).toBe(13);
+    for (const t of pool) expect(t.router).toBe(ROUTER);
+    for (const t of body.trades.filter((t) => t.source === "curve")) expect(t.router).toBeNull();
+  });
+
+  test("test_wallet_trades_launches_once_per_meme", async () => {
+    const { body } = await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades`);
+    expect(body.launches.map((l) => l.meme).sort()).toEqual([MEME_CURVE, MEME_GRAD].sort());
+    for (const l of body.launches) expectLaunchSummary(l);
+    // only the memes on the page: the newest 3 trades are all on the curve launch
+    const first = await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades?limit=3`);
+    expect(first.body.trades.every((t) => t.meme === MEME_CURVE)).toBe(true);
+    expect(first.body.launches.map((l) => l.meme)).toEqual([MEME_CURVE]);
+  });
+
+  test("test_wallet_trades_pagination", async () => {
+    const all = (await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades?limit=200`)).body.trades;
+    const seen: WalletTrade[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const before: string = cursor ? `&before=${cursor}` : "";
+      const { body } = await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades?limit=7${before}`);
+      expect(body.trades.length).toBeLessThanOrEqual(7);
+      expect(new Set(body.launches.map((l) => l.meme))).toEqual(new Set(body.trades.map((t) => t.meme)));
+      seen.push(...body.trades);
+      cursor = body.nextCursor;
+      pages += 1;
+    } while (cursor && pages < 10);
+    // 30 trades in pages of 7: 7+7+7+7+2, and the last page carries no cursor
+    expect(pages).toBe(5);
+    expect(cursor).toBeNull();
+    expect(seen.map((t) => t.id)).toEqual(all.map((t) => t.id));
+  });
+
+  test("test_wallet_trades_address_case_insensitive", async () => {
+    const lower = await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades?limit=5`);
+    const upper = await json<WalletTradesPage>(`/v1/wallets/0x${TRADER.slice(2).toUpperCase()}/trades?limit=5`);
+    expect(upper.body.trades.length).toBe(5);
+    expect(upper.body.trades.map((t) => t.id)).toEqual(lower.body.trades.map((t) => t.id));
+  });
+
+  test("test_wallet_trades_other_wallets_excluded", async () => {
+    const { body } = await json<WalletTradesPage>(`/v1/wallets/${HOLDER_A}/trades`);
+    expect(body.trades).toEqual([]);
+    expect(body.launches).toEqual([]);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  test("test_wallet_trades_includes_hidden_launch", async () => {
+    // moderation hides a launch from the site's lists, not from the history of a wallet that traded it
+    try {
+      await db`
+        insert into launch_moderation (chain_id, meme, hidden, media_hidden, updated_by)
+        values (${CHAIN}, ${MEME_CURVE}, true, false, ${ADMIN})
+      `;
+      const { body } = await json<WalletTradesPage>(`/v1/wallets/${TRADER}/trades?limit=3`);
+      expect(body.trades.length).toBe(3);
+      expect(body.launches.length).toBe(1);
+      expect(body.launches[0].meme).toBe(MEME_CURVE);
+      expect(body.launches[0].moderation?.hidden).toBe(true);
+    } finally {
+      await db`delete from launch_moderation where chain_id = ${CHAIN} and meme = ${MEME_CURVE}`;
+    }
+  });
+
+  test("test_wallet_trades_reverts_bad_address", async () => {
+    expect((await get("/v1/wallets/0x123/trades")).status).toBe(400);
+  });
+
+  test("test_wallet_trades_reverts_bad_cursor", async () => {
+    expect((await get(`/v1/wallets/${TRADER}/trades?before=latest`)).status).toBe(400);
+  });
+
+  test("test_wallet_trades_reverts_bad_limit", async () => {
+    expect((await get(`/v1/wallets/${TRADER}/trades?limit=0`)).status).toBe(400);
+    expect((await get(`/v1/wallets/${TRADER}/trades?limit=201`)).status).toBe(400);
   });
 });
 
