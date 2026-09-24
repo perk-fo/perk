@@ -1,9 +1,11 @@
 /**
- * Each demo token gets a real image and metadata JSON, uploaded through the API exactly as the launch form does.
+ * Each demo token gets a real image (a cute portrait of the animal it is named after) and metadata JSON, uploaded
+ * through the API exactly as the launch form does.
  * That keeps the lists and token pages looking like the product instead of a wall of placeholders, and it exercises
  * the media path end to end.
  */
 import { deflateSync } from "node:zlib";
+import { drawAnimal } from "./animals";
 
 function crc32(buf: Uint8Array): number {
   let c = ~0;
@@ -24,33 +26,11 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-function hsl(h: number, s: number, l: number): [number, number, number] {
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))));
-  };
-  return [f(0), f(8), f(4)];
-}
 
-/**
- * A 128×128 PNG: a soft diagonal gradient in the token's own hue with a lighter emblem block, so every token is
- * visually distinct without shipping binary assets.
- */
-export function tokenImage(seed: number): Uint8Array {
-  const size = 128;
-  const hue = (seed * 47) % 360;
-  const raw: number[] = [];
-  for (let y = 0; y < size; y++) {
-    raw.push(0); // filter byte: none
-    for (let x = 0; x < size; x++) {
-      const t = (x + y) / (2 * size);
-      const inEmblem = x > size * 0.28 && x < size * 0.72 && y > size * 0.28 && y < size * 0.72;
-      const ring = inEmblem && Math.abs(x - size / 2) + Math.abs(y - size / 2) < size * 0.2;
-      const [r, g, b] = ring ? hsl(hue, 0.7, 0.78) : hsl(hue, 0.55, 0.22 + 0.28 * t);
-      raw.push(r, g, b);
-    }
-  }
+/** A 192×192 PNG portrait of the animal in the token's name (see animals.ts). */
+export function tokenImage(name: string): Uint8Array {
+  const size = 192;
+  const raw = drawAnimal(name, size);
   const ihdr = new Uint8Array(13);
   const dv = new DataView(ihdr.buffer);
   dv.setUint32(0, size);
@@ -87,7 +67,7 @@ export interface TokenMetadataInput {
 export async function uploadTokenMetadata(apiUrl: string, input: TokenMetadataInput): Promise<string | null> {
   try {
     const form = new FormData();
-    const png = tokenImage(input.seed);
+    const png = tokenImage(input.name);
     form.append("file", new Blob([new Uint8Array(png)], { type: "image/png" }), `${input.symbol}.png`);
     const imgRes = await fetch(`${apiUrl}/v1/media/image`, { method: "POST", body: form });
     if (!imgRes.ok) return null;
