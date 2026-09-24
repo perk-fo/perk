@@ -16,7 +16,7 @@ import {IPerkLPGrantVault} from "../../src/interfaces/IPerkLPGrantVault.sol";
 import {IPerkBondingCurve} from "../../src/interfaces/IPerkBondingCurve.sol";
 import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManager.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "../../script/lib/PerkTemplates.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
 import {PerkDeployer} from "../utils/PerkDeployer.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";

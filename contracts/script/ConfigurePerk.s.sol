@@ -16,7 +16,7 @@ import {FeeRouter} from "../src/fees/FeeRouter.sol";
 import {IPerkGraduationManager} from "../src/interfaces/IPerkGraduationManager.sol";
 import {IPerkLPGrantVault} from "../src/interfaces/IPerkLPGrantVault.sol";
 import {PerkConstants} from "../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "./lib/PerkTemplates.sol";
 import {PerkTypes} from "../src/libraries/PerkTypes.sol";
 
 import {HookAddress} from "./lib/HookAddress.sol";
@@ -157,10 +157,13 @@ contract ConfigurePerk is Script {
     }
 
     /// @dev The two V1 templates are bound to native OKB (curve numbers are quote units). Other quote assets get
-    ///      their own bound copies through ConfigureQuoteAsset.s.sol.
+    ///      their own bound copies through ConfigureQuoteAsset.s.sol. The grant window and minimum LP time are
+    ///      deployment inputs: GRANT_WINDOW_SECONDS and GRANT_MIN_LP_SECONDS, defaulting to 14 days and 24 hours.
     function _registerTemplates(TemplateRegistry registry) internal {
-        PerkTemplates.Numbers memory n =
-            PerkTemplates.forQuote(PerkTemplates.defaultNumbers(), Currency.wrap(address(0)), 18);
+        PerkTemplates.Numbers memory base = PerkTemplates.defaultNumbers();
+        base.grantWindowSeconds = uint64(vm.envOr("GRANT_WINDOW_SECONDS", uint256(base.grantWindowSeconds)));
+        base.minLpSeconds = uint64(vm.envOr("GRANT_MIN_LP_SECONDS", uint256(base.minLpSeconds)));
+        PerkTemplates.Numbers memory n = PerkTemplates.forQuote(base, Currency.wrap(address(0)), 18);
         registry.registerTemplate(PerkConstants.TEMPLATE_PERK_GRANT_V1, PerkTemplates.perkGrantV1(n));
         registry.registerTemplate(PerkConstants.TEMPLATE_STANDARD_CURVE_V1, PerkTemplates.standardCurveV1(n));
     }

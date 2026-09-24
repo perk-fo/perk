@@ -14,7 +14,7 @@ import {IPerkBondingCurve} from "../../src/interfaces/IPerkBondingCurve.sol";
 import {IPerkFeeRouter} from "../../src/interfaces/IPerkFeeRouter.sol";
 import {PerkMemeToken} from "../../src/token/PerkMemeToken.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "../../script/lib/PerkTemplates.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
 import {PerkDeployer} from "../utils/PerkDeployer.sol";
 import {MockERC20} from "../utils/MockERC20.sol";

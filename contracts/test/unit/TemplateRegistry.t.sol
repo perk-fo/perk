@@ -7,7 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {IPerkTemplateRegistry} from "../../src/interfaces/IPerkTemplateRegistry.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "../../script/lib/PerkTemplates.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
 import {TemplateRegistry} from "../../src/registry/TemplateRegistry.sol";
 

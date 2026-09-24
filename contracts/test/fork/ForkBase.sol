@@ -26,7 +26,7 @@ import {FeeRouter} from "../../src/fees/FeeRouter.sol";
 import {BondingCurve} from "../../src/curve/BondingCurve.sol";
 import {InitialLpLocker} from "../../src/graduation/InitialLpLocker.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "../../script/lib/PerkTemplates.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
 import {XLayerAddresses} from "../../script/lib/XLayerAddresses.sol";
 import {PerkDeployer} from "../utils/PerkDeployer.sol";

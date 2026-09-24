@@ -3,12 +3,16 @@ pragma solidity 0.8.26;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
-import {PerkConstants} from "./PerkConstants.sol";
-import {PerkTypes} from "./PerkTypes.sol";
+import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
+import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 
 /// @title PerkTemplates
-/// @notice Pure constructors for the two V1 launch templates.
+/// @notice Pure constructors for the two V1 launch templates: the parameters a deployment registers in the
+///         TemplateRegistry. No deployed contract contains these numbers; each launch reads its template's registered
+///         values (and they are part of its configHash). Time windows in particular are deployment inputs: the
+///         configure scripts take them from the environment (GRANT_WINDOW_SECONDS and GRANT_MIN_LP_SECONDS for the
+///         production templates, TEST_* for the testnet's fast template).
 library PerkTemplates {
     /// @dev Supply, curve and pool numbers shared by both V1 templates.
     struct Numbers {
@@ -74,6 +78,7 @@ library PerkTemplates {
         n.graduationQuoteThreshold = 85e18;
         n.tickSpacing = 60;
         n.minEligibleBalance = 1e21;
+        // defaults for the production templates; ConfigurePerk.s.sol overrides both from the environment
         n.grantWindowSeconds = 14 days;
         n.minLpSeconds = 24 hours;
         n.anyQuote = true;

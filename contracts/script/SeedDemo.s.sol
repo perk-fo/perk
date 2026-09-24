@@ -11,7 +11,7 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 
 import {PerkTypes} from "../src/libraries/PerkTypes.sol";
-import {PerkTemplates} from "../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "./lib/PerkTemplates.sol";
 import {PerkConstants} from "../src/libraries/PerkConstants.sol";
 import {IPerkLaunchFactory} from "../src/interfaces/IPerkLaunchFactory.sol";
 import {IPerkBondingCurve} from "../src/interfaces/IPerkBondingCurve.sol";

@@ -23,7 +23,7 @@ import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManage
 import {GraduationDeployer} from "./GraduationDeployer.sol";
 import {InitialLpLocker} from "../../src/graduation/InitialLpLocker.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "../../script/lib/PerkTemplates.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
 import {HookDeployer} from "./HookDeployer.sol";
 import {PosmDeployer} from "./PosmDeployer.sol";

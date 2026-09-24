@@ -7,7 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 
 import {PerkTypes} from "../src/libraries/PerkTypes.sol";
-import {PerkTemplates} from "../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "./lib/PerkTemplates.sol";
 import {IPerkLaunchFactory} from "../src/interfaces/IPerkLaunchFactory.sol";
 import {IPerkBondingCurve} from "../src/interfaces/IPerkBondingCurve.sol";
 import {IPerkGraduationManager} from "../src/interfaces/IPerkGraduationManager.sol";

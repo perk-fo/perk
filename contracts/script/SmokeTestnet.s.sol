@@ -12,7 +12,7 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 
 import {PerkTypes} from "../src/libraries/PerkTypes.sol";
-import {PerkTemplates} from "../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "./lib/PerkTemplates.sol";
 import {IPerkLaunchFactory} from "../src/interfaces/IPerkLaunchFactory.sol";
 import {IPerkTemplateRegistry} from "../src/interfaces/IPerkTemplateRegistry.sol";
 import {IPerkGraduationManager} from "../src/interfaces/IPerkGraduationManager.sol";

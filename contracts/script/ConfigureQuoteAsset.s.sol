@@ -10,7 +10,7 @@ import {IPerkAssetRegistry} from "../src/interfaces/IPerkAssetRegistry.sol";
 import {IPerkModuleRegistry} from "../src/interfaces/IPerkModuleRegistry.sol";
 import {IPerkTemplateRegistry} from "../src/interfaces/IPerkTemplateRegistry.sol";
 import {PerkConstants} from "../src/libraries/PerkConstants.sol";
-import {PerkTemplates} from "../src/libraries/PerkTemplates.sol";
+import {PerkTemplates} from "./lib/PerkTemplates.sol";
 import {PerkTypes} from "../src/libraries/PerkTypes.sol";
 import {XLayerAddresses} from "./lib/XLayerAddresses.sol";
 import {MockERC20} from "../test/utils/MockERC20.sol";

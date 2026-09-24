@@ -184,7 +184,22 @@ bound to templates, and a quote may have fewer than 18 decimals, so nothing shou
 
 The testnet adds a fast template (`TEST_FAST_V1`: a scaled-down graduation threshold, a two-hour grant window and a
 ten-minute minimum LP hold) and runs with shorter vault and rescue delays, so a full lifecycle can be observed in
-hours rather than weeks. Those values live in deployment configuration, never in contract logic.
+hours rather than weeks. Those values live in deployment configuration, never in contract logic: every time window
+is passed to the contracts when they are deployed or when a template is registered, and read from there.
+
+| Window | Passed in as | Deploy variable | Default | Testnet |
+|--------|--------------|-----------------|---------|---------|
+| Grant window (allocation decays to zero over it) | Template parameter | `GRANT_WINDOW_SECONDS` (`TEST_GRANT_WINDOW_SECONDS` for the fast template) | 14 days | 2 hours |
+| Minimum LP time before a grant position may exit | Template parameter | `GRANT_MIN_LP_SECONDS` (`TEST_MIN_LP_SECONDS`) | 24 hours | 10 minutes |
+| Public review between proposing and activating a grant root | LPGrantVault configuration | `GRANT_ROOT_DELAY_SECONDS` | 1 day | 1 hour |
+| Deadline for an active root after graduation | LPGrantVault configuration | `GRANT_ROOT_DEADLINE_SECONDS` | 14 days | 2 hours |
+| Delay before a proposed graduation rescue can execute | GraduationManager constructor | `GRAD_RESCUE_DELAY_SECONDS` | 3 days | 1 hour |
+| Treasury migration timelock | CommunityTreasury constructor | `TREASURY_TIMELOCK_SECONDS` | 2 days | 2 days |
+
+The template numbers themselves (supply, curve, fees and the two template windows) are built by
+`contracts/script/lib/PerkTemplates.sol`, a script library that no deployed contract contains. The one duration in
+contract code is a safety floor, not a window: GraduationManager refuses a rescue delay under one hour, so a
+deployment can shorten the delay but never make a rescue immediate.
 
 A new quote asset (a newly listed tokenised stock, say) can be listed from the admin pages, one transaction per step,
 or with `contracts/script/ConfigureQuoteAsset.s.sol`. Both allow the asset, mark the modules compatible and register
