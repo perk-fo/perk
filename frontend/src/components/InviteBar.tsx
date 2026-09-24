@@ -33,18 +33,18 @@ export function InviteBar() {
 
   const [before, after] = t("invite.bar.pointer", { who: "{who}" }).split("{who}");
   return (
-    <div className="border-b border-flare/20 bg-flare/[0.06]">
-      <div className="mx-auto flex w-full max-w-page flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm sm:px-6">
+    <div className="border-b border-honey/50 bg-yolk/25">
+      <div className="mx-auto flex w-full max-w-page flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm font-semibold sm:px-8">
         <span className="text-bone">
           {before}
           <span className="mono text-bone">{shortAddress(invite.pending)}</span>
           {after}
         </span>
         <span className="flex items-center gap-2">
-          <Link href="/grant" className="btn-primary px-3.5 py-1 text-xs">
+          <Link href="/grant" className="btn-dark px-3.5 py-1.5 text-xs">
             {t("invite.bar.go")}
           </Link>
-          <button type="button" className="btn-ghost px-3 py-1 text-xs" onClick={forgetInviter}>
+          <button type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={forgetInviter}>
             {t("invite.bar.dismiss")}
           </button>
         </span>

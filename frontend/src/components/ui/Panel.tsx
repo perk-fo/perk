@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** Hairline card per DESIGN.md: 1px line border, no shadow, 14px radius, 24px padding. */
+/** Card per DESIGN.md: 1px line border, 20px radius, 24px padding, a bold title with an optional right slot. */
 export function Panel({
   title,
   right,
@@ -15,8 +15,8 @@ export function Panel({
   return (
     <section className={`panel p-6 ${className ?? ""}`}>
       {title !== undefined && (
-        <header className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="label">{title}</h2>
+        <header className="mb-5 flex items-center justify-between gap-3">
+          <h2 className="font-display text-[17px] leading-tight">{title}</h2>
           {right}
         </header>
       )}

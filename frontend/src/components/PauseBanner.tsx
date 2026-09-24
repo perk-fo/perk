@@ -12,9 +12,9 @@ export function PauseBanner() {
     .map((a) => t(`pause.area.${a}`))
     .join(", ");
   return (
-    <div className="border-b border-amber/25 bg-amber/[0.07]" role="status">
-      <div className="mx-auto flex w-full max-w-page items-center gap-2.5 px-4 py-2 text-sm text-bone sm:px-6">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber" aria-hidden />
+    <div className="border-b border-honey/60 bg-yolk/30" role="status">
+      <div className="mx-auto flex w-full max-w-page items-center gap-2.5 px-4 py-2 text-sm font-semibold text-bone sm:px-8">
+        <span className="pulse-dot h-2 w-2 shrink-0 rounded-full bg-tangerine" aria-hidden />
         {t("pause.banner", { areas })}
       </div>
     </div>

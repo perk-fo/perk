@@ -52,6 +52,7 @@ import { usePauseFlags } from "@/lib/pause";
 import { RoleGate } from "@/components/RoleGate";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { PerkLoader } from "@/components/brand/PerkLoader";
 
 const TRADE_PAGE = 20;
 
@@ -71,7 +72,7 @@ function Tile({
     <div className="min-w-0 border-b border-r border-line px-4 py-3 lg:border-b-0">
       <div className="label truncate">{label}</div>
       <div
-        className={`num mt-1 text-[15px] font-medium ${wrap ? "break-words leading-snug" : "truncate"} ${
+        className={`num mt-1 text-[16px] font-extrabold tracking-tight ${wrap ? "break-words leading-snug" : "truncate"} ${
           tone === "verdigris" ? "text-verdigris" : tone === "rose" ? "text-rose" : ""
         }`}
       >
@@ -82,56 +83,7 @@ function Tile({
 }
 
 function MemePageSkeleton() {
-  return (
-    <div className="space-y-12 pt-6" aria-hidden>
-      <header className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <div className="flex items-start gap-5">
-          <div className="h-[72px] w-[72px] rounded-full border border-line" />
-          <div className="space-y-2.5 pt-2">
-            <div className="h-4 w-40 rounded-full border border-line" />
-            <div className="h-2.5 w-24 rounded-full border border-line" />
-          </div>
-        </div>
-        <div className="panel grid min-w-0 flex-1 grid-cols-2 overflow-hidden sm:grid-cols-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="border-b border-r border-line px-3 py-2.5 lg:border-b-0">
-              <div className="h-2 w-10 rounded-full border border-line" />
-              <div className="mt-2 h-2.5 w-16 rounded-full border border-line" />
-            </div>
-          ))}
-        </div>
-      </header>
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="panel p-6 lg:col-span-8">
-          <div className="h-[300px] rounded-panel border border-dashed border-line" />
-        </div>
-        <div className="panel p-6 lg:col-span-4">
-          <div className="h-10 rounded-full border border-line" />
-          <div className="mt-4 h-12 rounded-full border border-line" />
-          <div className="mt-6 space-y-2">
-            {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="h-2.5 rounded-full border border-line" />
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="panel p-6 lg:col-span-7">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="flex items-center gap-3 border-t border-line py-3 first:border-t-0">
-              <div className="h-2 w-16 rounded-full border border-line" />
-              <div className="ml-auto h-2 w-24 rounded-full border border-line" />
-            </div>
-          ))}
-        </div>
-        <div className="panel p-6 lg:col-span-5">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="mb-3 h-1.5 rounded-full border border-line" />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  return <PerkLoader minHeight={520} />;
 }
 
 function curveSpot(
@@ -308,13 +260,19 @@ export default function MemePage() {
   const mediaLinks = media ? (Object.entries(media.links).filter(([, v]) => !!v) as Array<[string, string]>) : [];
 
   return (
-    <div className="space-y-12 pt-6">
-      <header className="flex flex-col gap-5 lg:flex-row lg:items-start">
+    <div className="space-y-12 pt-6 sm:pt-8">
+      <Link href="/trade" className="group eyebrow -mb-6 inline-flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] hover:text-bone">
+        <span aria-hidden className="transition-transform duration-300 ease-spring group-hover:-translate-x-1">←</span>
+        {t("nav.trade")}
+      </Link>
+      <header className="fade-up flex flex-col gap-5 lg:flex-row lg:items-start">
         <div className="flex min-w-0 items-start gap-5 lg:max-w-[42%]">
-          <TokenAvatar image={media?.image} configHash={launch.configHash} moduleBitmap={launch.moduleBitmap} />
+          <span className="transition-transform duration-500 ease-spring hover:-rotate-6 hover:scale-105">
+            <TokenAvatar image={media?.image} configHash={launch.configHash} moduleBitmap={launch.moduleBitmap} />
+          </span>
           <div className="min-w-0">
-            <h1 className="font-display text-3xl leading-tight sm:text-4xl">{memeName ?? "…"}</h1>
-            <div className="num mt-1 text-[13px] text-subtle">{memeSymbol}</div>
+            <h1 className="font-display text-[34px] leading-tight sm:text-[42px]">{memeName ?? "…"}</h1>
+            <div className="num mt-1 font-mono text-[12px] tracking-wider text-subtle">{memeSymbol}</div>
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <Pill tone="muted">{quoteSymbol}</Pill>
               <Pill tone={statusPill.tone}>{statusPill.label}</Pill>

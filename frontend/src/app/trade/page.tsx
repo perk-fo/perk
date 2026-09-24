@@ -12,6 +12,9 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { MarketTable } from "@/components/market/MarketTable";
 import { formatNumber } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { PageHeader } from "@/components/ui/SectionHeading";
+import { PerkLoader } from "@/components/brand/PerkLoader";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const SORTS = ["volume", "newest", "progress", "trades"] as const;
 type Sort = (typeof SORTS)[number];
@@ -41,22 +44,23 @@ export default function TradePage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-4xl leading-none">{t("trade.title")}</h1>
-          <p className="mt-2 text-sm text-subtle">{t("trade.sub")}</p>
-        </div>
-        <span className="num text-xs text-subtle">
-          {list.data ? t("trade.count", { n: formatNumber(list.data.total, locale) }) : ""}
-        </span>
-      </header>
+      <PageHeader
+        eyebrow={t("home.door.tradeTag")}
+        title={t("trade.title")}
+        description={t("trade.sub")}
+        right={
+          <span className="num rounded-full bg-raised px-3 py-1 text-xs font-bold text-muted">
+            {list.data ? t("trade.count", { n: formatNumber(list.data.total, locale) }) : "—"}
+          </span>
+        }
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("trade.search")}
-          className="w-full rounded-full border border-line bg-transparent px-4 py-2 text-sm outline-none transition-colors duration-fast placeholder:text-faint focus:border-line-strong sm:w-72"
+          className="w-full rounded-xl border border-line-strong bg-surface px-4 py-2.5 text-sm outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint focus:border-honey focus:ring-4 focus:ring-yolk/30 sm:w-80"
         />
         <div className="flex flex-wrap items-center gap-2">
           <Segmented
@@ -76,18 +80,19 @@ export default function TradePage() {
       )}
 
       {list.isLoading ? (
-        <Panel>
-          <Skeleton size={40} lines={6} />
-        </Panel>
+        <PerkLoader size={60} minHeight={320} />
       ) : items.length === 0 && !apiDown ? (
-        <Panel className="flex flex-col items-center py-14 text-center">
-          <p className="text-sm text-muted">{q ? t("trade.noMatch") : t("home.empty.text")}</p>
-          {!q && (
-            <Link href="/launch" className="btn-primary mt-6 inline-block px-5 py-2.5 text-sm">
-              {t("home.empty.cta")}
-            </Link>
-          )}
-        </Panel>
+        <EmptyState
+          action={
+            !q && (
+              <Link href="/launch" className="btn-primary inline-block px-5 py-3 text-sm">
+                {t("home.empty.cta")}
+              </Link>
+            )
+          }
+        >
+          {q ? t("trade.noMatch") : t("home.empty.text")}
+        </EmptyState>
       ) : (
         <MarketTable items={items} />
       )}

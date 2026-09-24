@@ -63,7 +63,7 @@ export function SyncStatus() {
       <span title={t("header.sync.downTitle", { url: API_URL })}>
         <Pill tone="rose">
           <span className="h-1.5 w-1.5 rounded-full bg-rose" aria-hidden />
-          {t("header.sync.down")}
+          <span className="hidden md:inline">{t("header.sync.down")}</span>
         </Pill>
       </span>
     );
@@ -102,7 +102,8 @@ export function SyncStatus() {
     >
       <Pill tone={tone}>
         <span className={`h-1.5 w-1.5 rounded-full ${DOT_CLASS[tone]}${fresh ? " twinkle" : ""}`} aria-hidden />
-        <span className="num">
+        {/* on a phone the dot alone carries the state (the full text is in the title and on larger screens) */}
+        <span className="num hidden md:inline">
           {catchingUp ? t("header.sync.catchup", { n }) : t(fresh ? "header.sync.ok" : "header.sync.lag", { n })}
         </span>
       </Pill>

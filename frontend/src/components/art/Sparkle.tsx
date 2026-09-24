@@ -1,25 +1,44 @@
-/** Sparkle — the four-point star from the Perk mark. Status glyph, success flourish, loading blink. */
+/**
+ * Sparkle — the eight-spoke asterisk from the brand's decoration. Status glyph, success flourish, section marker.
+ * `spin` turns it slowly (and quickly while its `.group` is hovered).
+ */
 export function Sparkle({
   size = 14,
-  tone = "flare",
+  tone = "honey",
   twinkle = false,
+  spin = false,
   className,
 }: {
   size?: number;
-  tone?: "flare" | "bone" | "verdigris" | "amber" | "rose" | "muted";
+  tone?: "honey" | "tangerine" | "yolk" | "flare" | "bone" | "verdigris" | "amber" | "rose" | "muted";
   twinkle?: boolean;
+  spin?: boolean;
   className?: string;
 }) {
-  const fill = tone === "muted" ? "rgb(var(--c-faint))" : `rgb(var(--c-${tone}))`;
+  const stroke =
+    tone === "muted"
+      ? "rgb(var(--c-faint))"
+      : tone === "honey"
+        ? "rgb(var(--brand-amber))"
+        : tone === "tangerine"
+          ? "rgb(var(--brand-orange))"
+          : tone === "yolk"
+            ? "rgb(var(--brand-yellow))"
+            : `rgb(var(--c-${tone}))`;
   return (
     <svg
       viewBox="0 0 24 24"
       width={size}
       height={size}
-      className={`${twinkle ? "twinkle" : ""} ${className ?? ""}`}
+      className={`${twinkle ? "twinkle" : ""} ${spin ? "spark" : ""} ${className ?? ""}`}
       aria-hidden="true"
     >
-      <path d="M12 1 C13.2 8.5 15.5 10.8 23 12 C15.5 13.2 13.2 15.5 12 23 C10.8 15.5 8.5 13.2 1 12 C8.5 10.8 10.8 8.5 12 1 Z" fill={fill} />
+      <g stroke={stroke} strokeWidth="2.6" strokeLinecap="round">
+        <path d="M12 2.5V21.5" />
+        <path d="M2.5 12H21.5" />
+        <path d="M5.3 5.3L18.7 18.7" />
+        <path d="M18.7 5.3L5.3 18.7" />
+      </g>
     </svg>
   );
 }

@@ -55,3 +55,6 @@ backend/data/
 
 # local stack pids and logs
 .run/
+
+# Private working material: client reference files, the operations handbook and audit reports. Never committed.
+private/

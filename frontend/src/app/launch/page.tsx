@@ -28,6 +28,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { buildMetadata, DESCRIPTION_MAX, normalizeLink, uploadImage, uploadMetadata, type MediaUpload, type TokenLinks } from "@/lib/media";
 import { useT } from "@/i18n/provider";
 import { usePauseFlags } from "@/lib/pause";
+import { PageHeader } from "@/components/ui/SectionHeading";
 
 function randomSalt(): Hex {
   const bytes = new Uint8Array(32);
@@ -238,10 +239,7 @@ export default function CreatePage() {
 
   return (
     <div>
-      <header className="mb-8 pt-6">
-        <h1 className="font-display text-3xl sm:text-4xl">{t("create.title")}</h1>
-        <p className="mt-2 max-w-lg text-sm text-muted">{t("create.subtitle")}</p>
-      </header>
+      <PageHeader eyebrow={t("home.door.launchTag")} title={t("create.title")} description={t("create.subtitle")} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         {/* left: form */}
@@ -408,15 +406,19 @@ export default function CreatePage() {
         {/* right: sticky preview */}
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Panel title={t("create.preview.title")}>
-            <div className="flex flex-col items-center py-2">
-              <HashSeal
-                hash={configHash}
-                moduleBitmap={moduleBitmap}
-                size={120}
-                title={name || symbol ? `${name} (${symbol})` : t("create.preview.sealTitle")}
-              />
-              <p className="mt-3 font-display text-xl">{name.trim() || t("create.preview.unnamed")}</p>
-              <p className="num text-xs text-subtle">{symbol.trim() || "—"}</p>
+            {/* the seal is stamped afresh each time the configuration (and so its hash) changes */}
+            <div className="relative isolate flex flex-col items-center overflow-hidden rounded-2xl bg-yolk/15 py-6">
+              <div className="grid-paper absolute inset-0 -z-10" aria-hidden />
+              <span key={configHash ?? "empty"} className="twinkle">
+                <HashSeal
+                  hash={configHash}
+                  moduleBitmap={moduleBitmap}
+                  size={128}
+                  title={name || symbol ? `${name} (${symbol})` : t("create.preview.sealTitle")}
+                />
+              </span>
+              <p className="mt-3 font-display text-[22px]">{name.trim() || t("create.preview.unnamed")}</p>
+              <p className="num font-mono text-xs tracking-wider text-subtle">{symbol.trim() || "—"}</p>
             </div>
             <div className="mt-2 divide-y divide-line">
               <Kv label={t("create.preview.predicted")} value={previewData?.[0]} copy />

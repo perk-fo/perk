@@ -11,7 +11,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary: "btn-primary",
   ghost: "btn-ghost",
   danger:
-    "rounded-full border border-rose/50 text-rose transition-colors duration-fast hover:bg-rose/10 disabled:border-line disabled:text-faint disabled:hover:bg-transparent",
+    "rounded-xl border border-rose/50 bg-surface text-rose transition-[background-color,transform] duration-fast hover:-translate-y-0.5 hover:bg-rose/10 disabled:border-line disabled:text-faint disabled:hover:translate-y-0 disabled:hover:bg-transparent",
 };
 
 /**
@@ -33,7 +33,7 @@ export function Button({
   return (
     <button
       type="button"
-      className={`w-full px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed ${VARIANT_CLASS[variant]} ${
+      className={`w-full px-4 py-3 text-sm font-bold disabled:cursor-not-allowed ${VARIANT_CLASS[variant]} ${
         pending || busy ? "btn-pending" : ""
       } ${className ?? ""}`}
       disabled={disabled || busy}

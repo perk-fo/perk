@@ -12,24 +12,37 @@ export function TokenAvatar({
   image,
   configHash,
   moduleBitmap,
+  size = 72,
+  hover = false,
 }: {
   image: string | null | undefined;
   configHash: Hex;
   moduleBitmap: bigint;
+  size?: number;
+  /** passed to the seal: lights its module ticks */
+  hover?: boolean;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
   if (!image || failed === image) {
-    return <HashSeal hash={configHash} moduleBitmap={moduleBitmap} size={72} className="shrink-0" />;
+    return <HashSeal hash={configHash} moduleBitmap={moduleBitmap} size={size} hover={hover} className="shrink-0" />;
   }
+  const badge = Math.max(20, Math.round(size * 0.42));
   return (
-    <span className="relative shrink-0">
+    <span className="relative shrink-0" style={{ width: size, height: size }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={image} alt="" onError={() => setFailed(image)} className="h-[72px] w-[72px] rounded-[18px] object-cover" />
+      <img
+        src={image}
+        alt=""
+        onError={() => setFailed(image)}
+        className="h-full w-full object-cover"
+        style={{ borderRadius: Math.round(size / 4) }}
+      />
       <HashSeal
         hash={configHash}
         moduleBitmap={moduleBitmap}
-        size={30}
-        className="absolute -bottom-2 -right-2 rounded-full ring-2 ring-ink"
+        size={badge}
+        hover={hover}
+        className="absolute -bottom-1.5 -right-1.5 rounded-full ring-2 ring-surface"
       />
     </span>
   );

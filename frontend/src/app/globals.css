@@ -4,127 +4,73 @@
 
 /*
  * ---- tokens ----
- * RGB triplets so Tailwind can apply alpha. Every text colour was measured against the page and panel colours in
- * WCAG 2 and APCA (numbers in DESIGN.md). Two rules drive the values:
- *   - no pairing is harsher than it needs to be: primary text sits near 13:1, not the 15-17:1 of white on black,
- *     and the brand lime is never used for large areas of text;
- *   - nothing a reader has to read is faint: the lowest text tier people read (`subtle`) is at least 5:1.
- * The brand lime (#D6FD3E) is kept for the logo and the primary action. Neutrals are graphite with a trace of the
- * logo's ink green.
- * `data-theme` is always set before first paint (see the script in app/layout.tsx), so each theme is defined once.
+ * The client's hatching-chick mark sets the palette: yolk yellow #FCD53F, honey #F9C23C, tangerine #FF822D, shell
+ * grey #D3D3D3 and charcoal #1C1C1C, on a warm off-white page. Light is the default theme; dark is a warm charcoal.
+ * RGB triplets so Tailwind can apply alpha. Text colours are measured (WCAG 2, numbers in DESIGN.md): primary text
+ * above 14:1, the lowest tier anyone has to read (`subtle`) above 4.8:1 on every surface. The brand yellow is a fill
+ * for primary actions and art; charcoal text sits on it (12:1). Tangerine is decoration only: on the light page it is
+ * 2.3:1, so accent *text* (`flare`) is a deep orange there and the yolk in dark mode.
+ * `data-theme` is set before first paint (app/layout.tsx), so each theme is defined once.
  */
 :root,
-:root[data-theme="dark"] {
-  --c-ink: 18 25 22; /* page */
-  --c-surface: 26 34 31; /* panels */
-  --c-raised: 36 44 41; /* inputs, hover, tracks, nested cards */
-  --c-line: 45 54 50; /* borders and dividers */
-  --c-line-strong: 70 78 75; /* control outlines */
-  --c-knob: 52 61 57; /* the selected thumb of a segmented control or tab strip */
-  --c-bone: 218 223 219; /* primary text      13.2:1 on page */
-  --c-muted: 182 189 184; /* secondary text     9.3:1 */
-  --c-subtle: 150 158 153; /* labels and meta    6.5:1 */
-  --c-faint: 106 114 110; /* placeholder, disabled, decoration - never text that must be read */
-  --c-flare: 191 225 107; /* accent text and indicators: the brand lime, softened for reading */
-  --c-cta: 209 245 86; /* primary action fill: the brand lime */
-  --c-cta-hover: 220 254 108;
-  --c-on-cta: 17 31 28;
-  --c-verdigris: 115 213 167; /* up, success */
-  --c-amber: 240 190 103; /* warning */
-  --c-ember: 242 152 95; /* severity only (indexer lag), between amber and rose */
-  --c-rose: 241 127 133; /* down, danger */
-  --on-flare: 17 31 28;
-  --seal-lime: 204 237 90;
-  --seal-ink: 31 55 52;
-  --seal-leaf: 163 216 84;
-  --seal-mint: 124 212 172;
-  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025);
-  --shadow-pop: 0 18px 44px -12px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(var(--c-line));
-  color-scheme: dark;
-}
 :root[data-theme="light"] {
-  --c-ink: 244 245 241;
-  --c-surface: 252 253 250;
-  --c-raised: 237 238 234;
-  --c-line: 218 221 216;
-  --c-line-strong: 191 196 190;
-  --c-knob: 252 253 250;
-  --c-bone: 30 40 36; /* 13.9:1 on page */
-  --c-muted: 75 85 81; /* 7.1:1 */
-  --c-subtle: 97 106 102; /* 5.1:1 */
-  --c-faint: 138 145 141;
-  --c-flare: 64 108 19; /* lime cannot be read on a light page; its deep leaf-green counterpart can (5.7:1) */
-  --c-cta: 20 43 41; /* the logo's ink green ... */
-  --c-cta-hover: 31 61 58;
-  --c-on-cta: 209 245 86; /* ... carrying the logo's lime: the mark's own colourway */
-  --c-verdigris: 23 110 74;
-  --c-amber: 143 85 11;
-  --c-ember: 163 68 9;
-  --c-rose: 177 48 56;
-  --on-flare: 252 253 250;
-  --seal-lime: 206 241 88;
-  --seal-ink: 23 47 45;
-  --seal-leaf: 163 216 84;
-  --seal-mint: 124 212 172;
-  --shadow-panel: 0 1px 2px 0 rgb(30 40 36 / 0.04), 0 1px 1px 0 rgb(30 40 36 / 0.02);
-  --shadow-pop: 0 18px 44px -14px rgb(30 40 36 / 0.22), 0 0 0 1px rgb(var(--c-line));
+  --c-ink: 248 247 242; /* page */
+  --c-surface: 255 254 250; /* cards */
+  --c-raised: 240 239 232; /* soft fills: inputs, hover, tracks */
+  --c-line: 222 222 212; /* borders and dividers */
+  --c-line-strong: 199 198 186; /* control outlines */
+  --c-knob: 255 254 250; /* the selected thumb of a segmented control */
+  --c-bone: 28 28 28; /* primary text        15.9:1 */
+  --c-muted: 85 85 76; /* secondary text       7.0:1 */
+  --c-subtle: 104 104 96; /* labels and meta      5.2:1 */
+  --c-faint: 161 161 148; /* placeholders, disabled, decoration only */
+  --c-flare: 166 75 0; /* accent text and indicators 5.4:1 */
+  --c-cta: 252 213 63; /* primary action: the yolk */
+  --c-cta-hover: 249 194 60;
+  --c-on-cta: 28 28 28;
+  --c-verdigris: 23 114 69; /* up, success */
+  --c-amber: 147 90 0; /* warning */
+  --c-ember: 184 67 10;
+  --c-rose: 192 52 43; /* down, danger */
+  --on-flare: 255 254 250;
+  --brand-yellow: 252 213 63;
+  --brand-amber: 249 194 60;
+  --brand-orange: 255 130 45;
+  --brand-gray: 211 211 211;
+  --brand-charcoal: 28 28 28;
+  --brand-cream: 255 247 214;
+  --grid-line: 222 222 212;
+  --shadow-card: 0 1px 0 rgb(40 36 21 / 0.03);
+  --shadow-lift: 0 22px 48px -20px rgb(60 48 10 / 0.28), 0 2px 6px -2px rgb(60 48 10 / 0.08);
+  --shadow-pop: 0 20px 48px -16px rgb(40 36 21 / 0.25), 0 0 0 1px rgb(var(--c-line));
   color-scheme: light;
 }
-
-/*
- * ---- palettes ----
- * Graphite (above) is the default. Moss leans the neutrals toward the logo's ink green; Stone warms them. Only the
- * neutral tones change: every lightness step is the same as Graphite's, so contrast is identical (DESIGN.md), and
- * the accent and status colours are shared. Readers pick one in the theme menu (components/Header); it is stored in
- * localStorage and applied as data-palette before first paint (app/layout.tsx).
- */
-:root[data-palette="moss"]:not([data-theme="light"]) {
-  --c-ink: 10 26 25;
-  --c-surface: 19 35 34;
-  --c-raised: 29 45 44;
-  --c-line: 39 55 54;
-  --c-line-strong: 63 80 78;
-  --c-knob: 45 62 61;
-  --c-bone: 215 224 223;
-  --c-muted: 180 189 188;
-  --c-subtle: 149 158 157;
-  --c-faint: 106 114 113;
-}
-:root[data-palette="moss"][data-theme="light"] {
-  --c-ink: 239 247 240;
-  --c-surface: 250 254 250;
-  --c-raised: 232 240 233;
-  --c-line: 215 222 216;
-  --c-line-strong: 189 197 190;
-  --c-knob: 250 254 250;
-  --c-bone: 32 40 33;
-  --c-muted: 76 85 78;
-  --c-subtle: 97 106 99;
-  --c-faint: 137 146 138;
-}
-:root[data-palette="stone"]:not([data-theme="light"]) {
-  --c-ink: 25 23 19;
-  --c-surface: 34 32 27;
-  --c-raised: 44 41 37;
-  --c-line: 54 51 47;
-  --c-line-strong: 79 76 71;
-  --c-knob: 61 58 53;
-  --c-bone: 224 221 216;
-  --c-muted: 189 186 181;
-  --c-subtle: 158 155 150;
-  --c-faint: 114 111 107;
-}
-:root[data-palette="stone"][data-theme="light"] {
-  --c-ink: 247 244 237;
-  --c-surface: 254 252 249;
-  --c-raised: 240 237 230;
-  --c-line: 223 220 213;
-  --c-line-strong: 197 194 187;
-  --c-knob: 254 252 249;
-  --c-bone: 40 37 31;
-  --c-muted: 85 82 75;
-  --c-subtle: 107 103 96;
-  --c-faint: 146 143 135;
+:root[data-theme="dark"] {
+  --c-ink: 24 25 22;
+  --c-surface: 34 35 31;
+  --c-raised: 43 45 38;
+  --c-line: 59 61 51;
+  --c-line-strong: 86 88 76;
+  --c-knob: 62 64 55;
+  --c-bone: 243 242 232; /* 15.7:1 */
+  --c-muted: 203 204 191; /* 10.9:1 */
+  --c-subtle: 174 176 162; /* 8.0:1 */
+  --c-faint: 118 120 107;
+  --c-flare: 252 213 63; /* the yolk reads as accent text on charcoal (12.4:1) */
+  --c-cta: 252 213 63;
+  --c-cta-hover: 255 224 102;
+  --c-on-cta: 28 28 28;
+  --c-verdigris: 94 214 154;
+  --c-amber: 249 194 60;
+  --c-ember: 255 154 82;
+  --c-rose: 255 125 115;
+  --on-flare: 28 28 28;
+  --brand-cream: 58 52 32;
+  --grid-line: 59 61 51;
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.02) inset;
+  --shadow-lift: 0 24px 50px -18px rgb(0 0 0 / 0.65), 0 2px 8px -2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 20px 48px -16px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(var(--c-line));
+  color-scheme: dark;
 }
 
 html {
@@ -133,32 +79,17 @@ html {
 body {
   background: rgb(var(--c-ink));
   color: rgb(var(--c-bone));
-  font-family: var(--font-sans), "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  font-family: var(--font-sans), "PingFang SC", "Hiragino Sans", "Noto Sans CJK SC", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-/* per-language CJK fallbacks */
 html[lang="zh-CN"] body {
-  font-family: var(--font-sans), "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  font-family: var(--font-sans), "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", system-ui, sans-serif;
 }
 html[lang="ja"] body {
-  font-family: var(--font-sans), "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
-}
-html[lang="ja"] .font-display,
-html[lang="ja"] .font-display-italic {
-  font-family: var(--font-display), "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
-  font-weight: 600;
-}
-html[lang="en"] body {
-  font-family: var(--font-sans), system-ui, sans-serif;
-}
-/* Japanese headline lines run ~9 full-width glyphs; keep each on one line in the 7/12 hero column */
-@media (min-width: 1024px) {
-  html[lang="ja"] .hero-title {
-    font-size: 58px;
-  }
+  font-family: var(--font-sans), "Hiragino Sans", "Noto Sans CJK JP", "Noto Sans JP", system-ui, sans-serif;
 }
 
 * {
@@ -166,45 +97,44 @@ html[lang="en"] body {
   scrollbar-color: rgb(var(--c-line-strong)) transparent;
 }
 ::selection {
-  background: rgb(var(--c-flare) / 0.28);
+  background: rgb(var(--brand-yellow) / 0.55);
+  color: rgb(var(--brand-charcoal));
 }
 :where(a, button, summary, [role="radio"], [role="option"], [role="menuitem"], [role="menuitemradio"], [tabindex]):focus-visible {
-  outline: 2px solid rgb(var(--c-flare));
-  outline-offset: 2px;
-  border-radius: 6px;
+  outline: 3px solid rgb(var(--brand-orange));
+  outline-offset: 3px;
+  border-radius: 8px;
 }
 
 /* ---- type ---- */
 .font-display {
-  font-family: var(--font-display), "PingFang SC", "Hiragino Sans", system-ui, sans-serif;
-  /* optical size follows the rendered size: display cuts at display sizes, sturdier text cuts for small headings */
-  font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-sans), "PingFang SC", "Hiragino Sans", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
-/* the wordmark keeps the display cut at every size: it is part of the logo lockup, not a heading */
+html[lang="zh-CN"] .font-display,
+html[lang="ja"] .font-display {
+  letter-spacing: -0.01em;
+}
+/* the wordmark: "Perk." with the tangerine full stop, part of the logo lockup */
 .wordmark {
-  font-family: var(--font-display), sans-serif;
-  font-variation-settings: "opsz" 96, "wdth" 100;
-  font-weight: 600;
-  letter-spacing: -0.04em;
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 850;
+  letter-spacing: -0.055em;
 }
-/* the accent line of a headline: same face, in the accent */
+/* the second line of a headline: same face, quieter */
 .font-display-italic {
-  font-family: var(--font-display), "PingFang SC", "Hiragino Sans", system-ui, sans-serif;
-  font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: rgb(var(--c-flare));
+  font-family: var(--font-sans), "PingFang SC", "Hiragino Sans", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: rgb(var(--c-subtle));
 }
-/* figures: the text face with tabular digits, so columns line up without a typewriter look */
+/* figures: tabular digits so columns line up */
 .num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
-/* identifiers (addresses, hashes, module ids): monospace, a touch smaller to match the text face's x-height */
+/* identifiers (addresses, hashes, module ids) */
 .mono {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-ligatures: none;
@@ -212,12 +142,15 @@ html[lang="en"] body {
 .label {
   font-size: 13px;
   line-height: 1.45;
-  letter-spacing: 0.005em;
   color: rgb(var(--c-subtle));
 }
-.label-en {
-  font-size: 12px;
-  letter-spacing: 0.05em;
+/* small monospace caps: "01 / DISCOVER", section eyebrows, stat indices */
+.label-en,
+.eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgb(var(--c-subtle));
 }
@@ -229,27 +162,56 @@ html[lang="en"] body {
 .panel {
   background: rgb(var(--c-surface));
   border: 1px solid rgb(var(--c-line));
-  border-radius: 18px;
-  box-shadow: var(--shadow-panel);
-  transition: border-color 160ms ease-out, transform 160ms ease-out, background-color 160ms ease-out;
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  transition: border-color 200ms ease-out, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 260ms ease-out,
+    background-color 200ms ease-out;
 }
 a.panel:hover {
-  border-color: rgb(var(--c-line-strong));
-  transform: translateY(-1px);
+  border-color: rgb(var(--brand-amber));
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lift);
+}
+a.panel:active {
+  transform: translateY(-1px) scale(0.995);
+}
+/* the soft, sunken block used for empty states and secondary areas */
+.well {
+  background: rgb(var(--c-raised));
+  border: 1px dashed rgb(var(--c-line-strong));
+  border-radius: 20px;
+}
+/* the yellow "create" card and other highlighted surfaces */
+.panel-sun {
+  background: linear-gradient(135deg, rgb(255 247 214), rgb(255 250 232));
+  border-color: rgb(232 219 168);
+  color: rgb(var(--brand-charcoal));
+}
+:root[data-theme="dark"] .panel-sun {
+  background: linear-gradient(135deg, rgb(58 52 32), rgb(43 41 31));
+  border-color: rgb(93 81 41);
+  color: rgb(var(--c-bone));
 }
 /* menus, toasts: float above the page */
 .popover {
   background: rgb(var(--c-surface));
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: var(--shadow-pop);
+}
+/* the faint graph-paper grid behind the hero art */
+.grid-paper {
+  background-image: linear-gradient(rgb(var(--grid-line)) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--grid-line)) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at center, rgb(0 0 0 / 0.55) 10%, transparent 70%);
 }
 /* ticket stub: perforated right edge */
 .ticket {
   position: relative;
   background: rgb(var(--c-surface));
   border: 1px solid rgb(var(--c-line));
-  border-radius: 18px;
-  box-shadow: var(--shadow-panel);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
 }
 .ticket::before {
   content: "";
@@ -276,7 +238,7 @@ a.panel:hover {
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 8px;
   font-family: var(--font-mono), monospace;
   font-size: 11.5px;
   letter-spacing: 0.02em;
@@ -291,38 +253,72 @@ a.panel:hover {
 }
 
 /* ---- buttons ---- */
+.btn-primary,
+.btn-ghost,
+.btn-dark {
+  border-radius: 12px;
+  font-weight: 700;
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 160ms ease-out, color 160ms ease-out,
+    border-color 160ms ease-out, box-shadow 220ms ease-out;
+}
 .btn-primary {
   background: rgb(var(--c-cta));
   color: rgb(var(--c-on-cta));
-  border-radius: 999px;
-  font-weight: 600;
-  transition: transform 160ms ease-out, background-color 160ms ease-out, color 160ms ease-out;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.08);
 }
 .btn-primary:hover:not(:disabled) {
   background: rgb(var(--c-cta-hover));
+  transform: translateY(-2px);
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.08), 0 10px 22px -10px rgb(var(--brand-orange) / 0.7);
 }
-.btn-primary:active:not(:disabled) {
-  transform: translateY(1px);
+.btn-primary:active:not(:disabled),
+.btn-ghost:active:not(:disabled),
+.btn-dark:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
 }
 /* disabled reads as unavailable, not as a faded brand colour */
 .btn-primary:disabled {
   background: rgb(var(--c-raised));
   color: rgb(var(--c-faint));
+  box-shadow: none;
   cursor: not-allowed;
 }
 .btn-ghost {
   border: 1px solid rgb(var(--c-line-strong));
-  border-radius: 999px;
+  background: rgb(var(--c-surface));
   color: rgb(var(--c-bone));
-  transition: border-color 160ms ease-out, background-color 160ms ease-out;
 }
 .btn-ghost:hover:not(:disabled) {
-  border-color: rgb(var(--c-faint));
+  border-color: rgb(var(--c-bone) / 0.5);
   background: rgb(var(--c-raised));
+  transform: translateY(-2px);
 }
 .btn-ghost:disabled {
   color: rgb(var(--c-faint));
   cursor: not-allowed;
+}
+/* charcoal (light) / cream (dark): the wallet button and other strong secondary actions */
+.btn-dark {
+  background: rgb(var(--c-bone));
+  color: rgb(var(--c-ink));
+}
+.btn-dark:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -12px rgb(0 0 0 / 0.55);
+}
+.btn-dark:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* an arrow that nudges forward when its link or card is hovered */
+.nudge {
+  display: inline-block;
+  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+a:hover .nudge,
+button:hover .nudge,
+.group:hover .nudge {
+  transform: translate(3px, -3px);
 }
 /* pending: a moving 2px line inside the button */
 .btn-pending {
@@ -345,79 +341,226 @@ a.panel:hover {
   }
 }
 
-/* ---- motion ---- */
-@keyframes twinkle {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+/* ---- the chick (components/brand/PerkChick) ---- */
+.chick .chick-eye,
+.chick .chick-wing,
+.chick .chick-tuft,
+.chick .chick-bird,
+.chick .chick-egg,
+.chick .chick-face,
+.chick .chick-shell {
+  transform-box: fill-box;
+}
+.chick .chick-eye {
+  transform-origin: center;
+}
+.chick .chick-wing-l {
+  transform-origin: 100% 20%;
+}
+.chick .chick-wing-r {
+  transform-origin: 0% 20%;
+}
+.chick .chick-tuft {
+  transform-origin: 50% 100%;
+}
+.chick .chick-bird {
+  transform-origin: 50% 100%;
+}
+.chick .chick-egg {
+  transform-origin: 50% 100%;
+}
+.chick .chick-face {
+  transform: translate(var(--look-x, 0px), var(--look-y, 0px));
+  transition: transform 180ms ease-out;
+}
+.chick[data-mode="idle"] .chick-eye,
+.chick[data-mode="follow"] .chick-eye {
+  animation: chick-blink 4.8s ease-in-out infinite;
+}
+.chick[data-mode="idle"] .chick-bird,
+.chick[data-mode="follow"] .chick-bird {
+  animation: chick-breathe 3.6s ease-in-out infinite;
+}
+.chick[data-mode="idle"] .chick-tuft,
+.chick[data-mode="follow"] .chick-tuft {
+  animation: chick-tuft 3.6s ease-in-out infinite;
+}
+/* hover (on the chick or on any .chick-host around it): a hop and two flaps */
+.chick[data-mode="idle"]:hover .chick-bird,
+.chick-host:hover .chick[data-mode="idle"] .chick-bird,
+.chick[data-mode="follow"]:hover .chick-bird,
+.chick-host:hover .chick[data-mode="follow"] .chick-bird {
+  animation: chick-hop 640ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.chick[data-mode="idle"]:hover .chick-wing-l,
+.chick-host:hover .chick[data-mode="idle"] .chick-wing-l,
+.chick[data-mode="follow"]:hover .chick-wing-l,
+.chick-host:hover .chick[data-mode="follow"] .chick-wing-l {
+  animation: chick-flap-l 320ms ease-in-out 2;
+}
+.chick[data-mode="idle"]:hover .chick-wing-r,
+.chick-host:hover .chick[data-mode="idle"] .chick-wing-r,
+.chick[data-mode="follow"]:hover .chick-wing-r,
+.chick-host:hover .chick[data-mode="follow"] .chick-wing-r {
+  animation: chick-flap-r 320ms ease-in-out 2;
+}
+/* loading: the egg wobbles, the chick rises out of it, flaps, and settles back */
+.chick[data-mode="loading"] .chick-egg {
+  animation: chick-wobble 1.6s ease-in-out infinite;
+}
+.chick[data-mode="loading"] .chick-bird {
+  animation: chick-hatch 1.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+.chick[data-mode="loading"] .chick-wing-l {
+  animation: chick-flap-l 400ms ease-in-out infinite;
+}
+.chick[data-mode="loading"] .chick-wing-r {
+  animation: chick-flap-r 400ms ease-in-out infinite;
+}
+.chick[data-mode="loading"] .chick-eye {
+  animation: chick-blink 1.6s ease-in-out infinite;
+}
+@keyframes chick-blink {
+  0%, 44%, 50%, 100% { transform: scaleY(1); }
+  47% { transform: scaleY(0.12); }
+}
+@keyframes chick-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(0.9px); }
+}
+@keyframes chick-tuft {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-9deg); }
+}
+@keyframes chick-hop {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-5px) scaleY(1.04); }
+  70% { transform: translateY(0.6px) scaleY(0.97); }
+  100% { transform: translateY(0); }
+}
+@keyframes chick-flap-l {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(24deg); }
+}
+@keyframes chick-flap-r {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-24deg); }
+}
+@keyframes chick-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(-7deg); }
+  30% { transform: rotate(6deg); }
+  45% { transform: rotate(-3deg); }
+  60% { transform: rotate(0deg); }
+}
+@keyframes chick-hatch {
+  0%, 12% { transform: translateY(11px); }
+  45%, 78% { transform: translateY(-2px); }
+  100% { transform: translateY(11px); }
+}
+
+/* ---- playful motion ---- */
+/* the asterisk sparkle: turns slowly, twinkles on hover */
+.spark {
+  display: inline-block;
+  transform-origin: center;
+  animation: spark-spin 14s linear infinite;
+}
+.group:hover .spark,
+.spark:hover {
+  animation: spark-spin 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+@keyframes spark-spin {
+  to { transform: rotate(360deg); }
 }
 .twinkle {
   animation: twinkle 400ms ease-out both;
   transform-origin: center;
 }
+@keyframes twinkle {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* floating decoration (plus signs, sparkles around the hero card) */
+.float {
+  animation: float 5s ease-in-out infinite;
+}
+.float-slow {
+  animation: float 7s ease-in-out infinite reverse;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+/* orbit rings around the hero chick */
+.orbit {
+  animation: orbit 18s linear infinite;
+}
+.orbit-rev {
+  animation: orbit 24s linear infinite reverse;
+}
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+/* icon wiggle when its card is hovered */
+.group:hover .wiggle {
+  animation: wiggle 520ms ease-in-out;
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-14deg) scale(1.08); }
+  60% { transform: rotate(10deg) scale(1.08); }
+}
 /* path draw-in */
 .draw {
   stroke-dasharray: 1600;
   stroke-dashoffset: 1600;
-  animation: draw 600ms ease-out forwards;
+  animation: draw 700ms ease-out forwards;
 }
 @keyframes draw {
-  to {
-    stroke-dashoffset: 0;
-  }
+  to { stroke-dashoffset: 0; }
 }
+/* `backwards`, not `both`: a held end state would pin `transform: none` and cancel hover transforms afterwards */
 .fade-up {
-  animation: fadeUp 280ms ease-out both;
+  animation: fadeUp 360ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
 }
 @keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
-/* number swap: 200ms fade, no rolling count */
 .fade-in {
   animation: fadeIn 200ms ease-out both;
 }
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .fade-up-stagger > * {
-  animation: fadeUp 360ms ease-out both;
+  animation: fadeUp 460ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
 }
 .fade-up-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.fade-up-stagger > *:nth-child(2) { animation-delay: 50ms; }
-.fade-up-stagger > *:nth-child(3) { animation-delay: 100ms; }
-.fade-up-stagger > *:nth-child(4) { animation-delay: 150ms; }
-.fade-up-stagger > *:nth-child(5) { animation-delay: 200ms; }
-.fade-up-stagger > *:nth-child(6) { animation-delay: 250ms; }
-@media (prefers-reduced-motion: reduce) {
-  .draw,
-  .fade-up,
-  .fade-in,
-  .fade-up-stagger > *,
-  .btn-pending::after {
-    animation: none;
-    stroke-dashoffset: 0;
-  }
+.fade-up-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.fade-up-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.fade-up-stagger > *:nth-child(4) { animation-delay: 180ms; }
+.fade-up-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.fade-up-stagger > *:nth-child(6) { animation-delay: 300ms; }
+.fade-up-stagger > *:nth-child(n + 7) { animation-delay: 340ms; }
+/* a live-status dot that pulses */
+.pulse-dot {
+  position: relative;
+}
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: pulse-dot 2s ease-out infinite;
+}
+@keyframes pulse-dot {
+  0% { transform: scale(1); opacity: 0.6; }
+  80%, 100% { transform: scale(2.8); opacity: 0; }
 }
 
 /* ---- form controls ---- */
@@ -432,12 +575,13 @@ textarea::placeholder {
 }
 input[type="text"],
 input[type="number"],
+input[type="search"],
 input:not([type]),
-textarea {
-  border-radius: 999px !important;
+select {
+  border-radius: 12px !important;
 }
 textarea {
-  border-radius: 16px !important;
+  border-radius: 14px !important;
 }
 .ledger-row + .ledger-row {
   border-top: 1px solid rgb(var(--c-line));
@@ -447,11 +591,9 @@ textarea {
 .pass {
   position: relative;
   border-radius: 22px;
-  background:
-    radial-gradient(110% 130% at 0% 0%, rgb(var(--c-flare) / 0.07), transparent 55%),
-    rgb(var(--c-surface));
-  border: 1px solid rgb(var(--c-flare) / 0.32);
-  box-shadow: var(--shadow-panel);
+  background: radial-gradient(110% 130% at 0% 0%, rgb(var(--brand-yellow) / 0.16), transparent 55%), rgb(var(--c-surface));
+  border: 1px solid rgb(var(--brand-amber) / 0.6);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 /* a sheen crosses the unclaimed pass twice when it appears, then the card stays still */
@@ -459,7 +601,7 @@ textarea {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(105deg, transparent 35%, rgb(var(--c-flare) / 0.07) 48%, rgb(var(--c-bone) / 0.04) 52%, transparent 65%);
+  background: linear-gradient(105deg, transparent 35%, rgb(var(--brand-yellow) / 0.16) 48%, rgb(255 255 255 / 0.12) 52%, transparent 65%);
   background-size: 250% 100%;
   background-position: -120% 0;
   animation: pass-sheen 5s ease-in-out 2 both;
@@ -477,7 +619,6 @@ textarea {
   display: flex;
   flex-wrap: wrap;
 }
-/* perforation between body and stub, with punched notches */
 .pass-stub {
   position: relative;
   display: flex;
@@ -510,7 +651,7 @@ textarea {
 .pass-perk {
   border-radius: 14px;
   padding: 12px 14px;
-  background: rgb(var(--c-raised) / 0.6);
+  background: rgb(var(--c-raised) / 0.7);
   box-shadow: inset 0 0 0 1px rgb(var(--c-line));
 }
 .pass-ribbon {
@@ -521,17 +662,17 @@ textarea {
   padding: 5px 12px;
   font-size: 13px;
   color: rgb(var(--c-amber));
-  background: rgb(var(--c-amber) / 0.1);
-  box-shadow: inset 0 0 0 1px rgb(var(--c-amber) / 0.25);
+  background: rgb(var(--brand-yellow) / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-amber) / 0.45);
 }
 /* the claim button draws the eye three times, then waits */
 .pass-cta {
-  box-shadow: 0 0 0 0 rgb(var(--c-cta) / 0.4);
+  box-shadow: 0 0 0 0 rgb(var(--brand-orange) / 0.4);
   animation: pass-pulse 2.4s ease-out 3;
 }
 @keyframes pass-pulse {
-  0% { box-shadow: 0 0 0 0 rgb(var(--c-cta) / 0.35); }
-  70%, 100% { box-shadow: 0 0 0 12px rgb(var(--c-cta) / 0); }
+  0% { box-shadow: 0 0 0 0 rgb(var(--brand-orange) / 0.4); }
+  70%, 100% { box-shadow: 0 0 0 14px rgb(var(--brand-orange) / 0); }
 }
 .pass-stamp {
   position: absolute;
@@ -542,7 +683,7 @@ textarea {
   border: 2px solid rgb(var(--c-verdigris));
   border-radius: 8px;
   color: rgb(var(--c-verdigris));
-  background: rgb(var(--c-surface) / 0.8);
+  background: rgb(var(--c-surface) / 0.85);
   font-family: var(--font-mono), monospace;
   font-size: 13px;
   letter-spacing: 0.14em;
@@ -569,10 +710,6 @@ textarea {
   0% { transform: rotate(var(--a)) translateY(0) scale(0.4); opacity: 1; }
   100% { transform: rotate(var(--a)) translateY(-110px) scale(1); opacity: 0; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .pass::before, .pass-cta, .pass-celebrate .pass-stamp, .pass-burst > span { animation: none !important; }
-  .pass-burst { display: none; }
-}
 
 /* transaction toast: the current step breathes */
 .tx-step-active {
@@ -582,43 +719,44 @@ textarea {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .tx-step-active { animation: none; }
-}
 
 /* ---- single-choice cards (components/ui/ChoiceCard) ---- */
 .choice {
   position: relative;
-  transition: border-color 160ms ease-out, background-color 160ms ease-out, opacity 160ms ease-out;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out, transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .choice:hover {
   border-color: rgb(var(--c-line-strong));
+  transform: translateY(-2px);
 }
 .choice[data-selected="true"],
 .choice[data-selected="true"]:hover {
-  border-color: rgb(var(--c-flare) / 0.8);
-  background: linear-gradient(0deg, rgb(var(--c-flare) / 0.06), rgb(var(--c-flare) / 0.06)), rgb(var(--c-surface));
-  box-shadow: 0 0 0 1px rgb(var(--c-flare) / 0.35);
+  border-color: rgb(var(--brand-amber));
+  background: linear-gradient(135deg, rgb(var(--brand-yellow) / 0.16), rgb(var(--brand-yellow) / 0.05)), rgb(var(--c-surface));
+  box-shadow: 0 0 0 1px rgb(var(--brand-amber));
 }
-/* The unchosen cards are not dimmed: fading them to 60-70% put their text near 3:1. The chosen card's border,
-   wash and check are what mark the choice. */
 .choice-check {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: -9px;
+  right: -9px;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
-  color: rgb(var(--on-flare));
-  background: rgb(var(--c-flare));
+  font-weight: 800;
+  color: rgb(var(--brand-charcoal));
+  background: rgb(var(--brand-yellow));
   box-shadow: 0 0 0 3px rgb(var(--c-ink));
+  animation: pop-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes pop-in {
+  from { transform: scale(0.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
-/* loading placeholders: a soft sweep instead of content that changes its mind */
+/* loading placeholders: a soft sweep */
 .skel {
   border-radius: 10px;
   background: linear-gradient(90deg, rgb(var(--c-raised)) 25%, rgb(var(--c-line)) 50%, rgb(var(--c-raised)) 75%);
@@ -633,9 +771,6 @@ textarea {
 .pass-loading::before { display: none; }
 .pass-seal-spin { animation: pass-seal-spin 6s linear infinite; }
 @keyframes pass-seal-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .skel, .pass-seal-spin { animation: none; }
-}
 
 /* the zero count in a small price (0.0₁₀4297), kept in the surrounding face: see components/ui/Subscripted */
 sub.price-sub {
@@ -645,4 +780,29 @@ sub.price-sub {
   font-size: 0.64em;
   line-height: 0;
   vertical-align: baseline;
+}
+
+/* ---- reduced motion: nothing moves that does not have to ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .draw {
+    stroke-dashoffset: 0;
+  }
+  .pass-burst {
+    display: none;
+  }
+  a.panel:hover,
+  .btn-primary:hover:not(:disabled),
+  .btn-ghost:hover:not(:disabled),
+  .btn-dark:hover:not(:disabled),
+  .choice:hover {
+    transform: none;
+  }
 }

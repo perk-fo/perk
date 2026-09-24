@@ -25,6 +25,7 @@ import { useRoles, ROLE_ORDER } from "@/lib/roles";
 import { useNow } from "@/lib/hooks";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { PerkLoader } from "@/components/brand/PerkLoader";
 
 type Claim = { kind: "rewards" | "dev"; launch: LaunchSummary; amount: bigint; payee?: Address };
 
@@ -76,7 +77,7 @@ export default function MePage() {
   if (walletStatus === "reconnecting" || walletStatus === "connecting") {
     return (
       <Panel className="py-10">
-        <Skeleton size={40} lines={4} />
+        <PerkLoader size={56} minHeight={260} />
       </Panel>
     );
   }
@@ -89,10 +90,11 @@ export default function MePage() {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="fade-up flex flex-wrap items-end justify-between gap-4 pt-6 sm:pt-10">
         <div>
-          <h1 className="font-display text-4xl leading-none">{t("nav.me")}</h1>
-          <p className="num mt-3 break-all text-sm text-muted">{address}</p>
+          <p className="eyebrow mb-3 text-[10px] font-bold tracking-[0.2em]">{t("page.me.eyebrow")}</p>
+          <h1 className="font-display text-[36px] leading-[1.08] sm:text-[48px]">{t("nav.me")}</h1>
+          <p className="mono mt-3 break-all text-sm text-muted">{address}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {held.map((r) => (

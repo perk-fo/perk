@@ -10,7 +10,7 @@ import { InviteLinkRow } from "@/components/InviteLinkRow";
 import { useDismiss } from "@/lib/use-dismiss";
 
 const ROLE_TONE: Record<Role, string> = {
-  admin: "bg-flare text-on-flare",
+  admin: "bg-yolk text-charcoal",
   creator: "bg-amber/20 text-amber",
   lp: "bg-amber/20 text-amber",
   user: "bg-raised text-muted",
@@ -55,11 +55,11 @@ export function AccountMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         data-role={tier}
-        className="btn-ghost flex h-8 items-center gap-2 pl-3 pr-1.5 text-[13px]"
+        className="btn-ghost flex h-10 items-center gap-2 pl-3.5 pr-2 text-[13px]"
       >
         <span className="mono">{shortAddress(address)}</span>
         {showChip ? (
-          <span className={`rounded-full px-2 py-0.5 text-[11px] leading-none ${ROLE_TONE[tier]}`}>{t(`role.${tier}`)}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold leading-none ${ROLE_TONE[tier]}`}>{t(`role.${tier}`)}</span>
         ) : (
           <span className="pr-1.5 text-subtle" aria-hidden>
             ▾

@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { TxStatus } from "@/components/TxStatus";
 import { RoleGate } from "@/components/RoleGate";
 import { useT, type TFn } from "@/i18n/provider";
+import { PerkLoader } from "@/components/brand/PerkLoader";
 
 /** PRD 11.3 risk-disclosure message keys, in order. */
 const RISK_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `grant.risk.${i}`);
@@ -367,11 +368,7 @@ export default function GrantPage() {
     );
   }
   if (!launch) {
-    return (
-      <Panel>
-        <Skeleton size={72} lines={3} />
-      </Panel>
-    );
+    return <PerkLoader minHeight={520} />;
   }
   if (!launch.lpGrantEnabled) {
     return (
@@ -459,7 +456,7 @@ export default function GrantPage() {
               <span className="font-display text-3xl leading-none">{ringCentre}</span>
             )}
           </DecayRing>
-          <div className="min-w-0 flex-1 divide-y divide-line">
+          <div className="min-w-0 flex-1 basis-60 divide-y divide-line">
             <Kv label={t("grant.kv.status")} >{statusPill.label}</Kv>
             <Kv label={t("grant.kv.reserve")} value={formatAmount(campaign?.reserve, memeDecimals, { locale })} />
             <Kv label={t("grant.kv.activated")} value={formatAmount(campaign?.totalActivated, memeDecimals, { locale })} />

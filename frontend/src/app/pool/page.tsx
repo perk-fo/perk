@@ -13,6 +13,7 @@ import { HashSeal } from "@/components/art/HashSeal";
 import { formatAmount, formatNumber, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { PageHeader } from "@/components/ui/SectionHeading";
 
 /**
  * Pool: every graduated launch has a public v4 pool, and anyone can add two-sided liquidity to it. This page lists
@@ -51,15 +52,16 @@ export default function PoolPage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-4xl leading-none">{t("pool.title")}</h1>
-          <p className="mt-2 max-w-2xl text-sm text-subtle">{t("pool.sub")}</p>
-        </div>
-        <span className="num text-xs text-subtle">
-          {list.data ? t("pool.count", { n: formatNumber(pools.length, locale) }) : ""}
-        </span>
-      </header>
+      <PageHeader
+        eyebrow={t("page.pool.eyebrow")}
+        title={t("pool.title")}
+        description={t("pool.sub")}
+        right={
+          <span className="num rounded-full bg-raised px-3 py-1 text-xs font-bold text-muted">
+            {list.data ? t("pool.count", { n: formatNumber(pools.length, locale) }) : "—"}
+          </span>
+        }
+      />
 
       {apiDown && (
         <Notice tone="rose" title={t("home.api.downTitle")}>

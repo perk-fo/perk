@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { TFn } from "@/i18n/provider";
 
-export type PillTone = "amber" | "ember" | "flare" | "verdigris" | "rose" | "muted";
+export type PillTone = "amber" | "ember" | "flare" | "verdigris" | "rose" | "muted" | "yolk";
 
 // A tinted fill and no outline: status reads from the colour, and a page of badges is not a page of rings.
 // Text on every tint is at least 4.8:1 in both themes (DESIGN.md).
@@ -9,6 +9,8 @@ const TONE_CLASS: Record<PillTone, string> = {
   amber: "bg-amber/10 text-amber",
   ember: "bg-ember/10 text-ember",
   flare: "bg-flare/10 text-flare",
+  // the brand yellow as a badge: charcoal text on a yolk tint (graduation pending, featured)
+  yolk: "bg-yolk/35 text-bone dark:bg-yolk/20 dark:text-yolk",
   verdigris: "bg-verdigris/10 text-verdigris",
   rose: "bg-rose/10 text-rose",
   muted: "bg-raised text-muted",
@@ -18,7 +20,7 @@ const TONE_CLASS: Record<PillTone, string> = {
 export function Pill({ tone = "muted", children }: { tone?: PillTone; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium leading-5 ${TONE_CLASS[tone]}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold leading-5 ${TONE_CLASS[tone]}`}
     >
       {children}
     </span>
@@ -31,7 +33,7 @@ export function launchStatusPill(status: number | undefined, t: TFn): { tone: Pi
     case 1:
       return { tone: "amber", label: t("status.launch.active") };
     case 2:
-      return { tone: "flare", label: t("status.launch.pending") };
+      return { tone: "yolk", label: t("status.launch.pending") };
     case 3:
       return { tone: "verdigris", label: t("status.launch.graduated") };
     case 4:

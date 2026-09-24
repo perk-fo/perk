@@ -5,7 +5,7 @@ import { txActivity, type TxActivity } from "@/lib/tx-activity";
 import { explorerTxUrl, DEFAULT_CHAIN } from "@/lib/chains";
 import { decodeErrorMessage, isUserRejection } from "@/lib/errors";
 import { shortHash } from "@/lib/format";
-import { Spinner } from "@/components/ui/Spinner";
+import { PerkChick } from "@/components/brand/PerkChick";
 import { useT } from "@/i18n/provider";
 
 const EMPTY: TxActivity[] = [];
@@ -37,11 +37,16 @@ export function TxToasts() {
         return (
           <div key={a.id} className="popover pointer-events-auto fade-up p-4">
             <div className="flex items-start gap-3">
-              <span className={`mt-0.5 ${done ? "text-verdigris" : cancelled ? "text-subtle" : failed ? "text-rose" : "text-flare"}`}>
-                {done ? "✓" : failed ? "✕" : <Spinner size={16} />}
+              {/* in flight: the chick hatching; done: it pops out with a check */}
+              <span
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-base font-extrabold ${
+                  done ? "bg-verdigris/15 text-verdigris" : cancelled ? "bg-raised text-subtle" : failed ? "bg-rose/10 text-rose" : "bg-yolk/25"
+                }`}
+              >
+                {done ? <span className="twinkle">✓</span> : failed ? "✕" : <PerkChick size={30} mode="loading" />}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-bone">{t(a.label.key, a.label.vars)}</p>
+                <p className="text-sm font-bold text-bone">{t(a.label.key, a.label.vars)}</p>
                 <p className={`mt-0.5 text-[13px] ${failed && !cancelled ? "text-rose" : "text-muted"}`}>
                   {failed ? decodeErrorMessage(a.error, t) : t(`tx.phase.${a.phase}`)}
                 </p>
@@ -71,7 +76,7 @@ export function TxToasts() {
                   <span
                     key={s}
                     className={`h-1 rounded-full ${
-                      i < step || done ? "bg-verdigris/80" : i === step ? "tx-step-active bg-flare" : "bg-raised"
+                      i < step || done ? "bg-verdigris/80" : i === step ? "tx-step-active bg-tangerine" : "bg-raised"
                     }`}
                   />
                 ))}

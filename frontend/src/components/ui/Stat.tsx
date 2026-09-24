@@ -10,7 +10,7 @@ const TONE_CLASS: Record<StatTone, string> = {
   rose: "text-rose",
 };
 
-/** The "main number" block: a big Fraunces figure with a small label and an optional muted unit. */
+/** The "main number" block: a big heavy figure with a small label and an optional muted unit. */
 export function Stat({
   label,
   value,
@@ -37,7 +37,7 @@ export function Stat({
   return (
     <div className="min-w-0">
       <div
-        className={`inline-flex max-w-full flex-wrap items-baseline gap-1.5 font-display font-semibold leading-none ${TONE_CLASS[tone]} ${sizeClass}`}
+        className={`inline-flex max-w-full flex-wrap items-baseline gap-1.5 font-display leading-none ${TONE_CLASS[tone]} ${sizeClass}`}
       >
         <span className="min-w-0 [overflow-wrap:anywhere]">{value}</span>
         {unit !== undefined && <span className="label shrink-0">{unit}</span>}

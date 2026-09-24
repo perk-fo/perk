@@ -18,6 +18,8 @@ import { Notice } from "@/components/ui/Notice";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { fmtCountdown, formatAmount } from "@/lib/format";
 import { useT } from "@/i18n/provider";
+import { PageHeader } from "@/components/ui/SectionHeading";
+import { PerkLoader } from "@/components/brand/PerkLoader";
 
 type Group = "active" | "upcoming" | "preGrad" | "ended";
 const GROUPS: Group[] = ["active", "upcoming", "preGrad", "ended"];
@@ -74,16 +76,14 @@ export default function GrantHubPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="font-display text-4xl leading-none">{t("nav.grant")}</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">{t("grant.hub.sub")}</p>
+      <PageHeader eyebrow={t("home.door.grantTag")} title={t("nav.grant")} description={t("grant.hub.sub")}>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-subtle">
           {t("grant.hub.vsPool")}{" "}
-          <Link href="/pool" className="text-muted underline decoration-dotted underline-offset-4 hover:text-bone">
-            {t("grant.hub.toPool")} →
+          <Link href="/pool" className="group font-semibold text-muted underline decoration-honey decoration-2 underline-offset-4 hover:text-bone">
+            {t("grant.hub.toPool")} <span className="nudge">→</span>
           </Link>
         </p>
-      </header>
+      </PageHeader>
 
       <PerkPass />
 
@@ -95,7 +95,7 @@ export default function GrantHubPage() {
 
       {launches.isLoading || campaigns.isLoading ? (
         <Panel>
-          <Skeleton size={40} lines={4} />
+          <PerkLoader size={56} minHeight={220} />
         </Panel>
       ) : (
         GROUPS.map((g) => {

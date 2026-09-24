@@ -17,6 +17,7 @@ import type { PoolKey } from "@/lib/pool";
 import { formatAmount, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { PerkLoader } from "@/components/brand/PerkLoader";
 
 /** One pool: what it is on the left, adding and managing your own liquidity on the right. */
 export default function PoolDetailPage() {
@@ -52,7 +53,7 @@ export default function PoolDetailPage() {
   if (!d) {
     return (
       <Panel>
-        <Skeleton size={40} lines={6} />
+        <PerkLoader minHeight={420} />
       </Panel>
     );
   }

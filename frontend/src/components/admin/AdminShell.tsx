@@ -10,6 +10,7 @@ import { NotFoundView } from "@/components/NotFoundView";
 import { Notice } from "@/components/ui/Notice";
 import { RolePill } from "@/components/admin/AdminKit";
 import { useT } from "@/i18n/provider";
+import { PerkLoader } from "@/components/brand/PerkLoader";
 
 /**
  * Everything under /admin. Only a wallet holding an admin role sees any of it: the Core Admin and the Grant Admin
@@ -30,15 +31,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </Notice>
     );
   }
-  if (roles.isLoading) return <div className="min-h-[50vh]" aria-busy="true" />;
+  if (roles.isLoading) return <PerkLoader minHeight={480} />;
   if (!roles.isAdmin) return <NotFoundView />;
 
   return (
     <AdminSessionProvider>
-      <div className="space-y-6 pt-6">
+      <div className="space-y-6 pt-6 sm:pt-10">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl">{t("admin.title")}</h1>
+            <p className="eyebrow mb-3 text-[10px] font-bold tracking-[0.2em]">{t("page.admin.eyebrow")}</p>
+            <h1 className="font-display text-[36px] leading-[1.08] sm:text-[48px]">{t("admin.title")}</h1>
             <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm text-muted">
               <span>{t("admin.youAre")}</span>
               {roles.roles.map((r) => (

@@ -62,7 +62,7 @@ export function HolderList({
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-raised">
                   <div
-                    className={`h-full rounded-full ${isMine ? "bg-flare/80" : "bg-faint"}`}
+                    className={`h-full rounded-full ${isMine ? "bg-tangerine" : "bg-honey/70"}`}
                     style={{ width: `${Math.min(100, Math.max(0.4, pct))}%` }}
                   />
                 </div>

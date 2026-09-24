@@ -4,7 +4,7 @@ import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "rea
 
 // Sunken in both themes (the page tone under a panel), with a visible ring on focus.
 const CONTROL_CLASS =
-  "block w-full rounded-[10px] border border-line-strong bg-ink/50 px-3.5 py-2 text-sm text-bone outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-flare focus:ring-2 focus:ring-flare/20";
+  "block w-full rounded-xl border border-line-strong bg-ink px-3.5 py-2.5 text-sm text-bone outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-honey focus:ring-4 focus:ring-yolk/30";
 
 /**
  * The row grid every labelled control in a form shares: a muted label in a fixed right-aligned column on >= sm,
