@@ -138,7 +138,138 @@ async function proofFor(cfg: DriverConfig, datasetPath: string, account: Address
   return JSON.parse(await new Response(proc.stdout).text()) as ProofOutput;
 }
 
-/** Register a participant's leaf (anyone may do this) and then activate their share into a grant position. */
+/**
+ * `inventoryRemaining` is new in v0.14 and not yet in the generated ABI (contracts are mid-change; see
+ * mock/README.md). A minimal local fragment, same pattern as `MOCK_ERC20_ABI` in actions.ts, so this compiles and
+ * works today and needs no edit once the generated ABI catches up.
+ */
+const LP_GRANT_VAULT_EXTRA_ABI = [
+  {
+    type: "function",
+    name: "inventoryRemaining",
+    stateMutability: "view",
+    inputs: [{ name: "meme", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+const INSUFFICIENT_INVENTORY_SELECTOR = "8ada068e"; // InsufficientInventory(uint256)
+
+/** LPGrantVault.InsufficientInventory: the shared reserve ran dry for this bundle; never worth retrying as-is. */
+function isInsufficientInventory(err: unknown): boolean {
+  const text = String(err);
+  return text.includes("InsufficientInventory") || text.includes("0x" + INSUFFICIENT_INVENTORY_SELECTOR);
+}
+
+/**
+ * Activates one bundle of (base, boost, credit) grant meme into a locked position: shrinks it first to fit what is
+ * left of the campaign's one shared inventory (base, invitee boost and inviter credit all draw from the same 15%
+ * reserve in v0.14 — see mock/README.md), then to what the wallet can actually match in quote (for native OKB,
+ * leaving gas behind). Returns false, without throwing, when there is nothing left to activate rather than treating
+ * an exhausted inventory as a hard failure.
+ */
+async function activateShare(
+  cfg: DriverConfig,
+  meme: Address,
+  participant: Account,
+  quote: Address,
+  native: boolean,
+  baseIn: bigint,
+  boostIn: bigint,
+  creditIn: bigint,
+  log: (m: string) => void,
+): Promise<boolean> {
+  const remaining = await cfg.publicClient.readContract({
+    address: cfg.deployment.lpGrantVault,
+    abi: LP_GRANT_VAULT_EXTRA_ABI,
+    functionName: "inventoryRemaining",
+    args: [meme],
+  });
+  let base = baseIn;
+  let boost = boostIn;
+  let credit = creditIn;
+  let over = base + boost + credit - remaining;
+  if (over > 0n) {
+    const cutBase = over < base ? over : base;
+    base -= cutBase;
+    over -= cutBase;
+    const cutBoost = over < boost ? over : boost;
+    boost -= cutBoost;
+    over -= cutBoost;
+    const cutCredit = over < credit ? over : credit;
+    credit -= cutCredit;
+    over -= cutCredit;
+  }
+  if (base + boost + credit === 0n) {
+    log(`activation skipped for ${participant.address} on ${meme}: shared inventory is exhausted`);
+    return false;
+  }
+
+  const balance = native
+    ? await cfg.publicClient.getBalance({ address: participant.address })
+    : await cfg.publicClient.readContract({ address: quote, abi: erc20Abi, functionName: "balanceOf", args: [participant.address] });
+  const reserve = native ? 30_000_000_000_000_000n : 0n;
+  const spendable = balance > reserve ? balance - reserve : 0n;
+  if (spendable === 0n) return false;
+
+  let quoteNeeded = 0n;
+  for (let i = 0; i < 24; i++) {
+    const [q] = await cfg.publicClient.readContract({
+      address: cfg.deployment.lpGrantVault,
+      abi: lpGrantVaultAbi,
+      functionName: "quoteRequired",
+      args: [meme, base + boost + credit],
+    });
+    quoteNeeded = q;
+    if (quoteNeeded <= spendable || base + boost + credit < 2n) break;
+    // shrink whichever claim is largest, so a small credit or boost is not zeroed out to protect a much bigger base
+    if (base >= boost && base >= credit && base > 1n) base /= 2n;
+    else if (boost >= credit && boost > 1n) boost /= 2n;
+    else if (credit > 1n) credit /= 2n;
+    else break;
+  }
+  if (quoteNeeded === 0n || quoteNeeded > spendable || base + boost + credit === 0n) return false;
+
+  const quoteMax = quoteNeeded + quoteNeeded / 50n + 1n;
+  if (!native) {
+    await call(cfg, participant, {
+      address: quote,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [cfg.deployment.lpGrantVault, quoteMax],
+    });
+  }
+  try {
+    await call(cfg, participant, {
+      address: cfg.deployment.lpGrantVault,
+      abi: lpGrantVaultAbi,
+      functionName: "activateGrant",
+      args: [meme, base, boost, credit, quoteMax, 0n],
+      value: native ? quoteMax : 0n,
+    });
+  } catch (err) {
+    // A last-moment race against the shared inventory (only plausible if something else drew it down between the
+    // check above and this transaction landing). Skip this bundle rather than parking the whole participant.
+    if (isInsufficientInventory(err)) {
+      log(`activation raced the shared inventory for ${participant.address} on ${meme}; not retrying this bundle`);
+      return false;
+    }
+    throw err;
+  }
+  log(
+    `activated grant for ${participant.address} on ${meme} (base ${base}, boost ${boost}, credit ${credit}, quote ${quoteMax})`,
+  );
+  return true;
+}
+
+/**
+ * Register a participant's leaf (anyone may do this) and then activate their share into locked grant positions.
+ *
+ * v0.14: the invitee boost is only earned as base is actually activated on-chain (10% of cumulative base activated,
+ * capped by the leaf's inviteeBoost), so it can never be claimed in the same transaction as the base that earns it.
+ * This activates base (and any inviter credit already earned, which does not depend on this account's own base) in
+ * one transaction, then re-reads `grantBreakdown` and activates whatever boost that just unlocked in a second one.
+ */
 export async function registerAndActivate(
   cfg: DriverConfig,
   meme: Address,
@@ -173,15 +304,6 @@ export async function registerAndActivate(
     log(`registered ${participant.address} on ${meme}`);
   }
 
-  const [baseClaimable, boostClaimable, creditClaimable] = await cfg.publicClient.readContract({
-    address: cfg.deployment.lpGrantVault,
-    abi: lpGrantVaultAbi,
-    functionName: "grantBreakdown",
-    args: [meme, participant.address],
-  });
-  if (baseClaimable + boostClaimable + creditClaimable === 0n) return false;
-
-  // Activate only as much as the wallet can actually match with quote (for native OKB, leaving gas behind).
   const quote = getAddress(
     (
       await cfg.publicClient.readContract({
@@ -193,46 +315,31 @@ export async function registerAndActivate(
     ).quote,
   );
   const native = quote === zeroAddress;
-  const balance = native
-    ? await cfg.publicClient.getBalance({ address: participant.address })
-    : await cfg.publicClient.readContract({ address: quote, abi: erc20Abi, functionName: "balanceOf", args: [participant.address] });
-  const reserve = native ? 30_000_000_000_000_000n : 0n;
-  const spendable = balance > reserve ? balance - reserve : 0n;
-  if (spendable === 0n) return false;
 
-  let base = baseClaimable;
-  let quoteNeeded = 0n;
-  for (let i = 0; i < 24; i++) {
-    const [q] = await cfg.publicClient.readContract({
-      address: cfg.deployment.lpGrantVault,
-      abi: lpGrantVaultAbi,
-      functionName: "quoteRequired",
-      args: [meme, base + boostClaimable + creditClaimable],
-    });
-    quoteNeeded = q;
-    if (quoteNeeded <= spendable || base < 2n) break;
-    base /= 2n;
-  }
-  if (quoteNeeded === 0n || quoteNeeded > spendable) return false;
+  let acted = false;
 
-  const quoteMax = quoteNeeded + quoteNeeded / 50n + 1n;
-  if (!native) {
-    await call(cfg, participant, {
-      address: quote,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [cfg.deployment.lpGrantVault, quoteMax],
-    });
-  }
-  await call(cfg, participant, {
+  const [baseClaimable, , creditClaimable] = await cfg.publicClient.readContract({
     address: cfg.deployment.lpGrantVault,
     abi: lpGrantVaultAbi,
-    functionName: "activateGrant",
-    args: [meme, base, boostClaimable, creditClaimable, quoteMax, 0n],
-    value: native ? quoteMax : 0n,
+    functionName: "grantBreakdown",
+    args: [meme, participant.address],
   });
-  log(`activated grant for ${participant.address} on ${meme} (quote ${quoteMax})`);
-  return true;
+  if (baseClaimable + creditClaimable > 0n) {
+    acted = (await activateShare(cfg, meme, participant, quote, native, baseClaimable, 0n, creditClaimable, log)) || acted;
+  }
+
+  // Re-read: base activated just above (if any) may have just earned invitee boost.
+  const [, boostClaimable] = await cfg.publicClient.readContract({
+    address: cfg.deployment.lpGrantVault,
+    abi: lpGrantVaultAbi,
+    functionName: "grantBreakdown",
+    args: [meme, participant.address],
+  });
+  if (boostClaimable > 0n) {
+    acted = (await activateShare(cfg, meme, participant, quote, native, 0n, boostClaimable, 0n, log)) || acted;
+  }
+
+  return acted;
 }
 
 /** Closes one grant position, so the UI shows exits as well as entries. */

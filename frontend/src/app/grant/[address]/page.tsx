@@ -104,15 +104,28 @@ interface GrantPositionShape {
   tickLower: number;
   tickUpper: number;
   activatedAt: bigint;
-  incentiveCheckpoint: bigint;
-  incentiveTimeCheckpoint: bigint;
+  /** protocol share g, 1e18 = 100%, frozen at activation */
+  protocolShareWad: bigint;
+  entrySqrtPriceX96: bigint;
   exited: boolean;
+}
+
+/**
+ * The exit's quote leg may pay this much less than the preview before the transaction reverts: the preview is read
+ * at the current reference price, which can drift a little before inclusion, and a trade can move the pool's mix.
+ */
+const EXIT_QUOTE_TOLERANCE_BPS = 300n;
+
+/** g as a percentage, e.g. 50% or 49.8%. */
+function formatShare(wad: bigint, locale: string): string {
+  return `${formatNumber(Number(wad) / 1e16, locale, { maximumFractionDigits: 1 })}%`;
 }
 
 function PositionTicket({
   id,
   position,
   memeDecimals,
+  memeSymbol,
   quoteDecimals,
   quoteSymbol,
   minLpSeconds,
@@ -122,6 +135,7 @@ function PositionTicket({
   id: bigint;
   position: GrantPositionShape;
   memeDecimals: number;
+  memeSymbol: string;
   /** Null while unknown: amounts then show as a dash rather than being read with guessed decimals. */
   quoteDecimals: number | null;
   quoteSymbol: string;
@@ -129,12 +143,13 @@ function PositionTicket({
   vault: Address;
   now: number;
 }) {
-  const pending = useReadContract({
+  // principal settlement an exit would make now, at the pool's reference price, fees excluded
+  const preview = useReadContract({
     address: vault,
     abi: lpGrantVaultAbi,
-    functionName: "pendingIncentive",
+    functionName: "exitPreview",
     args: [id],
-    query: { refetchInterval: 15_000 },
+    query: { enabled: !position.exited, refetchInterval: 15_000 },
   });
   const collectTx = useTx();
   const exitTx = useTx();
@@ -145,6 +160,22 @@ function PositionTicket({
 
   const exitableAt = Number(position.activatedAt) + minLpSeconds;
   const canExit = !position.exited && now >= exitableAt;
+  const [quoteToUser, memeToUser, quoteToTreasury, memeBurned] = preview.data ?? [];
+  const fmtQuote = (x: bigint | undefined) => `${formatAmount(x, quoteDecimals, { locale })} ${quoteSymbol}`;
+  const fmtMeme = (x: bigint | undefined) => `${formatAmount(x, memeDecimals, { locale, maxFrac: 0 })} ${memeSymbol}`;
+
+  const exit = async () => {
+    // re-read the preview so the slippage floor is taken from the reference price as it is now
+    const fresh = (await preview.refetch()).data;
+    const minQuoteOut = fresh ? (fresh[0] * (10_000n - EXIT_QUOTE_TOLERANCE_BPS)) / 10_000n : 0n;
+    exitTx.write({
+      address: vault,
+      abi: lpGrantVaultAbi,
+      functionName: "exitGrantPosition",
+      // the meme leg only covers what the quote leg cannot, so it is left unbounded
+      args: [id, minQuoteOut, 0n],
+    });
+  };
 
   return (
     <Ticket
@@ -165,13 +196,25 @@ function PositionTicket({
       }
     >
       <div className="divide-y divide-line">
-        <Kv label={t("grant.position.grantMeme")} value={formatAmount(position.grantMemeAmount, memeDecimals, { locale })} />
-        <Kv label={t("grant.position.principal")} value={`${formatAmount(position.quoteDeposited, quoteDecimals, { locale })} ${quoteSymbol}`} />
+        <Kv label={t("grant.position.grantMeme")} value={fmtMeme(position.grantMemeAmount)} />
+        <Kv label={t("grant.position.principal")} value={fmtQuote(position.quoteDeposited)} />
+        <Kv label={t("grant.position.protocolShare")} value={formatShare(position.protocolShareWad, locale)} />
         <Kv label={t("common.liquidity")}>
           <span title={position.liquidity.toString()}>{formatCompact(position.liquidity)}</span>
         </Kv>
-        <Kv label={t("grant.position.pending")} value={`${formatAmount(pending.data, quoteDecimals, { locale })} ${quoteSymbol}`} />
       </div>
+      {!position.exited && (
+        <div className="mt-4">
+          <p className="label">{t("grant.exit.title")}</p>
+          <div className="mt-1 divide-y divide-line">
+            <Kv label={t("grant.exit.quoteToYou")} value={fmtQuote(quoteToUser)} />
+            <Kv label={t("grant.exit.memeToYou")} value={fmtMeme(memeToUser)} />
+            <Kv label={t("grant.exit.toTreasury")} value={fmtQuote(quoteToTreasury)} />
+            <Kv label={t("grant.exit.burned")} value={fmtMeme(memeBurned)} />
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-subtle">{t("grant.exit.explain")}</p>
+        </div>
+      )}
       {!position.exited && (
         <RoleGate roles="lp" meme={position.meme}>
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -190,7 +233,7 @@ function PositionTicket({
                     args: [id],
                   },
                   {
-                    // (quoteFeesPaid, memeFeesBurned, incentivePaid) all zero → the call succeeds but does nothing
+                    // (quoteFeesPaid, memeFeesPaid) both zero → the call succeeds but does nothing
                     check: (r) =>
                       (r as readonly bigint[]).every((x) => x === 0n) ? "errors.precheck.nothingToCollect" : null,
                   },
@@ -213,14 +256,7 @@ function PositionTicket({
                     ? undefined
                     : t("grant.position.waitUntil", { time: fmtTime(exitableAt, locale) })
               }
-              onClick={() =>
-                exitTx.write({
-                  address: vault,
-                  abi: lpGrantVaultAbi,
-                  functionName: "exitGrantPosition",
-                  args: [id, 0n, 0n],
-                })
-              }
+              onClick={() => void exit()}
             >
               {t("grant.position.exit")}
             </Button>
@@ -251,6 +287,7 @@ export default function GrantPage() {
       { address: deployment?.lpGrantVault, abi: lpGrantVaultAbi, functionName: "config" },
       { address: deployment?.lpGrantVault, abi: lpGrantVaultAbi, functionName: "decayFactorX18", args: [meme] },
       { address: meme, abi: erc20Abi, functionName: "decimals" },
+      { address: deployment?.lpGrantVault, abi: lpGrantVaultAbi, functionName: "inventoryRemaining", args: [meme] },
     ],
     query: { enabled: !!deployment && validAddress, refetchInterval: 15_000 },
   });
@@ -260,6 +297,7 @@ export default function GrantPage() {
   const vaultConfig = data?.[2]?.result;
   const decayFactorX18 = data?.[3]?.result;
   const memeDecimals = Number(data?.[4]?.result ?? 18);
+  const inventoryRemaining = data?.[5]?.result;
 
   const quoteMeta = findQuote(quotes, launch?.quote as Address | undefined);
 
@@ -462,6 +500,9 @@ export default function GrantPage() {
             <Kv label={t("grant.kv.reserve")} value={formatAmount(campaign?.reserve, memeDecimals, { locale })} />
             <Kv label={t("grant.kv.activated")} value={formatAmount(campaign?.totalActivated, memeDecimals, { locale })} />
             <Kv label={t("grant.kv.burned")} value={formatAmount(campaign?.burned, memeDecimals, { locale })} />
+            {campaignStatus === 3 && (
+              <Kv label={t("grant.kv.inventory")} value={formatAmount(inventoryRemaining, memeDecimals, { locale })} />
+            )}
             <Kv
               label={t("grant.kv.decay")}
               value={
@@ -498,6 +539,7 @@ export default function GrantPage() {
         now={now}
         decayX18={decayFactorX18}
         registered={account ? allocation.data?.registered : undefined}
+        allocation={account ? allocation.data : undefined}
         breakdown={breakdown.data}
         onChanged={refreshMine}
       />
@@ -641,6 +683,7 @@ export default function GrantPage() {
                   id={id}
                   position={position}
                   memeDecimals={memeDecimals}
+                  memeSymbol={detail.data?.symbol ?? ""}
                   quoteDecimals={quoteMeta?.decimals ?? null}
                   quoteSymbol={quoteMeta?.symbol ?? "Quote"}
                   minLpSeconds={minLpSeconds}

@@ -483,7 +483,7 @@ describe("apply", () => {
   });
 
   describe("LP grant vault", () => {
-    test("grant lifecycle init → root proposed → published → activated ×2 → fees → exit → excess routed → finalized", async () => {
+    test("grant lifecycle init → root proposed → published → registered → activated ×2 → boost earned → fees → exit → finalized", async () => {
       await seedLaunch();
       await apply(
         vaultLog(
@@ -524,6 +524,10 @@ describe("apply", () => {
       expect(c.status).toBe(3);
 
       await apply(
+        vaultLog("AllocationRegistered", { meme: MEME, account: BUYER, baseAllocation: 100n, inviteeBoost: 10n }, 1102n, 1),
+      );
+
+      await apply(
         vaultLog(
           "GrantActivated",
           {
@@ -535,6 +539,7 @@ describe("apply", () => {
             inviterCreditActivated: 2n,
             quoteDeposited: 5n,
             liquidity: 100n,
+            protocolShareWad: 500_000_000_000_000_000n,
           },
           1103n,
         ),
@@ -551,6 +556,7 @@ describe("apply", () => {
             inviterCreditActivated: 0n,
             quoteDeposited: 8n,
             liquidity: 200n,
+            protocolShareWad: 1_000_000_000_000_000_000n - 1n,
           },
           1104n,
         ),
@@ -559,44 +565,64 @@ describe("apply", () => {
       expect(c.positions_count).toBe(2);
       expect(c.active_positions).toBe(2);
       expect(BigInt(c.total_activated as string)).toBe(33n);
+      const activated = (
+        await db<Record<string, unknown>[]>`select * from grant_positions where position_id = ${1n}`
+      )[0];
+      expect(BigInt(activated.protocol_share_wad as string)).toBe(500_000_000_000_000_000n);
+      expect(activated.exit_quote_to_treasury).toBeNull();
+
+      // the invitee boost is earned as base is activated, in steps, up to the leaf's cap
+      await apply(vaultLog("InviteeBoostEarned", { meme: MEME, account: BUYER, amount: 1n }, 1103n, 1));
+      await apply(vaultLog("InviteeBoostEarned", { meme: MEME, account: BUYER, amount: 2n }, 1104n, 1));
+      const alloc = (
+        await db<Record<string, unknown>[]>`select * from grant_allocations where meme = ${MEME} and account = ${BUYER}`
+      )[0];
+      expect(BigInt(alloc.invitee_boost as string)).toBe(10n);
+      expect(BigInt(alloc.invitee_boost_earned as string)).toBe(3n);
 
       await apply(
-        vaultLog(
-          "GrantFeesCollected",
-          { positionId: 1n, quoteFeesPaid: 3n, memeFeesPaid: 4n, incentivePaid: 1n },
-          1105n,
-        ),
+        vaultLog("GrantFeesCollected", { positionId: 1n, quoteFeesPaid: 3n, memeFeesPaid: 4n }, 1105n),
+      );
+      await apply(
+        vaultLog("GrantFeesCollected", { positionId: 1n, quoteFeesPaid: 2n, memeFeesPaid: 0n }, 1105n, 1),
       );
       const pos = (
         await db<Record<string, unknown>[]>`select * from grant_positions where position_id = ${1n}`
       )[0];
-      expect(BigInt(pos.fees_quote_paid as string)).toBe(3n);
-      expect(BigInt(pos.incentive_paid as string)).toBe(1n);
+      expect(BigInt(pos.fees_quote_paid as string)).toBe(5n);
+      expect(BigInt(pos.fees_meme_paid as string)).toBe(4n);
 
       await apply(
         vaultLog(
           "GrantPositionExited",
-          { positionId: 1n, quoteToUser: 4n, memeToUser: 3n, excessQuote: 1n, memeBurned: 2n, incentivePaid: 7n },
+          { positionId: 1n, quoteToUser: 4n, memeToUser: 3n, quoteToTreasury: 6n, memeBurned: 2n },
           1106n,
         ),
       );
       c = (await db<Record<string, unknown>[]>`select * from grant_campaigns where meme = ${MEME}`)[0];
       expect(c.active_positions).toBe(1);
+      expect(BigInt(c.quote_to_treasury as string)).toBe(6n);
       const exited = (
         await db<Record<string, unknown>[]>`select * from grant_positions where position_id = ${1n}`
       )[0];
       expect(exited.exited).toBe(true);
-      expect(BigInt(exited.incentive_paid as string)).toBe(8n);
       expect(BigInt(exited.exit_quote_to_user as string)).toBe(4n);
       expect(BigInt(exited.exit_meme_to_user as string)).toBe(3n);
+      expect(BigInt(exited.exit_quote_to_treasury as string)).toBe(6n);
+      expect(BigInt(exited.exit_meme_burned as string)).toBe(2n);
       expect(BigInt(exited.fees_meme_paid as string)).toBe(4n);
+      expect(BigInt(exited.protocol_share_wad as string)).toBe(500_000_000_000_000_000n);
 
       await apply(
-        vaultLog("ExcessQuoteRouted", { meme: MEME, toIncentivePool: 11n, toTreasury: 9n }, 1107n),
+        vaultLog(
+          "GrantPositionExited",
+          { positionId: 2n, quoteToUser: 0n, memeToUser: 1n, quoteToTreasury: 9n, memeBurned: 5n },
+          1107n,
+        ),
       );
       c = (await db<Record<string, unknown>[]>`select * from grant_campaigns where meme = ${MEME}`)[0];
-      expect(BigInt(c.excess_to_incentive as string)).toBe(11n);
-      expect(BigInt(c.excess_to_treasury as string)).toBe(9n);
+      expect(c.active_positions).toBe(0);
+      expect(BigInt(c.quote_to_treasury as string)).toBe(15n);
 
       await apply(vaultLog("GrantMemeBurned", { meme: MEME, amount: 50n, reason: ROOT }, 1108n));
       await apply(vaultLog("GrantFinalized", { meme: MEME, unactivatedMemeBurned: 50n }, 1109n));

@@ -6670,11 +6670,6 @@ export const lpGrantVaultAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "excessToIncentiveBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
             "name": "maxPriceDeviationTicks",
             "type": "uint24",
             "internalType": "uint24"
@@ -6794,7 +6789,17 @@ export const lpGrantVaultAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "boostNominalRemaining",
+            "name": "baseActivated",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "boostEarned",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "boostActivated",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -6956,11 +6961,6 @@ export const lpGrantVaultAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "referralBudgetUsed",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
             "name": "totalActivated",
             "type": "uint256",
             "internalType": "uint256"
@@ -6992,31 +6992,6 @@ export const lpGrantVaultAbi = [
           },
           {
             "name": "rootTotalInviteeBoost",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "incentiveBalance",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "activeLiquidity",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "accIncentivePerLiquiditySecond",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "accIncentiveTimePerLiquiditySecond",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "activeLiquidityTime",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -7081,11 +7056,6 @@ export const lpGrantVaultAbi = [
         "name": "memeFeesPaid",
         "type": "uint256",
         "internalType": "uint256"
-      },
-      {
-        "name": "incentivePaid",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "nonpayable"
@@ -7114,11 +7084,6 @@ export const lpGrantVaultAbi = [
             "name": "minActivation",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "excessToIncentiveBps",
-            "type": "uint16",
-            "internalType": "uint16"
           },
           {
             "name": "maxPriceDeviationTicks",
@@ -7181,7 +7146,7 @@ export const lpGrantVaultAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "excessQuote",
+        "name": "quoteToTreasury",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -7192,6 +7157,40 @@ export const lpGrantVaultAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "exitPreview",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "quoteToUser",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "memeToUser",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "quoteToTreasury",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "memeBurned",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -7334,6 +7333,25 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "function",
+    "name": "inventoryRemaining",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "leafHash",
     "inputs": [
       {
@@ -7411,25 +7429,6 @@ export const lpGrantVaultAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "pendingIncentive",
-    "inputs": [
-      {
-        "name": "positionId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -7547,19 +7546,14 @@ export const lpGrantVaultAbi = [
             "internalType": "uint64"
           },
           {
+            "name": "protocolShareWad",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
             "name": "entrySqrtPriceX96",
             "type": "uint160",
             "internalType": "uint160"
-          },
-          {
-            "name": "incentiveCheckpoint",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "incentiveTimeCheckpoint",
-            "type": "uint256",
-            "internalType": "uint256"
           },
           {
             "name": "exited",
@@ -7753,25 +7747,6 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "function",
-    "name": "sweepIncentive",
-    "inputs": [
-      {
-        "name": "meme",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "toTreasury",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "templateRegistry",
     "inputs": [],
     "outputs": [
@@ -7911,31 +7886,6 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "event",
-    "name": "ExcessQuoteRouted",
-    "inputs": [
-      {
-        "name": "meme",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "toIncentivePool",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "toTreasury",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "GrantActivated",
     "inputs": [
       {
@@ -7985,6 +7935,12 @@ export const lpGrantVaultAbi = [
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      },
+      {
+        "name": "protocolShareWad",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -8007,12 +7963,6 @@ export const lpGrantVaultAbi = [
       },
       {
         "name": "memeFeesPaid",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "incentivePaid",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -8087,19 +8037,13 @@ export const lpGrantVaultAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "excessQuote",
+        "name": "quoteToTreasury",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
         "name": "memeBurned",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "incentivePaid",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -8202,7 +8146,7 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "event",
-    "name": "IncentiveSwept",
+    "name": "InviteeBoostEarned",
     "inputs": [
       {
         "name": "meme",
@@ -8211,7 +8155,13 @@ export const lpGrantVaultAbi = [
         "internalType": "address"
       },
       {
-        "name": "toTreasury",
+        "name": "account",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -8383,6 +8333,17 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "error",
+    "name": "InsufficientInventory",
+    "inputs": [
+      {
+        "name": "remaining",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "InsufficientLiquidity",
     "inputs": []
   },
@@ -8446,11 +8407,6 @@ export const lpGrantVaultAbi = [
   {
     "type": "error",
     "name": "NotRegistered",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NothingToSweep",
     "inputs": []
   },
   {

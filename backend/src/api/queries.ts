@@ -413,8 +413,8 @@ export async function selectGrantCampaigns(
   return db<GrantCampaignRow[]>`
     select meme, pool_id, status, reserve, base_pool, referral_budget, root, root_uri,
            root_total_base, root_total_invitee_boost, root_proposed_at, activatable_at,
-           start_time, end_time, total_activated, burned, excess_to_incentive, excess_to_treasury,
-           incentive_swept, positions_count, active_positions, initialized_at, finalized_at, cancelled_at
+           start_time, end_time, total_activated, burned, quote_to_treasury,
+           positions_count, active_positions, initialized_at, finalized_at, cancelled_at
     from grant_campaigns gc
     where chain_id = ${chainId}
       ${list.length ? db`and status in ${db(list)}` : db``}
@@ -434,8 +434,8 @@ export async function selectGrantCampaign(db: Db, chainId: number, meme: string)
   const rows = await db<GrantCampaignRow[]>`
     select meme, pool_id, status, reserve, base_pool, referral_budget, root, root_uri,
            root_total_base, root_total_invitee_boost, root_proposed_at, activatable_at,
-           start_time, end_time, total_activated, burned, excess_to_incentive, excess_to_treasury,
-           incentive_swept, positions_count, active_positions, initialized_at, finalized_at, cancelled_at
+           start_time, end_time, total_activated, burned, quote_to_treasury,
+           positions_count, active_positions, initialized_at, finalized_at, cancelled_at
     from grant_campaigns
     where chain_id = ${chainId} and meme = ${meme}
   `;
@@ -450,9 +450,9 @@ export async function selectGrantPositions(
 ): Promise<GrantPositionRow[]> {
   return db<GrantPositionRow[]>`
     select position_id, meme, beneficiary, base_activated, invitee_boost_activated, inviter_credit_activated,
-           quote_deposited, liquidity, activated_at, activated_block, activated_tx,
-           fees_quote_paid, fees_meme_paid, incentive_paid, exited, exited_at, exited_tx,
-           exit_quote_to_user, exit_meme_to_user, exit_excess_quote, exit_meme_burned
+           quote_deposited, liquidity, protocol_share_wad, activated_at, activated_block, activated_tx,
+           fees_quote_paid, fees_meme_paid, exited, exited_at, exited_tx,
+           exit_quote_to_user, exit_meme_to_user, exit_quote_to_treasury, exit_meme_burned
     from grant_positions
     where chain_id = ${chainId} and meme = ${meme}
       ${beneficiary ? db`and beneficiary = ${beneficiary}` : db``}
@@ -464,9 +464,9 @@ export async function selectGrantPositions(
 export async function selectPositionsForWallet(db: Db, chainId: number, beneficiary: string): Promise<GrantPositionRow[]> {
   return db<GrantPositionRow[]>`
     select position_id, meme, beneficiary, base_activated, invitee_boost_activated, inviter_credit_activated,
-           quote_deposited, liquidity, activated_at, activated_block, activated_tx,
-           fees_quote_paid, fees_meme_paid, incentive_paid, exited, exited_at, exited_tx,
-           exit_quote_to_user, exit_meme_to_user, exit_excess_quote, exit_meme_burned
+           quote_deposited, liquidity, protocol_share_wad, activated_at, activated_block, activated_tx,
+           fees_quote_paid, fees_meme_paid, exited, exited_at, exited_tx,
+           exit_quote_to_user, exit_meme_to_user, exit_quote_to_treasury, exit_meme_burned
     from grant_positions
     where chain_id = ${chainId} and beneficiary = ${beneficiary}
     order by activated_block desc, position_id desc
@@ -476,7 +476,7 @@ export async function selectPositionsForWallet(db: Db, chainId: number, benefici
 
 export async function selectGrantAllocations(db: Db, chainId: number, meme: string): Promise<GrantAllocationRow[]> {
   return db<GrantAllocationRow[]>`
-    select account, base_allocation, invitee_boost, registered_at
+    select account, base_allocation, invitee_boost, invitee_boost_earned, registered_at
     from grant_allocations
     where chain_id = ${chainId} and meme = ${meme}
     order by base_allocation desc

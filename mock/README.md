@@ -53,12 +53,48 @@ Goals differ, so the market shows launches at every stage:
 - **The rest settle on the curve** somewhere between 20% and 92% of their threshold, and keep trading around that
   level every 15 to 35 minutes: buying below it, selling above it, never enough to graduate.
 
+### Grant activation (LP Grant v0.14: co-ownership, one shared inventory)
+
+Each campaign's whole 15% reserve is a single shared inventory: base, invitee boost and inviter credit activations
+all draw from it first come first served, and an activation that asks for more than remains reverts
+`InsufficientInventory(remaining)`. The invitee boost is also only ever earned *after* base is actually on-chain (10%
+of cumulative base activated, capped by the leaf) — it can never be claimed in the same transaction as the base that
+earns it. `registerAndActivate` in `src/grants.ts` reflects both rules: it activates a participant's claimable base
+(plus any inviter credit already earned, which does not depend on their own base) in one transaction, then re-reads
+`grantBreakdown` and activates whatever invitee boost that just unlocked in a second transaction. Before either
+transaction it reads `inventoryRemaining(meme)` and shrinks the request to fit, and if the shared inventory still
+runs out from under it (a last-moment race) it logs and skips that bundle rather than failing the participant
+outright. Exit settlement (`exitGrantPosition`) has no incentive pool in v0.14 — the simulator only ever reads the
+first two return values (`quoteToUser`, `memeToUser`) positionally, so it needed no change there.
+
+`inventoryRemaining` is not yet in the generated ABI (`backend/src/generated/abis.ts`) as of this writing, since the
+contracts were still being changed to v0.14 when this was written. `src/grants.ts` calls it through a small local ABI
+fragment (`LP_GRANT_VAULT_EXTRA_ABI`, same pattern as `MOCK_ERC20_ABI` in `src/actions.ts`), so this works today and
+needs no edit once the generated ABI catches up — at that point the local fragment can be dropped in favour of
+`lpGrantVaultAbi` directly, but leaving it is also harmless.
+
 ## State and restarts
 
 Progress is written to `.run/driver-state.json` after every action, so stopping the process and starting it again
-resumes the same schedule without repeating a transaction. The file records the deployment block it was planned
-against; point the simulator at a different deployment and it starts a fresh plan rather than sending transactions
-against addresses the plan does not match.
+resumes the same schedule without repeating a transaction. The file records the chain id and deployment block it was
+planned against (`DriverState.chainId` / `deploymentBlock`, set from `Deployment.blockNumber` in
+`contracts/deployments/<chainId>.json`); `initState` in `src/main.ts` compares both against the deployment the
+process is currently pointed at and discards the old state — starting a fresh plan and re-funding every wallet —
+the moment either one no longer matches, rather than sending transactions against addresses the plan does not match.
+
+**On a fresh deployment, the operator needs to:**
+
+1. Make sure `contracts/deployments/<chainId>.json` has been updated to the new addresses and block number *before*
+   the simulator is (re)started — `initState` keys entirely off that file's `blockNumber`/`chainId`, and does nothing
+   to fetch a new one itself.
+2. Just start (or restart) `bun run src/main.ts`. No manual state deletion is needed: state, dataset and funding
+   handling below all reset themselves once the mismatch is detected — this needed no code change, only confirming
+   it (see `initState`, `emptyState` in `src/state.ts`).
+3. Optionally clear `.run/datasets/*.json`. Dataset files are keyed by the meme's own address
+   (`datasetPathFor` in `src/grants.ts`), and a fresh deployment mints different meme addresses, so old files are
+   simply orphaned rather than colliding — safe to leave, but harmless to delete for hygiene.
+4. Run `bun run src/verify-lifecycle.ts` once (see below) to prove launch → curve → graduation → snapshot →
+   `proposeRoot` before trusting the scheduled plan overnight.
 
 **Moving to a server:** copy `.run/driver-state.json` across with the code. Without it the simulator builds a new
 plan and launches another set of tokens alongside the ones already on chain. The indexer needs nothing copied: it

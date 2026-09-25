@@ -21,8 +21,9 @@ The live deployment is on X Layer testnet (chain 1952): the web app at <https://
 - **Fees.** 1.00% per trade on the curve and in the pool, split between the creator, the token's holders (paid in
   the pairing asset), liquidity, the Community Treasury and the protocol.
 - **LP Grant.** A reserve of the token's supply subsidises liquidity after graduation, allocated by a published
-  snapshot with a Merkle root, a public review window, linear decay, a minimum LP time and principal-capped exits
-  that are never blocked by price. Allocations are registered against the active root. Whatever is not used is
+  snapshot with a Merkle root, a public review window, linear decay and a minimum LP time. Positions are co-owned
+  pro rata between the participant and the protocol, and exits are valued at the hook's rate-limited reference
+  price and are never blocked by price. Allocations are registered against the active root. Whatever is not used is
   burned.
 - **Referrals.** Permanent on-chain inviter binding that boosts LP Grant allocations.
 - **Multiple pairing assets.** Native OKB and whitelisted ERC-20s, including tokenised stocks. Assets may have fewer

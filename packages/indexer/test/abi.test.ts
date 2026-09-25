@@ -3,7 +3,7 @@ import { decodeFunctionResult, encodeAbiParameters, getAddress, parseAbiParamete
 import { CAMPAIGN_ABI } from "../src/abi";
 
 const HEAD =
-  "uint8 status, address quote, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, bytes32 poolId, bool memeIsCurrency0, int24 tickLower, int24 tickUpper, uint64 graduatedAt, uint64 graduatedAtBlock, uint64 windowSeconds, uint64 minLpSeconds, uint64 startTime, uint64 endTime, uint256 reserve, uint256 basePool, uint256 referralBudget, uint256 referralBudgetUsed, uint256 totalActivated, uint256 burned, bytes32 root, string rootUri, uint64 rootProposedAt, uint256 rootTotalBase, uint256 rootTotalInviteeBoost";
+  "uint8 status, address quote, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, bytes32 poolId, bool memeIsCurrency0, int24 tickLower, int24 tickUpper, uint64 graduatedAt, uint64 graduatedAtBlock, uint64 windowSeconds, uint64 minLpSeconds, uint64 startTime, uint64 endTime, uint256 reserve, uint256 basePool, uint256 referralBudget, uint256 totalActivated, uint256 burned, bytes32 root, string rootUri, uint64 rootProposedAt, uint256 rootTotalBase, uint256 rootTotalInviteeBoost";
 
 const HOOK = getAddress("0x00000000000000000000000000000000000000bb");
 const values = [
@@ -23,9 +23,8 @@ const values = [
   10n,
   120n,
   30n,
-  0n,
-  0n,
-  0n,
+  40n,
+  3n,
   `0x${"ab".repeat(32)}`,
   "ipfs://dataset",
   5n,
@@ -35,11 +34,11 @@ const values = [
 
 describe("CAMPAIGN_ABI", () => {
   for (const [label, tail] of [
-    ["the deployed vault (three incentive fields)", ", uint256 a, uint256 b, uint256 c"],
-    ["the revised vault (liquidity-seconds incentives, registered totals)", ", uint256 a, uint256 b, uint256 c, uint256 d, uint256 e, uint256 f"],
+    ["the v0.14 vault (registered totals after the prefix)", ", uint256 registeredBase, uint256 registeredInviteeBoost"],
+    ["a vault with no fields after the prefix", ""],
   ] as const) {
     test(`decodes the fields the tools read from ${label}`, () => {
-      const extra = tail.split(",").length - 1;
+      const extra = tail === "" ? 0 : tail.split(",").length - 1;
       const data = encodeAbiParameters(parseAbiParameters(`(${HEAD}${tail})`), [
         [...values, ...Array.from({ length: extra }, (_, i) => BigInt(1000 + i))] as never,
       ]);
@@ -49,6 +48,8 @@ describe("CAMPAIGN_ABI", () => {
       expect(c.graduatedAtBlock).toBe(41_683_391n);
       expect(c.basePool).toBe(120n);
       expect(c.referralBudget).toBe(30n);
+      expect(c.totalActivated).toBe(40n);
+      expect(c.burned).toBe(3n);
       expect(c.root).toBe(`0x${"ab".repeat(32)}`);
       expect(c.rootUri).toBe("ipfs://dataset");
       expect(c.rootTotalBase).toBe(100n);

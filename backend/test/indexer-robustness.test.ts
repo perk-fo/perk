@@ -245,6 +245,7 @@ describe("reorgs", () => {
           inviterCreditActivated: 0n,
           quoteDeposited: 1n,
           liquidity: 1n,
+          protocolShareWad: 500_000_000_000_000_000n,
         },
         1000n,
         2,
@@ -252,7 +253,7 @@ describe("reorgs", () => {
     );
     const feeTx = `0x${"fe".repeat(32)}` as Hex;
     const fee = (block: bigint) =>
-      vault("GrantFeesCollected", { positionId: 7n, quoteFeesPaid: 100n, memeFeesPaid: 0n, incentivePaid: 0n }, block, 0, feeTx);
+      vault("GrantFeesCollected", { positionId: 7n, quoteFeesPaid: 100n, memeFeesPaid: 0n }, block, 0, feeTx);
     const orphanStatus = makeLog({
       address: D.factory,
       abi: ABI_BY_CONTRACT.factory,

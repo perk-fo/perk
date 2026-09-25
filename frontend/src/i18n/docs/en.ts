@@ -49,7 +49,7 @@ const docs: DocsContent = {
             },
             {
               title: "Earn and exit",
-              text: "Trading continues in the pool with the same 1% fee. Quote Rewards accrue to holders and grant positions earn their pool fees. After the minimum LP time a grant position can exit at any time; LP Grant below explains how its principal is settled."
+              text: "Trading continues in the pool with the same 1% fee. Quote Rewards accrue to holders, the Dev earns the LP fees of the locked initial liquidity, and each grant position earns its own. After the minimum LP time a grant position can exit at any time; LP Grant below explains how it is settled."
             }
           ]
         },
@@ -104,7 +104,7 @@ const docs: DocsContent = {
         },
         {
           kind: "p",
-          text: "The initial liquidity locked at graduation earns the pool's LP fee like any position, and those fees go to the Community Treasury. Any payout can be triggered by anyone and always goes to the same recipient. Holder rewards accumulate until they are claimed and never expire."
+          text: "The initial liquidity locked at graduation earns the pool's LP fee like any position, and those fees go to the meme's Dev, in both assets. Anyone can trigger a payout, but it always goes to its designated recipient. Holder rewards accumulate until they are claimed and never expire."
         }
       ]
     },
@@ -136,12 +136,12 @@ const docs: DocsContent = {
             ],
             [
               "Referrals",
-              "Two-sided, 10% each",
+              "Two-sided, 10% each, from the shared inventory",
               "Not applicable"
             ],
             [
               "Price guard",
-              "Grant activation and exit check the pool's reference price",
+              "Grant activation is checked against the pool's reference price, and exits are valued at it",
               "Not applicable"
             ],
             [
@@ -200,7 +200,7 @@ const docs: DocsContent = {
         },
         {
           kind: "p",
-          text: "A Perk Launch meme sets aside 15% of its supply, 150 million tokens, as a matching reserve. After graduation, once the activation conditions are met, you contribute your own pairing asset and the protocol matches it with meme tokens, straight into a Uniswap v4 position the vault holds for you. Nothing enters your wallet as an airdrop; it all goes into the pool. Your position earns 100% of its LP fees, in both assets."
+          text: "A Perk Launch meme sets aside 15% of its supply, 150 million tokens, as a matching reserve. After graduation, once the activation conditions are met, you contribute your own pairing asset and the protocol matches it with meme tokens, straight into a Uniswap v4 position the vault holds for you. Nothing enters your wallet as an airdrop; it all goes into the pool. You and the protocol co-own the position in proportion to what each put in, and you keep 100% of its LP fees, in both assets."
         },
         {
           kind: "steps",
@@ -215,11 +215,11 @@ const docs: DocsContent = {
             },
             {
               title: "Activation",
-              text: "Once the root is active, each eligible wallet registers its allocation and opens positions. Allocations shrink linearly over the grant window, so taking them early is worth more."
+              text: "Once the root is active, each eligible wallet registers its allocation and opens positions. Base allocations, invite boosts and inviter credits all draw on one shared inventory, the campaign's reserve, first come, first served. Base allocations shrink linearly over the grant window, so taking them early is worth more."
             },
             {
               title: "Exit",
-              text: "After the minimum LP time a participant can exit whenever they choose; nothing, not even the emergency pause, can block it. They get back up to the value of their deposit, in the pairing asset first: if the price rose, the surplus goes to the other grant positions or the treasury; if it fell, granted tokens cover part of the loss."
+              text: "After the minimum LP time a participant can exit whenever they choose; nothing, not even the emergency pause, can block it. The position is valued at the pool's reference price (Pexit) and the participant receives their share, 1 − g, with no cap either way: in the pairing asset first, and any shortfall in meme at Pexit. The protocol's share g is retired: its remaining pairing asset goes to the Community Treasury and its remaining meme is burned."
             },
             {
               title: "End",
@@ -231,30 +231,34 @@ const docs: DocsContent = {
           kind: "table",
           head: [
             "Price at exit, against entry",
-            "Returned, as value at the exit price"
+            "You receive, with g = 50%"
           ],
           rows: [
             [
-              "Unchanged or higher",
-              "100% of the deposit, in the pairing asset"
+              "×0.25 (75% lower)",
+              "About 50% of your deposit, in the pairing asset"
             ],
             [
-              "20% lower",
-              "About 99%, pairing asset plus granted tokens"
+              "×0.5 (50% lower)",
+              "About 70.7% of your deposit, in the pairing asset"
             ],
             [
-              "50% lower",
-              "About 91%, pairing asset plus granted tokens"
+              "×1 (unchanged)",
+              "100% of your deposit, in the pairing asset"
             ],
             [
-              "75% lower",
-              "75%, pairing asset plus granted tokens"
+              "×2 (doubled)",
+              "About 141% of your deposit, in the pairing asset"
+            ],
+            [
+              "×4 (quadrupled)",
+              "About 200% of your deposit, in the pairing asset"
             ]
           ]
         },
         {
           kind: "p",
-          text: "Trading fees are paid on top, and so are incentives: the surplus from other participants' exits, shared among open positions in proportion to their liquidity and how long it has been active."
+          text: "Trading fees are paid on top, all of them to you. The table assumes a full-range position and a reference price in line with the pool, where your share is always covered by the position's pairing asset; if it is not, the rest is paid in meme at Pexit. The protocol's share is not paid to anyone: its remaining pairing asset goes to the Community Treasury and its remaining meme is burned. Nothing is redistributed between positions. Because Pexit follows the pool price only at a limited rate, pushing the pool price around your own exit costs more than it gains."
         }
       ]
     },
@@ -270,9 +274,9 @@ const docs: DocsContent = {
           kind: "list",
           items: [
             "Every connected wallet has an invite link. A wallet can bind one inviter, permanently; no one can change or remove a binding. A binding counts for a meme only if it was made before that meme graduated.",
-            "An invited wallet's base allocation in each later LP Grant campaign is increased by 10%.",
-            "When an invited wallet activates its base allocation, the inviter earns a credit of 10% of the amount activated, up to half of the inviter's own base allocation, while the campaign's referral budget lasts.",
-            "A credit is allocation, not tokens: to use it, the inviter contributes their own pairing asset like any other activation. Referrals pay no cash and mint nothing; boosts and credits come from the meme's LP Grant reserve."
+            "An invited wallet earns an invite boost in each later LP Grant campaign: 10% of the base allocation it actually activates, available in the same activation.",
+            "When an invited wallet activates its base allocation, the inviter earns a credit of 10% of the amount activated, up to half of the inviter's own base allocation. Credits are nominal: they reserve nothing.",
+            "Boosts and credits are allocation, not tokens: to use one, you contribute your own pairing asset like any other activation. Base allocations, boosts and credits all draw on the meme's one shared LP Grant inventory, first come, first served, so a credit can be used only while inventory remains. Referrals pay no cash and mint nothing."
           ]
         }
       ]
@@ -289,9 +293,9 @@ const docs: DocsContent = {
           kind: "list",
           items: [
             "A token's supply, rules and fee split are fixed at creation. There is no mint function; supply can only go down.",
-            "The initial liquidity of every official pool is locked permanently; no admin can withdraw it. Its fees go to the Community Treasury.",
+            "The initial liquidity of every official pool is locked permanently; no admin can withdraw it. Its LP fees go to the meme's Dev, in both assets.",
             "Graduation is all-or-nothing: there is never an official pool without its liquidity, or at any other price than the curve's final one.",
-            "Each grant position's deposit and entry price are recorded at activation and settle its exit; nothing changes them later.",
+            "Each grant position's deposit, entry price and protocol share g are recorded at activation and frozen; nothing changes them later.",
             "The emergency pause covers new launches, curve buys, graduation and joining LP Grant. Selling, withdrawing, claiming and refunds can never be paused.",
             "A rescue can only return funds to holders, only after a public delay, and not while graduation is paused.",
             "Moving the treasury's funds is public and waits for a timelock."
@@ -396,11 +400,11 @@ const docs: DocsContent = {
             ],
             [
               "Initial liquidity",
-              "The first liquidity added at graduation. Locked permanently; its LP fees go to the Community Treasury."
+              "The first liquidity added at graduation. Locked permanently; its LP fees go to the meme's Dev, in both assets."
             ],
             [
               "Community Treasury",
-              "Receives 5% of fees, plus the surplus of a grant exit when no other position is open. Moving its funds is public and waits for a timelock."
+              "Receives 5% of fees, plus the remaining pairing asset of the protocol's share when a grant position exits. Moving its funds is public and waits for a timelock."
             ],
             [
               "LP Grant",
@@ -409,6 +413,22 @@ const docs: DocsContent = {
             [
               "Grant position",
               "The Uniswap v4 position created by an activation, held by the vault for its owner. Each activation is a separate position."
+            ],
+            [
+              "Protocol principal share (g)",
+              "The protocol's share of a grant position, fixed at activation: the value of the granted meme over the value of the whole position, about 50% for a full-range position. You own the rest, 1 − g."
+            ],
+            [
+              "Quote-first exit",
+              "How a grant exit pays your share: in the pairing asset first, and only if the position holds too little of it is the rest paid in meme at Pexit."
+            ],
+            [
+              "Pexit",
+              "The price a grant exit is valued at: the pool's reference price, which follows the pool price only at a limited rate, so it cannot be moved quickly."
+            ],
+            [
+              "Shared inventory",
+              "A campaign's LP Grant reserve, drawn on by base allocations, invite boosts and inviter credits alike, first come, first served. An activation larger than what remains is refused."
             ],
             [
               "LP Grant pass",
@@ -420,7 +440,7 @@ const docs: DocsContent = {
             ],
             [
               "Referral credit",
-              "Allocation an inviter earns when an invited wallet activates: 10% of the amount, up to half of the inviter's own base allocation. Used by contributing the pairing asset like any activation."
+              "Allocation an inviter earns when an invited wallet activates base: 10% of the amount, up to half of the inviter's own base allocation. Nominal: it reserves no inventory, and is used by contributing the pairing asset like any activation while the shared inventory lasts."
             ],
             [
               "Minimum LP time",

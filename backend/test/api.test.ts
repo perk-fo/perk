@@ -215,9 +215,10 @@ function expectGrantCampaign(g: GrantCampaign) {
   else expectNum(g.endTime);
   expectUint(g.totalActivated);
   expectUint(g.burned);
-  expectUint(g.excessToIncentive);
-  expectUint(g.excessToTreasury);
-  expectUint(g.incentiveSwept);
+  expectUint(g.quoteToTreasury);
+  expect(g).not.toHaveProperty("excessToIncentive");
+  expect(g).not.toHaveProperty("excessToTreasury");
+  expect(g).not.toHaveProperty("incentiveSwept");
   expectNum(g.positionsCount);
   expectNum(g.activePositions);
   expectNum(g.initializedAt);
@@ -236,12 +237,14 @@ function expectGrantPosition(p: GrantPosition) {
   expectUint(p.inviterCreditActivated);
   expectUint(p.quoteDeposited);
   expectUint(p.liquidity);
+  expectUint(p.protocolShareWad);
   expectNum(p.activatedAt);
   expectNum(p.activatedBlock);
   expectHex(p.activatedTx);
   expectUint(p.feesQuotePaid);
   expectUint(p.feesMemePaid);
-  expectUint(p.incentivePaid);
+  expect(p).not.toHaveProperty("incentivePaid");
+  expect(p).not.toHaveProperty("exitExcessQuote");
   expect(typeof p.exited).toBe("boolean");
   if (p.exitedAt === null) expect(p.exitedAt).toBeNull();
   else expectNum(p.exitedAt);
@@ -251,8 +254,8 @@ function expectGrantPosition(p: GrantPosition) {
   else expectUint(p.exitQuoteToUser);
   if (p.exitMemeToUser === null) expect(p.exitMemeToUser).toBeNull();
   else expectUint(p.exitMemeToUser);
-  if (p.exitExcessQuote === null) expect(p.exitExcessQuote).toBeNull();
-  else expectUint(p.exitExcessQuote);
+  if (p.exitQuoteToTreasury === null) expect(p.exitQuoteToTreasury).toBeNull();
+  else expectUint(p.exitQuoteToTreasury);
   if (p.exitMemeBurned === null) expect(p.exitMemeBurned).toBeNull();
   else expectUint(p.exitMemeBurned);
 }
@@ -261,6 +264,7 @@ function expectAllocation(a: GrantAllocation) {
   expectAddr(a.account);
   expectUint(a.baseAllocation);
   expectUint(a.inviteeBoost);
+  expectUint(a.inviteeBoostEarned);
   expectNum(a.registeredAt);
 }
 
@@ -581,10 +585,20 @@ describe("GET /v1/grants/:meme", () => {
     expect(body.positions.length).toBe(2);
     for (const p of body.positions) expectGrantPosition(p);
     expect(body.positions[0].beneficiary).toBe(LP_1);
+    expect(body.positions[0].protocolShareWad).toBe("500000000000000000");
+    expect(body.positions[0].exited).toBe(false);
+    expect(body.positions[0].exitQuoteToTreasury).toBeNull();
     expect(body.positions[1].exited).toBe(true);
+    expect(body.positions[1].protocolShareWad).toBe("499999999999999999");
+    expect(body.positions[1].exitQuoteToUser).toBe("7");
+    expect(body.positions[1].exitMemeToUser).toBe("2");
+    expect(body.positions[1].exitQuoteToTreasury).toBe("4");
+    expect(body.positions[1].exitMemeBurned).toBe("100");
+    expect(body.campaign.quoteToTreasury).toBe("4");
     expect(body.allocations.length).toBe(2);
     for (const a of body.allocations) expectAllocation(a);
     expect(body.allocations[0].baseAllocation >= body.allocations[1].baseAllocation).toBe(true);
+    expect(body.allocations[0].inviteeBoostEarned).toBe("4000");
     expectUint(body.referralCreditsTotal);
     expect(body.referralCreditsTotal).toBe("5000");
     expect(body.dataset.status).toBe("pending");

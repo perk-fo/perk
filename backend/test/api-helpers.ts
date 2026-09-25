@@ -279,12 +279,12 @@ export async function seed(db: Db): Promise<SeedMeta> {
     insert into grant_campaigns (
       chain_id, meme, pool_id, status, reserve, base_pool, referral_budget, root, root_uri,
       root_total_base, root_total_invitee_boost, root_proposed_at, activatable_at, start_time, end_time,
-      total_activated, burned, excess_to_incentive, excess_to_treasury, incentive_swept,
+      total_activated, burned, quote_to_treasury,
       positions_count, active_positions, initialized_block, initialized_at
     ) values (
       ${CHAIN}, ${MEME_GRAD}, ${h32(99)}, 3, ${"150000"}, ${"120000"}, ${"30000"}, ${h32(77)}, 'ipfs://root',
       ${"100000"}, ${"20000"}, ${now - 14_000}, ${now - 13_000}, ${now - 12_000}, ${now + 86_400},
-      ${"80000"}, ${"0"}, ${"100"}, ${"50"}, ${"0"},
+      ${"80000"}, ${"0"}, ${"4"},
       2, 1, 1710, ${now - 14_500}
     )
   `;
@@ -292,33 +292,34 @@ export async function seed(db: Db): Promise<SeedMeta> {
   await db`
     insert into grant_positions (
       chain_id, position_id, meme, beneficiary, base_activated, invitee_boost_activated, inviter_credit_activated,
-      quote_deposited, liquidity, activated_block, activated_at, activated_tx,
-      fees_quote_paid, fees_meme_paid, incentive_paid, exited
+      quote_deposited, liquidity, protocol_share_wad, activated_block, activated_at, activated_tx,
+      fees_quote_paid, fees_meme_paid, exited
     ) values (
       ${CHAIN}, ${"1"}, ${MEME_GRAD}, ${LP_1}, ${"40000"}, ${"5000"}, ${"0"},
-      ${"10"}, ${"1000"}, 1720, ${now - 11_000}, ${tx(910)},
-      ${"3"}, ${"1"}, ${"2"}, false
+      ${"10"}, ${"1000"}, ${"500000000000000000"}, 1720, ${now - 11_000}, ${tx(910)},
+      ${"3"}, ${"1"}, false
     )
   `;
   await db`
     insert into grant_positions (
       chain_id, position_id, meme, beneficiary, base_activated, invitee_boost_activated, inviter_credit_activated,
-      quote_deposited, liquidity, activated_block, activated_at, activated_tx,
-      fees_quote_paid, fees_meme_paid, incentive_paid,
-      exited, exited_at, exited_tx, exit_quote_to_user, exit_meme_to_user, exit_excess_quote, exit_meme_burned
+      quote_deposited, liquidity, protocol_share_wad, activated_block, activated_at, activated_tx,
+      fees_quote_paid, fees_meme_paid,
+      exited, exited_at, exited_tx, exit_quote_to_user, exit_meme_to_user, exit_quote_to_treasury, exit_meme_burned
     ) values (
       ${CHAIN}, ${"2"}, ${MEME_GRAD}, ${LP_2}, ${"30000"}, ${"0"}, ${"5000"},
-      ${"8"}, ${"800"}, 1715, ${now - 12_000}, ${tx(911)},
-      ${"1"}, ${"1"}, ${"4"},
-      true, ${now - 5000}, ${tx(912)}, ${"7"}, ${"2"}, ${"1"}, ${"100"}
+      ${"8"}, ${"800"}, ${"499999999999999999"}, 1715, ${now - 12_000}, ${tx(911)},
+      ${"1"}, ${"1"},
+      true, ${now - 5000}, ${tx(912)}, ${"7"}, ${"2"}, ${"4"}, ${"100"}
     )
   `;
 
   await db`
-    insert into grant_allocations (chain_id, meme, account, base_allocation, invitee_boost, registered_block, registered_at)
-    values
-      (${CHAIN}, ${MEME_GRAD}, ${LP_1}, ${"40000"}, ${"5000"}, 1712, ${now - 13_500}),
-      (${CHAIN}, ${MEME_GRAD}, ${INVITEE}, ${"10000"}, ${"2000"}, 1713, ${now - 13_400})
+    insert into grant_allocations (
+      chain_id, meme, account, base_allocation, invitee_boost, invitee_boost_earned, registered_block, registered_at
+    ) values
+      (${CHAIN}, ${MEME_GRAD}, ${LP_1}, ${"40000"}, ${"5000"}, ${"4000"}, 1712, ${now - 13_500}),
+      (${CHAIN}, ${MEME_GRAD}, ${INVITEE}, ${"10000"}, ${"2000"}, ${"0"}, 1713, ${now - 13_400})
   `;
   await db`
     insert into referral_credits (chain_id, tx_hash, log_index, meme, inviter, invitee, amount, block_number)

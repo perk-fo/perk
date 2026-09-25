@@ -27,11 +27,12 @@ describe("migrate", () => {
       "0006_admin.sql",
       "0007_admin_chain_scope.sql",
       "0008_quarantined_logs.sql",
+      "0009_grant_co_ownership.sql",
     ]);
     const second = await migrate(db);
     expect(second).toEqual([]);
     const rows = await db<{ version: number; name: string }[]>`select version, name from schema_migrations order by version`;
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(9);
     expect(Number(rows[0].version)).toBe(1);
     expect(rows[0].name).toBe("0001_init.sql");
     expect(Number(rows[1].version)).toBe(2);
@@ -46,6 +47,7 @@ describe("migrate", () => {
     expect(rows[5].name).toBe("0006_admin.sql");
     expect(rows[6].name).toBe("0007_admin_chain_scope.sql");
     expect(rows[7].name).toBe("0008_quarantined_logs.sql");
+    expect(rows[8].name).toBe("0009_grant_co_ownership.sql");
   });
 
   test("admin rows written before chain scoping belong to the one indexed chain", async () => {

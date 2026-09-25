@@ -19,6 +19,7 @@ import {
   referralRegistryAbi,
   templateRegistryAbi,
 } from "@/generated/abis";
+import { formatAmount } from "@/lib/format";
 import zhCN from "@/i18n/messages/zh-CN";
 import type { TFn } from "@/i18n/provider";
 
@@ -43,8 +44,19 @@ const fallbackT: TFn = (key, vars) =>
     vars && vars[name] !== undefined ? String(vars[name]) : raw,
   );
 
+/**
+ * Errors whose friendly message names one of the revert's arguments: the variables each message interpolates.
+ * Meme amounts are read with the meme token's fixed 18 decimals (PerkMemeToken.decimals).
+ */
+const ERROR_VARS: Record<string, (args: readonly unknown[]) => Record<string, string>> = {
+  InsufficientInventory: ([remaining]) => ({
+    remaining: typeof remaining === "bigint" ? formatAmount(remaining, 18, { maxFrac: 0 }) : String(remaining),
+  }),
+};
+
 function formatDecoded(errorName: string, args: readonly unknown[] | undefined, t: TFn): string {
-  const friendly = t(`errors.name.${errorName}`);
+  const vars = args && ERROR_VARS[errorName] ? ERROR_VARS[errorName](args) : undefined;
+  const friendly = t(`errors.name.${errorName}`, vars);
   if (friendly !== `errors.name.${errorName}`) return friendly;
   if (!args || args.length === 0) return t("errors.contractRejected", { name: errorName });
   const rendered = args.map((a) => (typeof a === "bigint" ? a.toString() : String(a))).join(", ");

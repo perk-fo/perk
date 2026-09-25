@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { fmtCountdown, formatAmount } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { usePauseFlags } from "@/lib/pause";
+import { boostClaimableWith, capToInventory } from "@/lib/grant";
 
 type Proof = { leaf: { account: Address; baseAllocation: string; inviteeBoost: string }; proof: Hex[] };
 
@@ -25,7 +26,8 @@ type Proof = { leaf: { account: Address; baseAllocation: string; inviteeBoost: s
  *      on-chain root). No JSON, no "leaf".
  *   2. How much to take — one slider (share of what you can claim now), and the pairing asset it needs.
  *   3. One button — registers the allocation first if needed, then activates (two transactions, labelled step 1/2).
- * Base / invite boost / inviter credit are shown as one number with a small breakdown underneath.
+ * Base / invite boost / inviter credit are shown as one number with a small breakdown underneath. All three draw on the
+ * campaign's one shared inventory (first come, first served), so the amount sent is capped at what is left.
  */
 export function GrantJoin(props: {
   meme: Address;
@@ -38,6 +40,8 @@ export function GrantJoin(props: {
   now: number;
   decayX18: bigint | undefined;
   registered: boolean | undefined;
+  /** allocation(meme, me): the boost cap and what has been activated so far */
+  allocation: { inviteeBoost: bigint; baseActivated: bigint; boostActivated: bigint } | undefined;
   /** grantBreakdown(meme, me): claimable now, after decay */
   breakdown: readonly [bigint, bigint, bigint] | undefined;
   onChanged: () => void;
@@ -65,21 +69,46 @@ export function GrantJoin(props: {
   const notListed = proofQ.error instanceof ApiRequestError && proofQ.error.code === "not_listed";
   const unverified = proofQ.error instanceof ApiRequestError && proofQ.error.code === "dataset_unverified";
 
-  // what you can take now: on-chain breakdown once registered; before that the listed amounts × current decay
+  // what you can take now: on-chain breakdown once registered; before that the listed base × current decay
   // the vault reports decay 0 until the campaign is ACTIVE; before that nothing has decayed, so show the full amount
   const decay = status === 3 ? (props.decayX18 ?? 10n ** 18n) : 10n ** 18n;
-  const avail: readonly [bigint, bigint, bigint] | undefined = registered
-    ? breakdown
+  // the invitee boost is earned by activating base (10% of it, up to the listed cap), never ahead of it
+  const boostBook = registered
+    ? props.allocation
     : proof
-      ? [
-          (BigInt(proof.leaf.baseAllocation) * decay) / 10n ** 18n,
-          (BigInt(proof.leaf.inviteeBoost) * decay) / 10n ** 18n,
-          0n,
-        ]
+      ? { inviteeBoost: BigInt(proof.leaf.inviteeBoost), baseActivated: 0n, boostActivated: 0n }
       : undefined;
-  const scale = (x: bigint) => (x * BigInt(pct)) / 100n;
-  const amounts = avail ? { base: scale(avail[0]), boost: scale(avail[1]), credit: scale(avail[2]) } : undefined;
+  const claimable: readonly [bigint, bigint] | undefined = registered
+    ? breakdown && [breakdown[0], breakdown[2]]
+    : proof
+      ? [(BigInt(proof.leaf.baseAllocation) * decay) / 10n ** 18n, 0n]
+      : undefined;
+  // [base, boost earned with all of that base, credit]
+  const avail: readonly [bigint, bigint, bigint] | undefined =
+    claimable && boostBook ? [claimable[0], boostClaimableWith(claimable[0], boostBook), claimable[1]] : undefined;
+
+  const inventory = useReadContract({
+    address: deployment?.lpGrantVault,
+    abi: lpGrantVaultAbi,
+    functionName: "inventoryRemaining",
+    args: [meme],
+    query: { enabled: !!deployment && status === 3, refetchInterval: 15_000 },
+  });
+  const inventoryLeft = status === 3 ? inventory.data : undefined;
+
+  // base decays, so the slider stops at 99% of it; the boost follows the base taken; credits do not decay
+  const fitted =
+    avail && boostBook
+      ? (() => {
+          const base = (avail[0] * BigInt(pct)) / 100n;
+          const credit = pct >= 99 ? avail[2] : (avail[2] * BigInt(pct)) / 100n;
+          return capToInventory({ base, boost: boostClaimableWith(base, boostBook), credit }, inventoryLeft);
+        })()
+      : undefined;
+  const amounts = fitted ? { base: fitted.base, boost: fitted.boost, credit: fitted.credit } : undefined;
   const total = amounts ? amounts.base + amounts.boost + amounts.credit : 0n;
+  const boostStillToEarn =
+    boostBook !== undefined && boostBook.inviteeBoost > boostClaimableWith(0n, boostBook) + boostBook.boostActivated;
 
   const required = useReadContract({
     address: deployment?.lpGrantVault,
@@ -207,6 +236,18 @@ export function GrantJoin(props: {
             </p>
           )}
           <p className="mt-2 text-xs text-subtle">{t("join.decayNote")}</p>
+          {boostBook && boostStillToEarn && (
+            <p className="mt-1 text-xs text-subtle">
+              {t("join.boostNote", { cap: fmtMeme(boostBook.inviteeBoost), symbol: memeSymbol })}
+            </p>
+          )}
+          {inventoryLeft !== undefined && (
+            <p className={`mt-1 text-xs ${inventoryLeft === 0n ? "text-amber" : "text-subtle"}`}>
+              {inventoryLeft === 0n
+                ? t("join.inventoryEmpty")
+                : t("join.inventoryLeft", { amount: fmtMeme(inventoryLeft), symbol: memeSymbol })}
+            </p>
+          )}
         </div>
 
         {/* step 2: how much */}
@@ -235,6 +276,7 @@ export function GrantJoin(props: {
               </span>
             </p>
           </div>
+          {fitted?.capped && inventoryLeft !== 0n && <p className="mt-2 text-xs text-amber">{t("join.cappedByInventory")}</p>}
           <p className="mt-2 text-[13px] leading-relaxed text-muted">{t("join.terms")}</p>
         </div>
 

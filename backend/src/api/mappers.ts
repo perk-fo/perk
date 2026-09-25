@@ -134,9 +134,7 @@ export interface GrantCampaignRow {
   end_time: number | string | bigint | null;
   total_activated: string | bigint | null;
   burned: string | bigint | null;
-  excess_to_incentive: string | bigint | null;
-  excess_to_treasury: string | bigint | null;
-  incentive_swept: string | bigint | null;
+  quote_to_treasury: string | bigint | null;
   positions_count: number | string | bigint | null;
   active_positions: number | string | bigint | null;
   initialized_at: number | string | bigint;
@@ -153,18 +151,18 @@ export interface GrantPositionRow {
   inviter_credit_activated: string | bigint | null;
   quote_deposited: string | bigint | null;
   liquidity: string | bigint | null;
+  protocol_share_wad: string | bigint | null;
   activated_at: number | string | bigint;
   activated_block: number | string | bigint;
   activated_tx: string;
   fees_quote_paid: string | bigint | null;
   fees_meme_paid: string | bigint | null;
-  incentive_paid: string | bigint | null;
   exited: boolean;
   exited_at: number | string | bigint | null;
   exited_tx: string | null;
   exit_quote_to_user: string | bigint | null;
-  exit_excess_quote: string | bigint | null;
   exit_meme_to_user: string | bigint | null;
+  exit_quote_to_treasury: string | bigint | null;
   exit_meme_burned: string | bigint | null;
 }
 
@@ -172,6 +170,7 @@ export interface GrantAllocationRow {
   account: string;
   base_allocation: string | bigint | null;
   invitee_boost: string | bigint | null;
+  invitee_boost_earned: string | bigint | null;
   registered_at: number | string | bigint;
 }
 
@@ -414,9 +413,7 @@ export function mapGrantCampaign(row: GrantCampaignRow): GrantCampaign {
     endTime: numNull(row.end_time),
     totalActivated: uint(row.total_activated),
     burned: uint(row.burned),
-    excessToIncentive: uint(row.excess_to_incentive),
-    excessToTreasury: uint(row.excess_to_treasury),
-    incentiveSwept: uint(row.incentive_swept),
+    quoteToTreasury: uint(row.quote_to_treasury),
     positionsCount: num(row.positions_count),
     activePositions: num(row.active_positions),
     initializedAt: num(row.initialized_at),
@@ -435,18 +432,18 @@ export function mapGrantPosition(row: GrantPositionRow): GrantPosition {
     inviterCreditActivated: uint(row.inviter_credit_activated),
     quoteDeposited: uint(row.quote_deposited),
     liquidity: uint(row.liquidity),
+    protocolShareWad: uint(row.protocol_share_wad),
     activatedAt: num(row.activated_at),
     activatedBlock: num(row.activated_block),
     activatedTx: row.activated_tx.toLowerCase() as `0x${string}`,
     feesQuotePaid: uint(row.fees_quote_paid),
     feesMemePaid: uint(row.fees_meme_paid),
-    incentivePaid: uint(row.incentive_paid),
     exited: Boolean(row.exited),
     exitedAt: numNull(row.exited_at),
     exitedTx: hexNull(row.exited_tx),
     exitQuoteToUser: uintNull(row.exit_quote_to_user),
     exitMemeToUser: uintNull(row.exit_meme_to_user),
-    exitExcessQuote: uintNull(row.exit_excess_quote),
+    exitQuoteToTreasury: uintNull(row.exit_quote_to_treasury),
     exitMemeBurned: uintNull(row.exit_meme_burned),
   };
 }
@@ -456,6 +453,7 @@ export function mapGrantAllocation(row: GrantAllocationRow): GrantAllocation {
     account: addr(row.account),
     baseAllocation: uint(row.base_allocation),
     inviteeBoost: uint(row.invitee_boost),
+    inviteeBoostEarned: uint(row.invitee_boost_earned),
     registeredAt: num(row.registered_at),
   };
 }

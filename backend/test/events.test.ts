@@ -181,6 +181,7 @@ describe("events", () => {
       inviterCreditActivated: 2n,
       quoteDeposited: 5n,
       liquidity: 99n,
+      protocolShareWad: 499_999_999_999_999_999n,
     };
     const log = makeLog({
       address: D.lpGrantVault,
@@ -194,7 +195,45 @@ describe("events", () => {
     expect(decoded.args.positionId).toBe(7n);
     expect(decoded.args.baseActivated).toBe(10n);
     expect(decoded.args.liquidity).toBe(99n);
+    expect(decoded.args.protocolShareWad).toBe(499_999_999_999_999_999n);
     expect((decoded.args.beneficiary as string).toLowerCase()).toBe(BUYER);
+  });
+
+  test("grant settlement events round-trip (fees, exit, invitee boost)", () => {
+    const vault = (eventName: string, args: Record<string, unknown>) =>
+      decodePerkLog(
+        asRaw(makeLog({ address: D.lpGrantVault, abi: ABI_BY_CONTRACT.lpGrantVault, eventName, args, blockNumber: 1006n })),
+        perkMap(),
+      )!;
+
+    const fees = vault("GrantFeesCollected", { positionId: 7n, quoteFeesPaid: 3n, memeFeesPaid: 4n });
+    expect(fees.eventName).toBe("GrantFeesCollected");
+    expect(fees.args).toEqual({ positionId: 7n, quoteFeesPaid: 3n, memeFeesPaid: 4n });
+
+    const exit = vault("GrantPositionExited", {
+      positionId: 7n,
+      quoteToUser: 11n,
+      memeToUser: 12n,
+      quoteToTreasury: 13n,
+      memeBurned: 14n,
+    });
+    expect(exit.eventName).toBe("GrantPositionExited");
+    expect(exit.args).toEqual({ positionId: 7n, quoteToUser: 11n, memeToUser: 12n, quoteToTreasury: 13n, memeBurned: 14n });
+
+    const boost = vault("InviteeBoostEarned", { meme: MEME, account: BUYER, amount: 5n });
+    expect(boost.eventName).toBe("InviteeBoostEarned");
+    expect((boost.args.meme as string).toLowerCase()).toBe(MEME.toLowerCase());
+    expect((boost.args.account as string).toLowerCase()).toBe(BUYER);
+    expect(boost.args.amount).toBe(5n);
+  });
+
+  test("the vault ABI no longer carries the incentive pool events", () => {
+    const names = (ABI_BY_CONTRACT.lpGrantVault as readonly { type: string; name?: string }[])
+      .filter((i) => i.type === "event")
+      .map((i) => i.name);
+    expect(names).not.toContain("ExcessQuoteRouted");
+    expect(names).not.toContain("IncentiveSwept");
+    expect(names).toContain("InviteeBoostEarned");
   });
 
   test("unknown selector on a Perk address returns null", () => {

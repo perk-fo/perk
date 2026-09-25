@@ -7,8 +7,10 @@ import type { RawLog } from "../chain/events";
  *   2: admin roles (factory OwnershipTransferred, vault PublisherUpdated); template status from the struct.
  *   3: chain-string sanitising and quarantine; also rebuilds indexes that a pre-lock indexer running alongside
  *      during a rolling deploy left with gaps.
+ *   4: LP Grant v0.14 (co-owned grant positions): protocolShareWad per position, quoteToTreasury per exit, invitee
+ *      boosts earned on base activation; the incentive pool events are gone. Re-indexed from the new deployment.
  */
-export const INDEX_VERSION = 3;
+export const INDEX_VERSION = 4;
 
 /**
  * Tables that hold decisions people made rather than facts derived from logs. A rebuild of the index keeps them.

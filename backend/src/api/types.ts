@@ -297,9 +297,8 @@ export interface GrantCampaign {
   endTime: number | null;
   totalActivated: Uint;
   burned: Uint;
-  excessToIncentive: Uint;
-  excessToTreasury: Uint;
-  incentiveSwept: Uint;
+  /** quote sent to the Community Treasury at exits: the sum of the positions' exitQuoteToTreasury */
+  quoteToTreasury: Uint;
   positionsCount: number;
   activePositions: number;
   initializedAt: number;
@@ -307,6 +306,12 @@ export interface GrantCampaign {
   cancelledAt: number | null;
 }
 
+/**
+ * A grant position, co-owned by its beneficiary and the protocol. At exit the principal is valued at the pool's
+ * reference price; the beneficiary receives the share 1 − protocolShareWad/1e18 of it, quote first and any shortfall
+ * in meme; the rest of the quote goes to the Community Treasury and the rest of the meme is burned. Trading fees are
+ * paid to the beneficiary in full, on top.
+ */
 export interface GrantPosition {
   positionId: Uint;
   meme: Address;
@@ -316,18 +321,20 @@ export interface GrantPosition {
   inviterCreditActivated: Uint;
   quoteDeposited: Uint;
   liquidity: Uint;
+  /** the protocol's share g of the position, fixed at activation; 1e18 = 100% */
+  protocolShareWad: Uint;
   activatedAt: number;
   activatedBlock: number;
   activatedTx: Hex;
   feesQuotePaid: Uint;
   feesMemePaid: Uint;
-  incentivePaid: Uint;
   exited: boolean;
   exitedAt: number | null;
   exitedTx: Hex | null;
+  /** exit settlement, null until the position has exited */
   exitQuoteToUser: Uint | null;
   exitMemeToUser: Uint | null;
-  exitExcessQuote: Uint | null;
+  exitQuoteToTreasury: Uint | null;
   exitMemeBurned: Uint | null;
 }
 
@@ -350,7 +357,10 @@ export interface LpPosition {
 export interface GrantAllocation {
   account: Address;
   baseAllocation: Uint;
+  /** the leaf's invitee boost: the most the account can earn, as its base allocation is activated */
   inviteeBoost: Uint;
+  /** invitee boost earned so far (InviteeBoostEarned) */
+  inviteeBoostEarned: Uint;
   registeredAt: number;
 }
 

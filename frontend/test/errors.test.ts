@@ -17,6 +17,9 @@ describe("decodeErrorMessage", () => {
   test("unknown ones fall back to the error name", () => {
     expect(decodeErrorMessage(revert(lpGrantVaultAbi, "RootBudgetExceeded"))).toBe("合约拒绝：RootBudgetExceeded");
   });
+  test("an exhausted shared inventory names what is left, in meme units", () => {
+    expect(decodeErrorMessage(revert(lpGrantVaultAbi, "InsufficientInventory", [1_234n * 10n ** 18n]))).toContain("1,234");
+  });
   test("reverts caught by the pre-send simulation say nothing was sent", () => {
     const e = Object.assign(revert(lpGrantVaultAbi, "WindowClosed"), { precheck: true });
     expect(decodeErrorMessage(e)).toBe("交易预检未通过：窗口期已结束");

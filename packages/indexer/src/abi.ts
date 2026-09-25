@@ -14,8 +14,10 @@ export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from,
 /**
  * LPGrantVault.campaign(meme) returns the Campaign struct (contracts/src/interfaces/IPerkLPGrantVault.sol
  * `struct Campaign`). This describes its leading fields, through rootTotalInviteeBoost: the ABI decoder reads fields
- * by position and ignores what follows, and the fields after these (the incentive accounting) differ between vault
- * versions, so decoding only the prefix works against every deployed version.
+ * by position and ignores what follows, so the fields after these (the registered totals) are left out.
+ *
+ * The layout is the one from LP Grant v0.14 on, which removed referralBudgetUsed from the middle of the struct (and
+ * the incentive accounting from its end). A vault deployed before v0.14 does not decode with it.
  */
 export const CAMPAIGN_ABI = [
   {
@@ -54,7 +56,6 @@ export const CAMPAIGN_ABI = [
           { name: "reserve", type: "uint256" },
           { name: "basePool", type: "uint256" },
           { name: "referralBudget", type: "uint256" },
-          { name: "referralBudgetUsed", type: "uint256" },
           { name: "totalActivated", type: "uint256" },
           { name: "burned", type: "uint256" },
           { name: "root", type: "bytes32" },

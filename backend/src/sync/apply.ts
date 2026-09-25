@@ -719,6 +719,16 @@ export async function onAllocationRegistered(tx: Tx, ctx: ApplyContext, log: Dec
       registered_at = ${ts}`;
 }
 
+/**
+ * InviteeBoostEarned(meme, account, amount) → grant_allocations.invitee_boost_earned += amount. The boost is earned as
+ * the account's base allocation is actually activated, up to the leaf's inviteeBoost (the cap stored in invitee_boost).
+ */
+export async function onInviteeBoostEarned(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
+  const a = log.args as { meme: Address; account: Address; amount: bigint };
+  await tx`update grant_allocations set invitee_boost_earned = invitee_boost_earned + ${a.amount}
+    where chain_id = ${ctx.chainId} and meme = ${addr(a.meme)} and account = ${addr(a.account)}`;
+}
+
 /** InviterCreditEarned(meme, inviter, invitee, amount) → referral_credits row. */
 export async function onInviterCreditEarned(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
   const a = log.args as { meme: Address; inviter: Address; invitee: Address; amount: bigint };
@@ -732,8 +742,9 @@ export async function onInviterCreditEarned(tx: Tx, ctx: ApplyContext, log: Deco
 
 /**
  * GrantActivated(positionId, meme, beneficiary, baseActivated, inviteeBoostActivated, inviterCreditActivated,
- * quoteDeposited, liquidity) → grant_positions row; grant_campaigns.total_activated += base+boost+credit,
- * positions_count += 1, active_positions += 1.
+ * quoteDeposited, liquidity, protocolShareWad) → grant_positions row; grant_campaigns.total_activated +=
+ * base+boost+credit, positions_count += 1, active_positions += 1. protocolShareWad is the protocol's share g of the
+ * position (1e18 = 100%), fixed at activation.
  */
 export async function onGrantActivated(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
   const a = log.args as {
@@ -745,16 +756,17 @@ export async function onGrantActivated(tx: Tx, ctx: ApplyContext, log: DecodedLo
     inviterCreditActivated: bigint;
     quoteDeposited: bigint;
     liquidity: bigint;
+    protocolShareWad: bigint;
   };
   const ts = tsOf(ctx, log);
   const added = a.baseActivated + a.inviteeBoostActivated + a.inviterCreditActivated;
   await tx`insert into grant_positions (
       chain_id, position_id, meme, beneficiary, base_activated, invitee_boost_activated, inviter_credit_activated,
-      quote_deposited, liquidity, activated_block, activated_at, activated_tx
+      quote_deposited, liquidity, protocol_share_wad, activated_block, activated_at, activated_tx
     ) values (
       ${ctx.chainId}, ${a.positionId}, ${addr(a.meme)}, ${addr(a.beneficiary)}, ${a.baseActivated},
       ${a.inviteeBoostActivated}, ${a.inviterCreditActivated}, ${a.quoteDeposited}, ${a.liquidity},
-      ${log.blockNumber}, ${ts}, ${lower(log.transactionHash)}
+      ${a.protocolShareWad}, ${log.blockNumber}, ${ts}, ${lower(log.transactionHash)}
     ) on conflict do nothing`;
   await tx`update grant_campaigns set
       total_activated = total_activated + ${added},
@@ -764,33 +776,27 @@ export async function onGrantActivated(tx: Tx, ctx: ApplyContext, log: DecodedLo
     where chain_id = ${ctx.chainId} and meme = ${addr(a.meme)}`;
 }
 
-/** GrantFeesCollected(positionId, quoteFeesPaid, memeFeesPaid, incentivePaid) → position fee counters +=. */
+/** GrantFeesCollected(positionId, quoteFeesPaid, memeFeesPaid) → position fee counters +=. */
 export async function onGrantFeesCollected(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
-  const a = log.args as {
-    positionId: bigint;
-    quoteFeesPaid: bigint;
-    memeFeesPaid: bigint;
-    incentivePaid: bigint;
-  };
+  const a = log.args as { positionId: bigint; quoteFeesPaid: bigint; memeFeesPaid: bigint };
   await tx`update grant_positions set
       fees_quote_paid = fees_quote_paid + ${a.quoteFeesPaid},
-      fees_meme_paid = fees_meme_paid + ${a.memeFeesPaid},
-      incentive_paid = incentive_paid + ${a.incentivePaid}
+      fees_meme_paid = fees_meme_paid + ${a.memeFeesPaid}
     where chain_id = ${ctx.chainId} and position_id = ${a.positionId}`;
 }
 
 /**
- * GrantPositionExited(positionId, quoteToUser, memeToUser, excessQuote, memeBurned, incentivePaid) → exited = true,
- * exit_* fields, exited_at/tx, incentive_paid += incentivePaid; campaign active_positions -= 1.
+ * GrantPositionExited(positionId, quoteToUser, memeToUser, quoteToTreasury, memeBurned) → exited = true, exit_*
+ * fields, exited_at/tx; campaign active_positions -= 1 and quote_to_treasury += quoteToTreasury. (The burned meme is
+ * counted in the campaign's burned total through the GrantMemeBurned the vault emits alongside.)
  */
 export async function onGrantPositionExited(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
   const a = log.args as {
     positionId: bigint;
     quoteToUser: bigint;
     memeToUser: bigint;
-    excessQuote: bigint;
+    quoteToTreasury: bigint;
     memeBurned: bigint;
-    incentivePaid: bigint;
   };
   const ts = tsOf(ctx, log);
   const rows = await tx<{ meme: string; exited: boolean }[]>`
@@ -800,28 +806,18 @@ export async function onGrantPositionExited(tx: Tx, ctx: ApplyContext, log: Deco
       exited = true,
       exit_quote_to_user = ${a.quoteToUser},
       exit_meme_to_user = ${a.memeToUser},
-      exit_excess_quote = ${a.excessQuote},
+      exit_quote_to_treasury = ${a.quoteToTreasury},
       exit_meme_burned = ${a.memeBurned},
-      incentive_paid = incentive_paid + ${a.incentivePaid},
       exited_at = ${ts},
       exited_tx = ${lower(log.transactionHash)}
     where chain_id = ${ctx.chainId} and position_id = ${a.positionId}`;
   if (rows[0] && !rows[0].exited) {
     await tx`update grant_campaigns set
         active_positions = greatest(active_positions - 1, 0),
+        quote_to_treasury = quote_to_treasury + ${a.quoteToTreasury},
         updated_at = now()
       where chain_id = ${ctx.chainId} and meme = ${rows[0].meme}`;
   }
-}
-
-/** ExcessQuoteRouted(meme, toIncentivePool, toTreasury) → campaign excess_to_incentive / excess_to_treasury +=. */
-export async function onExcessQuoteRouted(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
-  const a = log.args as { meme: Address; toIncentivePool: bigint; toTreasury: bigint };
-  await tx`update grant_campaigns set
-      excess_to_incentive = excess_to_incentive + ${a.toIncentivePool},
-      excess_to_treasury = excess_to_treasury + ${a.toTreasury},
-      updated_at = now()
-    where chain_id = ${ctx.chainId} and meme = ${addr(a.meme)}`;
 }
 
 /** GrantMemeBurned(meme, amount, reason) → campaign burned += amount. */
@@ -835,13 +831,6 @@ export async function onGrantMemeBurned(tx: Tx, ctx: ApplyContext, log: DecodedL
 export async function onGrantFinalized(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
   const a = log.args as { meme: Address; unactivatedMemeBurned: bigint };
   await tx`update grant_campaigns set status = ${4}, finalized_at = ${tsOf(ctx, log)}, updated_at = now()
-    where chain_id = ${ctx.chainId} and meme = ${addr(a.meme)}`;
-}
-
-/** IncentiveSwept(meme, toTreasury) → incentive_swept += toTreasury. */
-export async function onIncentiveSwept(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
-  const a = log.args as { meme: Address; toTreasury: bigint };
-  await tx`update grant_campaigns set incentive_swept = incentive_swept + ${a.toTreasury}, updated_at = now()
     where chain_id = ${ctx.chainId} and meme = ${addr(a.meme)}`;
 }
 
@@ -1003,13 +992,12 @@ export const HANDLERS: Record<string, Handler> = {
   "lpGrantVault.CampaignCancelled": onCampaignCancelled,
   "lpGrantVault.AllocationRegistered": onAllocationRegistered,
   "lpGrantVault.InviterCreditEarned": onInviterCreditEarned,
+  "lpGrantVault.InviteeBoostEarned": onInviteeBoostEarned,
   "lpGrantVault.GrantActivated": onGrantActivated,
   "lpGrantVault.GrantFeesCollected": onGrantFeesCollected,
   "lpGrantVault.GrantPositionExited": onGrantPositionExited,
-  "lpGrantVault.ExcessQuoteRouted": onExcessQuoteRouted,
   "lpGrantVault.GrantMemeBurned": onGrantMemeBurned,
   "lpGrantVault.GrantFinalized": onGrantFinalized,
-  "lpGrantVault.IncentiveSwept": onIncentiveSwept,
   "lpGrantVault.PublisherUpdated": onGrantAdminChanged,
   "positionManager.Transfer": onLpPositionTransfer as unknown as Handler,
   "referralRegistry.InviterBound": onInviterBound,
