@@ -198,7 +198,7 @@ export interface QuoteMeta {
 }
 
 /** Symbol/decimals for a quote currency. Native OKB is 18 decimals; ERC-20 reads `decimals()` on-chain. */
-export function useQuoteMeta(quote: Address | undefined, xdogToken: Address | undefined): QuoteMeta | undefined {
+export function useQuoteMeta(quote: Address | undefined): QuoteMeta | undefined {
   const isNative = !quote || quote.toLowerCase() === NATIVE_QUOTE.toLowerCase();
   const { data: decimals } = useReadContract({
     address: quote,
@@ -209,12 +209,11 @@ export function useQuoteMeta(quote: Address | undefined, xdogToken: Address | un
   if (isNative) {
     return { address: NATIVE_QUOTE, isNative: true, symbol: "OKB", decimals: 18 };
   }
-  const symbol = xdogToken && quote.toLowerCase() === xdogToken.toLowerCase() ? "XDOG" : undefined;
   if (decimals === undefined) return undefined;
   return {
     address: quote,
     isNative: false,
-    symbol: symbol ?? "ERC20",
+    symbol: "ERC20",
     decimals: Number(decimals),
   };
 }

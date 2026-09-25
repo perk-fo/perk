@@ -26,6 +26,8 @@ import {MockERC20} from "../test/utils/MockERC20.sol";
 ///   (off-chain) indexer snapshot for the two grant launches, proposeRoot on both
 ///   phaseB(activeMeme): after the root delay — activateRoot, register alice/bob/carol from LIFECYCLE_PROOFS, activate, swaps
 ///   cancelStale(meme): cancel a campaign whose root deadline passed (CANCELLED stage)
+///   The 18-decimal ERC-20 launch pays in the deployment's `initialQuoteToken`, which must be a test-network mock with
+///   public mint and a fast template bound to it (ConfigureQuoteAsset.s.sol).
 contract SeedDemo is Script {
     struct R {
         uint256 creator;
@@ -43,7 +45,7 @@ contract SeedDemo is Script {
         IPerkGraduationManager graduation;
         IPerkLPGrantVault vault;
         IPerkReferralRegistry referral;
-        address xdog;
+        address erc20Quote;
         address stock;
         address swapRouter;
         bytes32 fast;
@@ -67,7 +69,7 @@ contract SeedDemo is Script {
         a.graduation = IPerkGraduationManager(vm.parseJsonAddress(json, ".graduationManager"));
         a.vault = IPerkLPGrantVault(payable(vm.parseJsonAddress(json, ".lpGrantVault")));
         a.referral = IPerkReferralRegistry(vm.parseJsonAddress(json, ".referralRegistry"));
-        a.xdog = vm.parseJsonAddress(json, ".xdogToken");
+        a.erc20Quote = vm.parseJsonAddress(json, ".initialQuoteToken");
         a.stock = vm.parseJsonAddress(json, ".quoteAssets.tAAPL");
         a.swapRouter = vm.envAddress("V4_TESTNET_SWAP_ROUTER");
         a.fast = keccak256(bytes(vm.envOr("TEST_TEMPLATE", string("TEST_FAST_V1"))));
@@ -77,7 +79,7 @@ contract SeedDemo is Script {
     function phaseA() external {
         (R memory r, A memory a) = _load();
         Currency native = Currency.wrap(address(0));
-        Currency xdog = Currency.wrap(a.xdog);
+        Currency erc20Quote = Currency.wrap(a.erc20Quote);
         Currency stock = Currency.wrap(a.stock);
         uint256 T = 8_500_000_000_000_000; // 0.0085 in 18-dec quote units (fast template)
 
@@ -88,9 +90,9 @@ contract SeedDemo is Script {
 
         // ERC-20 quote balances for the roles (mocks have public mint)
         vm.startBroadcast(r.deployer);
-        MockERC20(a.xdog).mint(vm.addr(r.buyer), 10 ether);
-        MockERC20(a.xdog).mint(vm.addr(r.swapper), 10 ether);
-        MockERC20(a.xdog).mint(vm.addr(r.creator), 10 ether);
+        MockERC20(a.erc20Quote).mint(vm.addr(r.buyer), 10 ether);
+        MockERC20(a.erc20Quote).mint(vm.addr(r.swapper), 10 ether);
+        MockERC20(a.erc20Quote).mint(vm.addr(r.creator), 10 ether);
         MockERC20(a.stock).mint(vm.addr(r.buyer), 1000e6);
         MockERC20(a.stock).mint(vm.addr(r.swapper), 1000e6);
         MockERC20(a.stock).mint(vm.addr(r.creator), 1000e6);
@@ -101,11 +103,11 @@ contract SeedDemo is Script {
         // 2. curve 25% (OKB): buyer
         address m2 = _create(a, r.creator, a.fast, native, "Ink Fox", "IFOX", 0, 0);
         _buyNative(a, r.buyer, m2, (T * 25) / 100);
-        // 3. curve ~65% (XDOG): two buyers
-        bytes32 fastXdog = PerkTemplates.templateIdFor(a.fast, xdog);
-        address m3 = _create(a, r.creator, fastXdog, xdog, "Quiet Whale", "QWHALE", 0, 0);
-        _buyErc20(a, r.buyer, m3, a.xdog, (T * 40) / 100);
-        _buyErc20(a, r.swapper, m3, a.xdog, (T * 25) / 100);
+        // 3. curve ~65% (18-decimal ERC-20): two buyers
+        bytes32 fastErc20 = PerkTemplates.templateIdFor(a.fast, erc20Quote);
+        address m3 = _create(a, r.creator, fastErc20, erc20Quote, "Quiet Whale", "QWHALE", 0, 0);
+        _buyErc20(a, r.buyer, m3, a.erc20Quote, (T * 40) / 100);
+        _buyErc20(a, r.swapper, m3, a.erc20Quote, (T * 25) / 100);
         // 4. curve ~90% with a sell (tAAPL, 6 decimals: T = 8500 units)
         bytes32 fastStock = PerkTemplates.templateIdFor(a.fast, stock);
         address m4 = _create(a, r.creator, fastStock, stock, "Paper Tiger", "PTIGER", 0, 0);
@@ -133,7 +135,7 @@ contract SeedDemo is Script {
 
         console2.log("fresh 0%%            ", m1);
         console2.log("curve 25%% OKB       ", m2);
-        console2.log("curve ~65%% XDOG     ", m3);
+        console2.log("curve ~65%% ERC-20   ", m3);
         console2.log("curve ~90%% tAAPL    ", m4);
         console2.log("graduation pending   ", m5);
         console2.log("standard graduated   ", m6);

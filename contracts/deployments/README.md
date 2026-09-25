@@ -24,7 +24,7 @@ Optional env (see repo `.env.example`):
 - `DEPLOYER_PRIVATE_KEY` (required)
 - `PROTOCOL_OWNER` / `PROTOCOL_FEE_RECIPIENT` (default: deployer)
 - `TREASURY_TIMELOCK_SECONDS` (default: 172800)
-- `XDOG_TOKEN_ADDRESS` (mainnet: set before launch; testnet: mock XDOG is deployed when empty)
+- `INITIAL_QUOTE_TOKEN` (optional ERC-20 pairing asset that `ConfigurePerk` allows next to native OKB; empty means native OKB only. No mock is ever deployed: add further ERC-20 quote assets, and mocks on test networks, with `ConfigureQuoteAsset.s.sol`)
 - `V4_TESTNET_POOL_MANAGER` / `V4_TESTNET_POSITION_MANAGER`
 - `GIT_COMMIT` (recorded in the JSON; default `unknown`)
 
@@ -45,4 +45,4 @@ Optional env (see repo `.env.example`):
 
 ## JSON keys
 
-`chainId`, `blockNumber`, `gitCommit`, `deployer`, `protocolOwner`, `protocolFeeRecipient`, `timelock`, `poolManager`, `positionManager`, `permit2`, `universalRouter`, `stateView`, `quoter`, `templateRegistry`, `moduleRegistry`, `assetRegistry`, `treasury`, `factory`, `distributor`, `feeRouter`, `curve`, `locker`, `graduationManager`, `hook`, `hookSalt`, `grantReserveEscrow`, `xdogToken`.
+`chainId`, `blockNumber`, `gitCommit`, `deployer`, `protocolOwner`, `protocolFeeRecipient`, `timelock`, `poolManager`, `positionManager`, `permit2`, `universalRouter`, `stateView`, `quoter`, `templateRegistry`, `moduleRegistry`, `assetRegistry`, `treasury`, `factory`, `distributor`, `feeRouter`, `curve`, `locker`, `graduationManager`, `hook`, `hookSalt`, `referralRegistry`, `lpGrantVault`, `initialQuoteToken` (zero when unset). `ConfigureQuoteAsset.s.sol` adds `quoteAssets.<SYMBOL>` for each ERC-20 quote asset it configures.

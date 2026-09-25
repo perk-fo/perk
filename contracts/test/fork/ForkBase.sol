@@ -72,12 +72,14 @@ abstract contract ForkBase is PerkDeployer {
         vm.deal(buyer, 1000 ether);
         vm.deal(swapper, 1000 ether);
 
-        address xdog = _xdogToken();
-        if (xdog != address(0)) {
-            _whitelistQuote(Currency.wrap(xdog), IERC20Metadata(xdog).decimals(), IERC20Metadata(xdog).symbol(), false);
-            t.erc20Quote = Currency.wrap(xdog);
-            _dealAndApprove(xdog, buyer, BUY_GROSS * 10, address(t.curve));
-            _dealAndApprove(xdog, swapper, SWAP_IN * 10, address(swapRouter));
+        address erc20 = _initialQuoteToken();
+        if (erc20 != address(0)) {
+            _whitelistQuote(
+                Currency.wrap(erc20), IERC20Metadata(erc20).decimals(), IERC20Metadata(erc20).symbol(), false
+            );
+            t.erc20Quote = Currency.wrap(erc20);
+            _dealAndApprove(erc20, buyer, BUY_GROSS * 10, address(t.curve));
+            _dealAndApprove(erc20, swapper, SWAP_IN * 10, address(swapRouter));
         }
     }
 
@@ -233,8 +235,9 @@ abstract contract ForkBase is PerkDeployer {
         IERC20(token).forceApprove(spender, type(uint256).max);
     }
 
-    function _xdogToken() internal view returns (address) {
-        string memory raw = vm.envOr("XDOG_TOKEN_ADDRESS", string(""));
+    /// @dev The ERC-20 pairing asset to exercise: INITIAL_QUOTE_TOKEN, as a mainnet deploy would pass it; zero when unset.
+    function _initialQuoteToken() internal view returns (address) {
+        string memory raw = vm.envOr("INITIAL_QUOTE_TOKEN", string(""));
         if (bytes(raw).length == 0) return address(0);
         return vm.parseAddress(raw);
     }

@@ -22,7 +22,8 @@ import {PerkTypes} from "../src/libraries/PerkTypes.sol";
 import {HookAddress} from "./lib/HookAddress.sol";
 
 /// @title ConfigurePerk
-/// @notice Registers V1 modules, templates and quote assets, then starts Ownable2Step handoff to PROTOCOL_OWNER.
+/// @notice Registers V1 modules, templates and quote assets (native OKB, plus the deployment's `initialQuoteToken` when
+///         one was given), then starts Ownable2Step handoff to PROTOCOL_OWNER.
 contract ConfigurePerk is Script {
     error DeploymentFileMissing(string path);
 
@@ -45,14 +46,14 @@ contract ConfigurePerk is Script {
         IPerkGraduationManager graduationManager =
             IPerkGraduationManager(vm.parseJsonAddress(json, ".graduationManager"));
         Ownable2Step grantReserve = Ownable2Step(vm.parseJsonAddress(json, ".lpGrantVault"));
-        address xdogToken = vm.parseJsonAddress(json, ".xdogToken");
+        address initialQuoteToken = vm.parseJsonAddress(json, ".initialQuoteToken");
 
         // the grant publisher: an automated key that may propose and cancel grant roots and nothing else
         address publisher = vm.envOr("GRANT_PUBLISHER", address(0));
 
         vm.startBroadcast(pk);
-        _registerModules(moduleRegistry, xdogToken);
-        _registerAssets(assetRegistry, xdogToken);
+        _registerModules(moduleRegistry, initialQuoteToken);
+        _registerAssets(assetRegistry, initialQuoteToken);
         _registerTemplates(templateRegistry);
         if (publisher != address(0)) IPerkLPGrantVault(address(grantReserve)).setPublisher(publisher);
         _transferOwnerships(
@@ -85,7 +86,7 @@ contract ConfigurePerk is Script {
         console2.log("============================================================");
     }
 
-    function _registerModules(ModuleRegistry registry, address xdogToken) internal {
+    function _registerModules(ModuleRegistry registry, address initialQuoteToken) internal {
         uint160 hookPerms = HookAddress.flags();
         registry.registerModule(
             _module(
@@ -125,7 +126,7 @@ contract ConfigurePerk is Script {
 
         Currency native = Currency.wrap(address(0));
         _setQuotes(registry, native);
-        if (xdogToken != address(0)) _setQuotes(registry, Currency.wrap(xdogToken));
+        if (initialQuoteToken != address(0)) _setQuotes(registry, Currency.wrap(initialQuoteToken));
     }
 
     function _setQuotes(ModuleRegistry registry, Currency quote) internal {
@@ -136,15 +137,16 @@ contract ConfigurePerk is Script {
         registry.setQuoteCompatibility(PerkConstants.MODULE_ID_REFERRAL_GRANT_BOOST, 1, quote, true);
     }
 
-    function _registerAssets(AssetRegistry registry, address xdogToken) internal {
+    /// @dev The initial ERC-20 quote's decimals and symbol are read from the token itself, never assumed.
+    function _registerAssets(AssetRegistry registry, address initialQuoteToken) internal {
         registry.setAsset(
             Currency.wrap(address(0)),
             PerkTypes.AssetInfo({enabled: true, rewardCompatible: true, isNative: true, decimals: 18, symbol: "OKB"})
         );
-        if (xdogToken != address(0)) {
-            IERC20Metadata token = IERC20Metadata(xdogToken);
+        if (initialQuoteToken != address(0)) {
+            IERC20Metadata token = IERC20Metadata(initialQuoteToken);
             registry.setAsset(
-                Currency.wrap(xdogToken),
+                Currency.wrap(initialQuoteToken),
                 PerkTypes.AssetInfo({
                     enabled: true,
                     rewardCompatible: true,

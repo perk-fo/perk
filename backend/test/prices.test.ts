@@ -28,7 +28,7 @@ const CHAIN = 1952;
 const NATIVE = "0x0000000000000000000000000000000000000000";
 const TAAPL = "0x7f9a46e6be91ad215e4000fdb697bf2b1c079f96";
 const TTSLA = "0x00000000000000000000000000000000000007e5";
-const XDOG = "0x32101d25b43dc97b50faeab4992e7af62c5856c2";
+const FROG = "0x00000000000000000000000000000000000000f0";
 const USDC = "0x00000000000000000000000000000000000000c0";
 
 const OKX_URL = "https://www.okx.com/api/v5/market/ticker?instId=OKB-USDT";
@@ -157,7 +157,7 @@ describe("price sources", () => {
     expect(stock("TSLA")).toBeNull();
     expect(stock("ttsla")).toBeNull();
     expect(stock("tTOOLONG")).toBeNull();
-    expect(stock("XDOG")).toBeNull();
+    expect(stock("FROG")).toBeNull();
     expect(resolveSource(cfg, { address: NATIVE, symbol: "tOKB", isNative: true, category: null })).toEqual({
       kind: "okx",
       instId: "OKB-USDT",
@@ -287,7 +287,7 @@ describe("PriceService", () => {
         (${CHAIN}, ${NATIVE}, 'OKB', 'OKB', 18, 0, true),
         (${CHAIN}, ${TAAPL}, 'tAAPL', 'Mock tAAPL', 6, 1, true),
         (${CHAIN}, ${TTSLA}, 'tTSLA', 'Mock tTSLA', 6, 1, true),
-        (${CHAIN}, ${XDOG}, 'XDOG', 'XDOG mock', 18, 1, true),
+        (${CHAIN}, ${FROG}, 'FROG', 'Mock FROG', 18, 1, true),
         (${CHAIN}, ${USDC}, 'USDC', 'USD Coin', 6, 1, true),
         (${CHAIN + 1}, ${NATIVE}, 'OKB', 'OKB', 18, 0, true)`;
   });
@@ -328,8 +328,8 @@ describe("PriceService", () => {
       { quote: TAAPL, symbol: "tAAPL", usd: 335.92, source: "cnbc:AAPL", updatedAt: at, stale: false },
       { quote: TTSLA, symbol: "tTSLA", usd: 431.5, source: "cnbc:TSLA", updatedAt: at, stale: false },
     ]);
-    // XDOG has no source and is simply absent; the other chain's quotes are not read
-    expect(prices.list().some((p) => p.quote === XDOG)).toBe(false);
+    // FROG has no source and is simply absent; the other chain's quotes are not read
+    expect(prices.list().some((p) => p.quote === FROG)).toBe(false);
     expect([...calls].sort()).toEqual([AAPL_URL, OKX_URL, TSLA_URL].sort());
     expect(logs).toEqual([]);
   });

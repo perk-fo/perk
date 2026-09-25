@@ -32,7 +32,6 @@ export interface Deployment {
   assetRegistry?: Address;
   poolManager: Address;
   positionManager: Address;
-  xdogToken?: Address;
   quoteAssets?: Record<string, Address>;
 }
 

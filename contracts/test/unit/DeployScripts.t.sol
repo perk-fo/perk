@@ -19,6 +19,7 @@ import {FeeRouter} from "../../src/fees/FeeRouter.sol";
 import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManager.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
+import {MockERC20} from "../utils/MockERC20.sol";
 import {PosmDeployer} from "../utils/PosmDeployer.sol";
 
 contract DeployScriptsTest is Test, Deployers, PosmDeployer {
@@ -32,6 +33,8 @@ contract DeployScriptsTest is Test, Deployers, PosmDeployer {
     address internal creator;
     address internal buyer;
     address internal swapper;
+    /// @dev The optional ERC-20 pairing asset handed to DeployPerk as INITIAL_QUOTE_TOKEN (6 decimals, not 18).
+    MockERC20 internal initialQuote;
 
     function setUp() public {
         deployer = vm.addr(DEPLOYER_PK);
@@ -45,11 +48,12 @@ contract DeployScriptsTest is Test, Deployers, PosmDeployer {
 
         deployFreshManagerAndRouters();
         (IPositionManager posm,) = deployPosm(manager);
+        initialQuote = new MockERC20("Test Quote", "tQUOTE", 6);
 
         vm.setEnv("DEPLOYER_PRIVATE_KEY", vm.toString(DEPLOYER_PK));
         vm.setEnv("PROTOCOL_OWNER", vm.toString(deployer));
         vm.setEnv("PROTOCOL_FEE_RECIPIENT", vm.toString(deployer));
-        vm.setEnv("XDOG_TOKEN_ADDRESS", vm.toString(address(0)));
+        vm.setEnv("INITIAL_QUOTE_TOKEN", vm.toString(address(initialQuote)));
         vm.setEnv("V4_TESTNET_POOL_MANAGER", vm.toString(address(manager)));
         vm.setEnv("V4_TESTNET_POSITION_MANAGER", vm.toString(address(posm)));
         vm.setEnv("TREASURY_TIMELOCK_SECONDS", "172800");
@@ -84,6 +88,24 @@ contract DeployScriptsTest is Test, Deployers, PosmDeployer {
         assertEq(vm.parseJsonAddress(json, ".factory"), address(deploy.factory()));
         assertEq(vm.parseJsonAddress(json, ".hook"), address(deploy.hook()));
         assertEq(vm.parseJsonAddress(json, ".poolManager"), address(manager));
+        assertEq(vm.parseJsonAddress(json, ".initialQuoteToken"), address(initialQuote));
+        assertEq(deploy.initialQuoteToken(), address(initialQuote));
+
+        // the initial quote is allowed with the metadata the token reports, and every V1 module accepts it
+        Currency erc20Quote = Currency.wrap(address(initialQuote));
+        PerkTypes.AssetInfo memory info = deploy.assetRegistry().assetInfo(erc20Quote);
+        assertTrue(info.enabled);
+        assertTrue(info.rewardCompatible);
+        assertFalse(info.isNative);
+        assertEq(info.decimals, 6);
+        assertEq(info.symbol, "tQUOTE");
+        (bool compatible,) = deploy.moduleRegistry()
+            .validateCompatibility(
+                PerkConstants.CORE_MODULES_V1 | PerkConstants.MODULE_LP_GRANT_V1
+                    | PerkConstants.MODULE_REFERRAL_GRANT_BOOST_V1,
+                erc20Quote
+            );
+        assertTrue(compatible);
 
         LaunchFactory factory = deploy.factory();
         BondingCurve curve = deploy.curve();

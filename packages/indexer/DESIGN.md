@@ -9,7 +9,7 @@ recorded in ADR-008.
 
 | Quote asset | Where the holder set comes from | Where historical balances come from | Difficulty |
 |-------------|--------------------------------|-------------------------------------|------------|
-| ERC-20 such as XDOG | Replay every `Transfer` event since deployment | The same events, accumulated by block, give each address a piecewise balance | Low, and standard |
+| A whitelisted ERC-20 | Replay every `Transfer` event since deployment | The same events, accumulated by block, give each address a piecewise balance | Low, and standard |
 | Native OKB | **No events.** Any address on the chain may hold it, so the only way is to enumerate state | Every transaction's value, gas deduction and internal call moves a balance, so it takes a per-block trace | High |
 
 Native OKB has two specific obstacles.

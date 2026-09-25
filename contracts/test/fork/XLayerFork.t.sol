@@ -38,14 +38,14 @@ contract XLayerForkTest is ForkBase {
         _runFlow(t.nativeQuote, keccak256("fork-okb"), true);
     }
 
-    /// @notice XDOG quote when `XDOG_TOKEN_ADDRESS` is set; skipped otherwise.
-    function test_createLaunch_xdog_buyGraduateSwap() public {
-        address xdog = _xdogToken();
-        if (xdog == address(0)) {
+    /// @notice ERC-20 quote when `INITIAL_QUOTE_TOKEN` is set; skipped otherwise.
+    function test_createLaunch_erc20Quote_buyGraduateSwap() public {
+        address erc20 = _initialQuoteToken();
+        if (erc20 == address(0)) {
             vm.skip(true);
             return;
         }
-        _runFlow(Currency.wrap(xdog), keccak256("fork-xdog"), false);
+        _runFlow(Currency.wrap(erc20), keccak256("fork-erc20"), false);
     }
 
     function _runFlow(Currency quote, bytes32 salt, bool logGas) internal {

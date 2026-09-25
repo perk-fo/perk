@@ -48,17 +48,14 @@ export function quoteEntries(deployment: Deployment | null): Array<{ address: Ad
 }
 
 /**
- * The category when General Admins have not set one. Unknown ERC-20s are treated as tokenised stocks, which shows
- * the risk notice: showing it for a token that does not need it is the safer mistake.
+ * The category when General Admins have not set one. Every ERC-20 is treated as a tokenised stock, which shows the
+ * risk notice: showing it for a token that does not need it is the safer mistake.
  */
-function defaultCategory(address: Address, symbol: string, deployment: Deployment): QuoteCategory {
-  const a = address.toLowerCase();
-  if (a === NATIVE_QUOTE.toLowerCase()) return "native";
-  if (a === deployment.xdogToken.toLowerCase() || symbol === "XDOG") return "ecosystem";
-  return "rwa";
+function defaultCategory(address: Address): QuoteCategory {
+  return address.toLowerCase() === NATIVE_QUOTE.toLowerCase() ? "native" : "rwa";
 }
 
-function fromApi(a: QuoteAsset, deployment: Deployment): QuoteInfo {
+function fromApi(a: QuoteAsset): QuoteInfo {
   return {
     address: a.address,
     isNative: a.isNative,
@@ -66,7 +63,7 @@ function fromApi(a: QuoteAsset, deployment: Deployment): QuoteInfo {
     decimals: a.isNative ? 18 : a.decimals,
     enabled: a.enabled,
     rewardCompatible: a.rewardCompatible,
-    category: a.display.category ?? defaultCategory(a.address, a.symbol, deployment),
+    category: a.display.category ?? defaultCategory(a.address),
     displayName: a.display.displayName,
     iconUrl: a.display.iconUrl,
     notice: a.display.notice,
@@ -81,7 +78,6 @@ function fromApi(a: QuoteAsset, deployment: Deployment): QuoteInfo {
  */
 export function fromChain(
   entry: { address: Address; symbol: string },
-  deployment: Deployment,
   info?: { enabled: boolean; rewardCompatible: boolean; isNative: boolean; decimals: number; symbol: string },
 ): QuoteInfo {
   const isNative = entry.address.toLowerCase() === NATIVE_QUOTE.toLowerCase();
@@ -93,7 +89,7 @@ export function fromChain(
     decimals: isNative ? 18 : (info?.decimals ?? null),
     enabled: isNative ? true : (info?.enabled ?? true),
     rewardCompatible: isNative ? true : (info?.rewardCompatible ?? true),
-    category: defaultCategory(entry.address, symbol, deployment),
+    category: defaultCategory(entry.address),
     displayName: null,
     iconUrl: null,
     notice: {},
@@ -131,12 +127,12 @@ export function useQuotes(): { quotes: QuoteInfo[]; isLoading: boolean } {
 
   const quotes = useMemo(() => {
     if (!deployment) return [];
-    const out: QuoteInfo[] = (apiAssets.data?.assets ?? []).map((a) => fromApi(a, deployment));
+    const out: QuoteInfo[] = (apiAssets.data?.assets ?? []).map((a) => fromApi(a));
     const seen = new Set(out.map((q) => q.address.toLowerCase()));
     for (const e of entries) {
       if (seen.has(e.address.toLowerCase())) continue;
       const i = erc20Entries.findIndex((x) => x.address === e.address);
-      out.push(fromChain(e, deployment, i >= 0 ? data?.[i]?.result : undefined));
+      out.push(fromChain(e, i >= 0 ? data?.[i]?.result : undefined));
     }
     return out;
   }, [deployment, apiAssets.data, entries, erc20Entries, data]);

@@ -19,14 +19,15 @@ import {BondingCurve} from "../src/curve/BondingCurve.sol";
 import {PerkComposableHookV1} from "../src/hook/PerkComposableHookV1.sol";
 import {IPerkGraduationManager} from "../src/interfaces/IPerkGraduationManager.sol";
 import {InitialLpLocker} from "../src/graduation/InitialLpLocker.sol";
-import {MockERC20} from "../test/utils/MockERC20.sol";
 
 import {HookAddress} from "./lib/HookAddress.sol";
 import {XLayerAddresses} from "./lib/XLayerAddresses.sol";
 import {TestnetV4Deployer} from "./DeployTestnetV4.s.sol";
 
 /// @title DeployPerk
-/// @notice Deploys the full V1 topology and writes `deployments/<chainId>.json`.
+/// @notice Deploys the full V1 topology and writes `deployments/<chainId>.json`. It never deploys a quote token: an
+///         ERC-20 pairing asset to allow from the start is passed as INITIAL_QUOTE_TOKEN (optional), and further ones,
+///         including test-network mocks, are added with ConfigureQuoteAsset.s.sol.
 contract DeployPerk is Script {
     uint256 internal constant DEFAULT_TIMELOCK = 172_800;
 
@@ -59,7 +60,8 @@ contract DeployPerk is Script {
     bytes32 public hookSalt;
     ReferralRegistry public referralRegistry;
     IPerkLPGrantVault public lpGrantVault;
-    address public xdogToken;
+    /// @notice ERC-20 pairing asset ConfigurePerk allows next to native OKB (INITIAL_QUOTE_TOKEN); zero when unset.
+    address public initialQuoteToken;
 
     /// @notice Deploy and wire every V1 singleton. Owner of Ownable contracts is the deployer until ConfigurePerk.
     function run() public {
@@ -70,13 +72,13 @@ contract DeployPerk is Script {
         protocolFeeRecipient = vm.envOr("PROTOCOL_FEE_RECIPIENT", deployer);
         if (protocolFeeRecipient == address(0)) protocolFeeRecipient = deployer;
         timelock = vm.envOr("TREASURY_TIMELOCK_SECONDS", DEFAULT_TIMELOCK);
+        initialQuoteToken = vm.envOr("INITIAL_QUOTE_TOKEN", address(0));
 
         vm.startBroadcast(pk);
         _resolveV4();
         _deployStack();
         _deployHook();
         _wire();
-        _resolveXdog();
         vm.stopBroadcast();
 
         _writeDeployment();
@@ -200,13 +202,6 @@ contract DeployPerk is Script {
         lpGrantVault.wire(address(graduationManager));
     }
 
-    function _resolveXdog() internal {
-        xdogToken = vm.envOr("XDOG_TOKEN_ADDRESS", address(0));
-        if (xdogToken == address(0) && block.chainid != XLayerAddresses.MAINNET_CHAIN_ID) {
-            xdogToken = address(new MockERC20("XDOG mock", "XDOG", 18));
-        }
-    }
-
     function _writeDeployment() internal {
         string memory obj = "perk.deployment";
         vm.serializeUint(obj, "chainId", block.chainid);
@@ -236,7 +231,7 @@ contract DeployPerk is Script {
         vm.serializeAddress(obj, "referralRegistry", address(referralRegistry));
         vm.serializeAddress(obj, "lpGrantVault", address(lpGrantVault));
         string memory json = vm.serializeAddress(obj, "hook", address(hook));
-        json = vm.serializeAddress(obj, "xdogToken", xdogToken);
+        json = vm.serializeAddress(obj, "initialQuoteToken", initialQuoteToken);
         vm.writeJson(json, _deploymentPath());
     }
 
@@ -268,7 +263,7 @@ contract DeployPerk is Script {
         console2.log("  hook                 ", address(hook));
         console2.log("  referralRegistry     ", address(referralRegistry));
         console2.log("  lpGrantVault         ", address(lpGrantVault));
-        console2.log("  xdogToken            ", xdogToken);
+        console2.log("  initialQuoteToken    ", initialQuoteToken);
         console2.log("  wrote                ", _deploymentPath());
         console2.log("============================================================");
     }

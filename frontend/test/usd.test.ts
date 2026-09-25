@@ -12,7 +12,7 @@ import {
 
 const OKB = "0x0000000000000000000000000000000000000000";
 const TAAPL = "0x7f9a46e6be91ad215e4000fdb697bf2b1c079f96";
-const XDOG = "0x32101d25b43dc97b50faeab4992e7af62c5856c2";
+const UNPRICED = "0x00000000000000000000000000000000000000dd";
 
 const price = (quote: string, usd: number, stale = false): QuotePrice => ({
   quote: quote as `0x${string}`,
@@ -33,12 +33,12 @@ describe("usableUsdRates", () => {
   });
   test("an unknown quote has no rate", () => {
     const rates = usableUsdRates([price(OKB, 119.73)], now, now);
-    expect(usdRateOf(rates, XDOG)).toBeNull();
+    expect(usdRateOf(rates, UNPRICED)).toBeNull();
     expect(usdRateOf(rates, undefined)).toBeNull();
   });
   test("stale, zero, negative and non-finite rates are dropped", () => {
     const rates = usableUsdRates(
-      [price(OKB, 119.73, true), price(TAAPL, 0), price(XDOG, -1), price("0x01", Number.NaN), price("0x02", Infinity)],
+      [price(OKB, 119.73, true), price(TAAPL, 0), price(UNPRICED, -1), price("0x01", Number.NaN), price("0x02", Infinity)],
       now,
       now,
     );
