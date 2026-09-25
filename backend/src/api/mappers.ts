@@ -20,6 +20,7 @@ import type {
   WalletTrade,
 } from "./types";
 import { addr, asBigInt, hexNull, num, numNull, uint, uintNull } from "./serialize";
+import { proxiedImageUrl } from "../media/ipfsImages";
 
 const ZERO_HASH = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -277,7 +278,7 @@ export function mapTokenMetadata(row: LaunchRow): TokenMetadataView | null {
   if (typeof linksRaw.telegram === "string") links.telegram = linksRaw.telegram;
   if (typeof linksRaw.website === "string") links.website = linksRaw.website;
   return {
-    image: typeof o.image === "string" ? o.image : null,
+    image: typeof o.image === "string" ? proxiedImageUrl(o.image) : null,
     description: typeof o.description === "string" && o.description.length > 0 ? o.description : null,
     links,
   };

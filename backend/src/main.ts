@@ -10,6 +10,7 @@ import { runDatasetLoader } from "./grants/datasets";
 import { createMediaStore } from "./media/store";
 import { runMetadataResolver } from "./media/resolver";
 import { allowAddressRanges } from "./net/fetchPublic";
+import { setImageProxyBase } from "./media/ipfsImages";
 import { PriceService } from "./prices/service";
 import { errorText, log } from "./log";
 
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
       }),
     );
     allowAddressRanges(cfg.fetchAllowRanges);
+    setImageProxyBase(cfg.publicApiUrl);
     tasks.push(runMetadataResolver({ db, config: cfg, media, log }));
     tasks.push(prices.run());
     tasks.push(new Promise(() => {}));

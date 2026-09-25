@@ -18,6 +18,8 @@ import { TokenBucketLimiter } from "../media/rateLimit";
 import { ChainRoleReader } from "../admin/roles";
 import { logError } from "../log";
 import type { PriceService } from "../prices/service";
+import { FALLBACK_GATEWAYS, IpfsImageCache } from "../media/ipfsImages";
+import { fetchPublic } from "../net/fetchPublic";
 
 export interface ApiDeps {
   db: Db;
@@ -38,6 +40,8 @@ export interface ApiDeps {
   uploadBudget?: TokenBucketLimiter;
   /** USD prices of the quote assets, refreshed in the background. Without it GET /v1/prices lists none. */
   prices?: PriceService;
+  /** Token images fetched from IPFS and kept in memory, for GET /v1/media/ipfs/:cid. */
+  ipfsImages?: IpfsImageCache;
 }
 
 export interface ResolvedApiDeps {
@@ -52,6 +56,7 @@ export interface ResolvedApiDeps {
   roles: ChainRoleReader | null;
   /** null without a price service. */
   prices: PriceService | null;
+  ipfsImages: IpfsImageCache;
 }
 
 /** `ip` is the socket peer address, passed in by main.ts; routes prefer it over client-supplied headers. */
@@ -78,6 +83,12 @@ export function createApp(deps: ApiDeps): Hono<AppEnv> {
     client: deps.client,
     roles: deps.client ? new ChainRoleReader(deps.client, deps.config.deployment, deps.roleCacheMs ?? 5_000) : null,
     prices: deps.prices ?? null,
+    ipfsImages:
+      deps.ipfsImages ??
+      new IpfsImageCache({
+        gateways: [deps.config.ipfsGateway, ...FALLBACK_GATEWAYS],
+        fetchBytes: (url) => fetchPublic(url, { fetch: deps.fetch, timeoutMs: 10_000, maxBytes: 2 * 1024 * 1024 }),
+      }),
   };
   app.use(
     "*",

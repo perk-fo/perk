@@ -13,6 +13,7 @@ import { LAUNCH_24H_SELECT, LAUNCH_COLUMNS, launchFrom } from "../api/queries";
 import { mapLaunchSummary, mapTokenMetadata, type LaunchRow } from "../api/mappers";
 import { addr, num, numNull } from "../api/serialize";
 import { browserImageUrl } from "../media/metadata";
+import { proxiedImageUrl } from "../media/ipfsImages";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -230,7 +231,8 @@ function mapNotice(v: unknown): QuoteNotice {
 function mapQuote(r: QuoteRow, config: AppConfig): QuoteAsset {
   const isNative = r.quote === ZERO;
   const enabled = r.info?.enabled ?? Boolean(r.allowed);
-  const icon = r.icon_url ? browserImageUrl(r.icon_url, config.publicApiUrl, config.ipfsGateway) : null;
+  const browserIcon = r.icon_url ? browserImageUrl(r.icon_url, config.publicApiUrl, config.ipfsGateway) : null;
+  const icon = browserIcon ? proxiedImageUrl(browserIcon) : null;
   return {
     address: addr(r.quote),
     symbol: r.symbol ?? "?",

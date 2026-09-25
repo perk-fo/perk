@@ -1,4 +1,6 @@
 import { Hono, type Context } from "hono";
+import { detectImageExt, looksLikeSvg } from "../../media/imageType";
+import { isImageCid } from "../../media/ipfsImages";
 import type { ApiError, MediaUpload } from "../types";
 import { HttpError, type AppEnv } from "../server";
 import { MEDIA_FILE_RE, localMediaFilename } from "../../media/store";
@@ -9,42 +11,6 @@ import { clientKey } from "../clientIp";
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const IMAGE_BODY_MAX = IMAGE_MAX_BYTES + 256 * 1024;
 const METADATA_MAX_BYTES = 16 * 1024;
-
-const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const JPEG = [0xff, 0xd8, 0xff];
-const GIF87 = [0x47, 0x49, 0x46, 0x38, 0x37, 0x61];
-const GIF89 = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61];
-
-function startsWith(bytes: Uint8Array, sig: number[]): boolean {
-  if (bytes.byteLength < sig.length) return false;
-  for (let i = 0; i < sig.length; i++) if (bytes[i] !== sig[i]) return false;
-  return true;
-}
-
-function looksLikeSvg(bytes: Uint8Array): boolean {
-  const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 256)).trimStart().toLowerCase();
-  return head.startsWith("<svg") || head.startsWith("<?xml") || head.includes("<svg");
-}
-
-function detectImageExt(bytes: Uint8Array): "png" | "jpg" | "webp" | "gif" | null {
-  if (startsWith(bytes, PNG)) return "png";
-  if (startsWith(bytes, JPEG)) return "jpg";
-  if (startsWith(bytes, GIF87) || startsWith(bytes, GIF89)) return "gif";
-  if (
-    bytes.byteLength >= 12 &&
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
-    return "webp";
-  }
-  return null;
-}
 
 function checkContentLength(c: Context<AppEnv>, max: number): void {
   const raw = c.req.header("content-length");
@@ -137,6 +103,36 @@ export function mediaRoutes(): Hono<AppEnv> {
     const encoded = new TextEncoder().encode(parsed.canonicalJson);
     uploadBudgetOrThrow(c, encoded.byteLength);
     return c.json<MediaUpload>(await store(c, encoded, "json"));
+  });
+
+  // GET /v1/media/ipfs/:cid: a token image pinned on IPFS, served from this API (media/ipfsImages). Only CIDs that an
+  // indexed launch's metadata or a listed quote asset's icon points at are served, so this is not an open proxy.
+  r.get("/ipfs/:cid", async (c) => {
+    const cid = c.req.param("cid");
+    if (!isImageCid(cid)) return c.json<ApiError>({ error: "not_found", message: "not found" }, 404);
+    const { db, config, ipfsImages } = c.get("deps");
+    const suffix = `%/ipfs/${cid}`;
+    const known = await db`
+      select 1 from launches
+        where chain_id = ${config.chainId} and metadata_status = 'ok' and metadata->>'image' like ${suffix}
+      union all
+      select 1 from quote_asset_display
+        where chain_id = ${config.chainId} and (icon_url like ${suffix} or icon_url = ${`ipfs://${cid}`})
+      limit 1
+    `;
+    if (known.length === 0) return c.json<ApiError>({ error: "not_found", message: "not found" }, 404);
+    const image = await ipfsImages.get(cid);
+    if (!image) {
+      c.header("Cache-Control", "public, max-age=30");
+      return c.json<ApiError>({ error: "unavailable", message: "image unavailable" }, 502);
+    }
+    c.header("Content-Type", image.contentType);
+    c.header("Cache-Control", "public, max-age=31536000, immutable");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Content-Security-Policy", "default-src 'none'");
+    const copy = new Uint8Array(image.bytes.byteLength);
+    copy.set(image.bytes);
+    return c.body(copy.buffer);
   });
 
   r.get("/:file", (c) => {
