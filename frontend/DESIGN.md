@@ -80,7 +80,9 @@ Rules:
   15px, line height 1.6). Chinese falls back to PingFang SC / Noto Sans CJK SC, Japanese to Hiragino Sans / Noto Sans
   CJK JP.
 - The wordmark is "Perk." at weight 850 with a tangerine full stop, always next to the chick (`brand/PerkBrand`).
-- Eyebrows and indices (`.eyebrow`, `.label-en`) are JetBrains Mono, 10-11px, uppercase, wide tracking.
+- Eyebrows (`.eyebrow`, `.label-en`) are JetBrains Mono, 10-11px, uppercase, wide tracking. No decorative index
+  numbers ("01 /") on eyebrows, figures, cards or headings; only real sequences such as the steps of a process are
+  numbered.
 - Figures (`.num`) use tabular digits; identifiers (`.mono`: addresses, hashes, module ids) JetBrains Mono.
 - Small prices keep the zero count as a real subscript (`ui/Subscripted`).
 - Minimum sizes: 12px for anything a person reads, 13px for labels, 10px only for monospace eyebrows.
@@ -89,6 +91,8 @@ Rules:
 
 - Content is 1200px wide; page margins 32px, 16px on mobile. No page may scroll sideways at 360px.
 - Every page opens with `ui/PageHeader`: eyebrow, a 36-48px heading, an optional description and a right slot.
+- Visual weight follows how often an action is used: trading is the primary action (the yellow button and the
+  highlighted home card); launching is not emphasised above the others.
   Sections inside use `ui/SectionHeading`.
 - The header is one row from `lg` up (lockup, navigation with a highlighter under the current section, network dot,
   sync pill, language, theme, wallet) and two rows on a phone, where only `sm` and up keep it sticky. On a phone the
@@ -192,8 +196,8 @@ Everything here stops under `prefers-reduced-motion`.
 ## Copy
 
 Keep each locale in its own language: English appears inside translated copy only for the wordmark, the tagline,
-technical identifiers such as the config hash and the pool id, and the small monospace eyebrows ("01 / DISCOVER",
-"ON THE MARKET"), which the client's design keeps in English as typography in every locale. They still live in the
+technical identifiers such as the config hash and the pool id, and the small monospace eyebrows ("CURVE AND POOL",
+"MARKET"), which the client's design keeps in English as typography in every locale. They still live in the
 message files, so a locale can translate them. Units follow the number in muted small text. Avoid exclamation marks.
 
 Money is shown in US dollars first wherever the quote asset has a USD rate (`GET /v1/prices`, `lib/usd`, `ui/Usd`):

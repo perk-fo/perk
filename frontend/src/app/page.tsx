@@ -15,9 +15,9 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { useT } from "@/i18n/provider";
 
 const PATHS = [
-  { tag: "home.door.tradeTag", href: "/trade", title: "nav.trade", body: "home.door.trade", cta: "home.door.tradeCta", icon: SwapIcon, sun: false },
+  { tag: "home.door.launchTag", href: "/launch", title: "nav.launch", body: "home.door.launch", cta: "home.door.launchCta", icon: RocketIcon, sun: false },
   { tag: "home.door.grantTag", href: "/grant", title: "nav.grant", body: "home.door.grant", cta: "home.door.grantCta", icon: LiquidityIcon, sun: false },
-  { tag: "home.door.launchTag", href: "/launch", title: "nav.launch", body: "home.door.launch", cta: "home.door.launchCta", icon: RocketIcon, sun: true },
+  { tag: "home.door.tradeTag", href: "/trade", title: "nav.trade", body: "home.door.trade", cta: "home.door.tradeCta", icon: SwapIcon, sun: true },
 ] as const;
 
 export default function HomePage() {
@@ -40,10 +40,10 @@ export default function HomePage() {
   }
 
   const ledger = [
-    { n: "01", label: t("home.stats.launches"), value: stats.data?.launches },
-    { n: "02", label: t("home.stats.graduated"), value: stats.data?.graduated },
-    { n: "03", label: t("home.stats.grants"), value: stats.data?.activeGrants },
-    { n: "04", label: t("home.stats.quotes"), value: stats.data?.quotes },
+    { label: t("home.stats.launches"), value: stats.data?.launches },
+    { label: t("home.stats.graduated"), value: stats.data?.graduated },
+    { label: t("home.stats.grants"), value: stats.data?.activeGrants },
+    { label: t("home.stats.quotes"), value: stats.data?.quotes },
   ];
 
   return (
@@ -90,14 +90,13 @@ export default function HomePage() {
         <div className="grid grid-cols-2 border-y border-line md:grid-cols-4">
           {ledger.map((s, i) => (
             <div
-              key={s.n}
-              className={`grid grid-cols-[auto_1fr] gap-x-3 gap-y-3 px-5 py-6 md:px-7 ${i % 2 === 0 ? "border-r" : ""} ${
+              key={s.label}
+              className={`flex flex-col gap-3 px-5 py-6 md:px-7 ${i % 2 === 0 ? "border-r" : ""} ${
                 i < 2 ? "border-b md:border-b-0" : ""
               } border-line md:border-r md:last:border-r-0 md:first:pl-0`}
             >
-              <span className="num pt-0.5 font-mono text-[10px] text-subtle">{s.n}</span>
               <span className="text-[12px] font-medium text-subtle">{s.label}</span>
-              <strong className="col-start-2 font-display text-[32px] font-extrabold leading-none tracking-tight">
+              <strong className="font-display text-[32px] font-extrabold leading-none tracking-tight">
                 <CountUp value={s.value} locale={locale} />
               </strong>
             </div>

@@ -57,14 +57,9 @@ export default function DocsPage() {
         </aside>
 
         <article className="min-w-0 max-w-3xl space-y-14">
-          {docs.sections.map((s, i) => (
+          {docs.sections.map((s) => (
             <section key={s.id} id={s.id} className="scroll-mt-24">
-              <h2 className="font-display text-[26px] leading-tight sm:text-[28px]">
-                <span className="mr-3 font-mono text-[13px] font-normal tracking-wider text-subtle">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                {s.title}
-              </h2>
+              <h2 className="font-display text-[26px] leading-tight sm:text-[28px]">{s.title}</h2>
               <div className="mt-5 space-y-5">
                 {s.blocks.map((b, j) => (
                   <Block key={j} block={b} />
