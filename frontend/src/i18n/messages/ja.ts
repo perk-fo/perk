@@ -138,13 +138,13 @@ const messages: Record<string, string> = {
   "home.list.title": "すべてのローンチ",
   "home.list.errorTitle": "読み込みに失敗しました",
   "home.empty.text": "このネットワークではまだトークンがローンチされていません。",
-  "home.empty.cta": "最初のトークンをローンチ",
+  "home.empty.cta": "最初のミームをローンチ",
   "home.card.raised": "調達済み {raised} / {threshold} {symbol}",
   "home.card.pendingGrad": "卒業閾値に到達しました。卒業を待っています",
   "home.network.body":
     "現在のチェーンには同期済みのデプロイがありません。X Layer テストネット（1952）に切り替えてください。",
 
-  "create.title": "トークンをローンチ",
+  "create.title": "ミームをローンチ",
   "create.subtitle": "トークン情報を入力し、ペア資産とテンプレートを選びます。右のプレビューはコントラクトが計算したもので、そのアドレスと configHash がそのまま署名の内容になります。",
   "create.network.body":
     "現在のチェーンには同期済みのデプロイがないため、ローンチを作成できません。X Layer テストネット（1952）に切り替えてください。",
@@ -424,7 +424,7 @@ const messages: Record<string, string> = {
   "home.door.grant": "Perk Launch のトークンは供給量の 15% を卒業後の流動性支援に充てます。対象となるペア資産の保有者は資産を預け、付与トークンを受け取り、プールの手数料を得られます。",
   "home.door.grantCta": "LP Grant に参加",
   "home.door.launch": "名前・画像・ペア資産・テンプレートを設定します。トークン、カーブ、ルールは1回の取引でオンチェーンに登録され、後から変更できません。",
-  "home.door.launchCta": "トークンをローンチ",
+  "home.door.launchCta": "ミームをローンチ",
   "home.trending": "24時間の取引上位",
   "home.trending.all": "マーケット全体",
   "trade.title": "トレード",
