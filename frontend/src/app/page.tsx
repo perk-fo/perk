@@ -20,6 +20,8 @@ const PATHS = [
   { tag: "home.door.tradeTag", href: "/trade", title: "nav.trade", body: "home.door.trade", cta: "home.door.tradeCta", icon: SwapIcon, sun: true },
 ] as const;
 
+const WHY = ["1", "2", "3"] as const;
+
 export default function HomePage() {
   const { deployment } = useDeployment();
   const { t, locale } = useT();
@@ -55,10 +57,17 @@ export default function HomePage() {
             <Blossom size={18} tone="honey" spin />
             {t("home.hero.kicker")}
           </p>
-          <h1 className="hero-title font-display text-[40px] leading-[1.12] sm:text-[52px] lg:text-[60px]">
+          <h1
+            className={`hero-title font-display leading-[1.12] [word-break:auto-phrase] ${
+              // full-width Chinese and Japanese glyphs: a size down, so each line of the headline fits the column
+              locale === "en" ? "text-[36px] sm:text-[46px] lg:text-[52px]" : "text-[28px] sm:text-[40px] lg:text-[44px]"
+            }`}
+          >
             {t("home.hero.line1")}
             <br />
-            <span className="font-display-italic">{t("home.hero.line2")}</span>
+            {t("home.hero.line2")}
+            <br />
+            <span className="font-display-italic">{t("home.hero.line3")}</span>
           </h1>
           <p className="mt-6 max-w-[470px] text-[15px] leading-[1.9] text-muted">{t("home.hero.sub")}</p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -107,6 +116,19 @@ export default function HomePage() {
             {t("home.api.downBody", { url: API_URL })}
           </Notice>
         )}
+      </section>
+
+      {/* why Perk: the three things that set it apart */}
+      <section className="mb-20">
+        <SectionHeading eyebrow={t("home.why.eyebrow")} title={t("home.why.title")} />
+        <div className="fade-up-stagger grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-6">
+          {WHY.map((n) => (
+            <div key={n} className="border-t-2 border-honey pt-5">
+              <h3 className="font-display text-[20px] leading-snug">{t(`home.why.${n}.title`)}</h3>
+              <p className="mt-3 text-[14px] leading-[1.85] text-muted">{t(`home.why.${n}.body`)}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* three ways in */}

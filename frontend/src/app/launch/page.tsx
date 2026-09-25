@@ -348,6 +348,7 @@ export default function CreatePage() {
                           {b.recommended && <Pill tone="verdigris">{t("create.template.recommended")}</Pill>}
                           {b.testnetOnly && <Pill tone="muted">{t("create.template.testnet")}</Pill>}
                         </div>
+                        <p className="mt-2 text-[13px] leading-relaxed text-muted">{t(b.blurb)}</p>
                         <div className="mt-3 space-y-1">
                           {b.lines.map(([k, v]) => (
                             <div key={k} className="flex items-baseline justify-between gap-4 text-xs">
@@ -443,12 +444,14 @@ export default function CreatePage() {
               <Kv label="Hook" value={previewData?.[1]} copy />
               <Kv label="configHash" value={configHash} copy />
             </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-subtle">{t("create.preview.hashNote")}</p>
             <div className="mt-4">
               <p className="label mb-2">{t("common.modules")}</p>
               <ModuleBlocks bitmap={moduleBitmap} />
             </div>
             <div className="mt-5">
               <FeeSplitBar />
+              <p className="mt-2 text-[12px] leading-relaxed text-subtle">{t("create.preview.feeNote")}</p>
             </div>
             {!isConnected && (
               <p className="label mt-4 text-center">{t("create.preview.connectHint")}</p>

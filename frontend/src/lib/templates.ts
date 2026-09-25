@@ -18,6 +18,8 @@ export interface TemplateBase {
   label: string;
   recommended: boolean;
   testnetOnly: boolean;
+  /** One-line description (message key) shown under the name. */
+  blurb: string;
   /** PRD 5.1 LP Grant ON/OFF summary rows as [labelKey, valueKey] message keys. */
   lines: Array<[string, string]>;
 }
@@ -28,6 +30,7 @@ export const TEMPLATE_BASES: readonly TemplateBase[] = [
     label: "Perk Launch",
     recommended: true,
     testnetOnly: false,
+    blurb: "tpl.perk.blurb",
     lines: [
       ["tpl.perk.row1.label", "tpl.perk.row1.value"],
       ["tpl.perk.row2.label", "tpl.perk.row2.value"],
@@ -40,6 +43,7 @@ export const TEMPLATE_BASES: readonly TemplateBase[] = [
     label: "Standard Launch",
     recommended: false,
     testnetOnly: false,
+    blurb: "tpl.standard.blurb",
     lines: [
       ["tpl.standard.row1.label", "tpl.standard.row1.value"],
       ["tpl.standard.row2.label", "tpl.standard.row2.value"],
@@ -52,6 +56,7 @@ export const TEMPLATE_BASES: readonly TemplateBase[] = [
     label: "Test Fast",
     recommended: false,
     testnetOnly: true,
+    blurb: "tpl.test.blurb",
     lines: [
       ["tpl.test.row1.label", "tpl.test.row1.value"],
       ["tpl.test.row2.label", "tpl.test.row2.value"],
@@ -64,6 +69,7 @@ export const TEMPLATE_BASES: readonly TemplateBase[] = [
     label: "Test Fast · Standard",
     recommended: false,
     testnetOnly: true,
+    blurb: "tpl.test.blurb",
     lines: [
       ["tpl.standard.row1.label", "tpl.standard.row1.value"],
       ["tpl.standard.row2.label", "tpl.standard.row2.value"],
