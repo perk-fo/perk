@@ -6,10 +6,16 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
 
 /// @title IPerkLPGrantVault
-/// @notice Holds every Perk Launch's 15% grant reserve, turns Merkle allocations into locked v4 positions, settles
-///         fees and exits under the principal cap, and burns whatever never becomes liquidity (PRD 6, ADR-007/008).
-/// @dev One contract serves every launch. Grant meme leaves the vault only into the official pool (activation), into
-///      the burn, or to a beneficiary at exit as shortfall compensation out of the meme their own position returned.
+/// @notice Holds every Perk Launch's 15% grant reserve, turns Merkle allocations into locked v4 positions co-owned by
+///         the beneficiary and the protocol, settles fees and exits, and burns whatever never becomes liquidity
+///         (PRD 6 v0.14, ADR-007/008).
+/// @dev One contract serves every launch. A grant position is co-owned pro rata to what each side put in: the
+///      beneficiary's quote deposit and the protocol's grant meme, valued at the activation price. That split, the
+///      protocol share `g`, is frozen at activation. At exit the position is valued at the hook's rate-limited
+///      reference price; the beneficiary receives `1 - g` of it (quote first, the rest in meme), the protocol's
+///      remaining quote goes to the Community Treasury and its remaining meme is burned. Trading fees go to the
+///      beneficiary in full. Grant meme leaves the vault only into the official pool (activation), into the burn, or
+///      to a beneficiary at exit out of the meme their own position returned.
 interface IPerkLPGrantVault {
     enum CampaignStatus {
         NONE,
@@ -37,36 +43,26 @@ interface IPerkLPGrantVault {
         uint256 reserve;
         uint256 basePool;
         uint256 referralBudget;
-        uint256 referralBudgetUsed; // invitee boosts committed at root + inviter credits earned
-        uint256 totalActivated; // meme that became liquidity
+        uint256 totalActivated; // meme that became liquidity; the shared inventory left is reserve - totalActivated
         uint256 burned;
         bytes32 root;
         string rootUri; // public dataset (PRD 6.2)
         uint64 rootProposedAt;
         uint256 rootTotalBase;
         uint256 rootTotalInviteeBoost;
-        // ADR-008 incentive pool: exit excess quote recycled to the grant liquidity still active, shared by the
-        // liquidity-seconds each position has accrued since its activation (see exitGrantPosition).
-        uint256 incentiveBalance;
-        uint256 activeLiquidity;
-        // sum over exits of (quote recycled) * 1e36 / (liquidity-seconds of the active positions at that exit)
-        uint256 accIncentivePerLiquiditySecond;
-        // the same sum with each term also multiplied by the exit's time since startTime
-        uint256 accIncentiveTimePerLiquiditySecond;
-        // sum over active positions of liquidity * (activatedAt - startTime); with activeLiquidity it gives their
-        // liquidity-seconds at time t as activeLiquidity * (t - startTime) - activeLiquidityTime
-        uint256 activeLiquidityTime;
         uint256 registeredBase; // base allocations registered under the active root, at most rootTotalBase
         uint256 registeredInviteeBoost; // invitee boosts registered under the active root, at most rootTotalInviteeBoost
     }
 
     struct Allocation {
         bool registered;
-        uint256 baseAllocation;
-        uint256 inviteeBoost;
-        uint256 baseNominalRemaining;
-        uint256 boostNominalRemaining;
-        uint256 inviterCreditEarned;
+        uint256 baseAllocation; // nominal base from the leaf
+        uint256 inviteeBoost; // cap on the invitee boost, from the leaf (10% of base for a bound invitee)
+        uint256 baseNominalRemaining; // nominal base not yet activated; claimable = this * decay factor
+        uint256 baseActivated; // meme activated from base, cumulative
+        uint256 boostEarned; // min(inviteeBoost, 10% of baseActivated); never decays, expires at window end
+        uint256 boostActivated;
+        uint256 inviterCreditEarned; // 10% of each bound invitee's base activated, capped at 50% of baseAllocation
         uint256 inviterCreditActivated;
     }
 
@@ -85,9 +81,10 @@ interface IPerkLPGrantVault {
         int24 tickLower;
         int24 tickUpper;
         uint64 activatedAt;
-        uint160 entrySqrtPriceX96; // pool price when the position was opened; prices the exit top-up with the exit price
-        uint256 incentiveCheckpoint; // campaign accIncentivePerLiquiditySecond when incentives were last settled
-        uint256 incentiveTimeCheckpoint; // campaign accIncentiveTimePerLiquiditySecond at the same moment
+        // protocol share g (1e18 = 100%): the grant meme's value over the position's value at activation, the meme
+        // valued at the larger of the spot and reference prices, rounded up; frozen
+        uint64 protocolShareWad;
+        uint160 entrySqrtPriceX96; // pool price when the position was opened
         bool exited;
     }
 
@@ -98,7 +95,6 @@ interface IPerkLPGrantVault {
         // cancelled by anyone (reserve burned), and a root proposed in time can still be activated after its delay
         uint64 rootDeadlineSeconds;
         uint256 minActivation; // smallest grant meme amount per activation
-        uint16 excessToIncentiveBps; // share of exit excess quote recycled to remaining grant liquidity
         uint24 maxPriceDeviationTicks; // positions open only this close to the hook's reference price; exits never wait
     }
 
@@ -126,6 +122,9 @@ interface IPerkLPGrantVault {
         address indexed meme, address indexed account, uint256 baseAllocation, uint256 inviteeBoost
     );
     event InviterCreditEarned(address indexed meme, address indexed inviter, address indexed invitee, uint256 amount);
+    /// @notice The account's invitee boost grew by `amount` because it activated base allocation.
+    event InviteeBoostEarned(address indexed meme, address indexed account, uint256 amount);
+    /// @notice An inviter credit was clipped by the cap of 50% of the inviter's own base allocation.
     event ReferralCreditCapped(address indexed meme, address indexed inviter, uint256 requested, uint256 granted);
     event GrantActivated(
         uint256 indexed positionId,
@@ -135,23 +134,15 @@ interface IPerkLPGrantVault {
         uint256 inviteeBoostActivated,
         uint256 inviterCreditActivated,
         uint256 quoteDeposited,
-        uint128 liquidity
+        uint128 liquidity,
+        uint64 protocolShareWad
     );
-    event GrantFeesCollected(
-        uint256 indexed positionId, uint256 quoteFeesPaid, uint256 memeFeesPaid, uint256 incentivePaid
-    );
+    event GrantFeesCollected(uint256 indexed positionId, uint256 quoteFeesPaid, uint256 memeFeesPaid);
     event GrantPositionExited(
-        uint256 indexed positionId,
-        uint256 quoteToUser,
-        uint256 memeToUser,
-        uint256 excessQuote,
-        uint256 memeBurned,
-        uint256 incentivePaid
+        uint256 indexed positionId, uint256 quoteToUser, uint256 memeToUser, uint256 quoteToTreasury, uint256 memeBurned
     );
-    event ExcessQuoteRouted(address indexed meme, uint256 toIncentivePool, uint256 toTreasury);
     event GrantMemeBurned(address indexed meme, uint256 amount, bytes32 reason);
     event GrantFinalized(address indexed meme, uint256 unactivatedMemeBurned);
-    event IncentiveSwept(address indexed meme, uint256 toTreasury);
     event Wired(address indexed graduationManager);
     /// @notice The grant publisher changed: the one address besides the owner that may propose or cancel roots.
     event PublisherUpdated(address indexed previous, address indexed current);
@@ -178,7 +169,6 @@ interface IPerkLPGrantVault {
     error SlippageExceeded();
     error ZeroAmount();
     error ZeroAddress();
-    error NothingToSweep();
     error AlreadyWired();
     error NotPositionManager();
     /// @dev The pool price is further from the hook's reference price than the vault accepts for an activation. It
@@ -188,6 +178,9 @@ interface IPerkLPGrantVault {
     error RootDeadlinePassed(uint64 deadline);
     /// @dev The launch is not REFUNDING, so its grant reserve is not burned through `burnRefundedReserve`.
     error LaunchNotRefunding();
+    /// @dev The activation asks for more grant meme than the campaign's shared inventory still holds. Base, invitee
+    ///      boost and inviter credit all draw from the one reserve, first come first served.
+    error InsufficientInventory(uint256 remaining);
 
     // ---- wiring ----
     /// @notice One-time wiring of the GraduationManager (owner only).
@@ -219,10 +212,8 @@ interface IPerkLPGrantVault {
     function activateRoot(address meme) external;
     /// @notice Anyone, after the root deadline, when no root is active or pending. Burns the whole reserve.
     function cancelCampaign(address meme) external;
-    /// @notice Anyone, after endTime. Burns everything that never became liquidity.
+    /// @notice Anyone, after endTime. Burns everything that never became liquidity: reserve - totalActivated.
     function finalizeGrant(address meme) external returns (uint256 unactivatedMemeBurned);
-    /// @notice Anyone, after finalize when no grant liquidity remains: residual incentive quote goes to the treasury.
-    function sweepIncentive(address meme) external returns (uint256 toTreasury);
     /// @notice Anyone, once the launch is REFUNDING (rescued instead of graduated): burns the grant reserve the vault
     ///         holds for it, which no campaign will ever use. The campaign is recorded as CANCELLED.
     function burnRefundedReserve(address meme) external returns (uint256 burned);
@@ -234,6 +225,9 @@ interface IPerkLPGrantVault {
     function registerAllocation(address meme, GrantLeaf calldata leaf, bytes32[] calldata proof) external;
 
     /// @notice Activates up to the claimable base, invitee boost and inviter credit into one locked full-range position.
+    /// @dev All three draw from the campaign's one shared inventory, first come first served; asking for more than it
+    ///      holds reverts `InsufficientInventory`. Base is processed first, so the invitee boost its activation earns
+    ///      can be activated in the same call. Only base activation earns boosts and inviter credits.
     /// @param quoteMax Upper bound on quote pulled (native: msg.value == quoteMax; unused part is refunded).
     function activateGrant(
         address meme,
@@ -244,34 +238,28 @@ interface IPerkLPGrantVault {
         uint128 minLiquidity
     ) external payable returns (uint256 positionId);
 
-    /// @notice Pays the position's uncollected trading fees, both sides, and its incentive share to the beneficiary.
-    /// @dev Incentives accrue by liquidity-seconds: each exit's recycled excess is shared among the positions still
-    ///      active in proportion to liquidity * (exit time - activation time). A position opened just before an exit
-    ///      has accrued next to nothing, so activating in front of a large exit collects nothing from it.
-    function collectGrantFees(uint256 positionId)
-        external
-        returns (uint256 quoteFeesPaid, uint256 memeFeesPaid, uint256 incentivePaid);
+    /// @notice Anyone. Pays the position's uncollected trading fees, both currencies, 100% to the beneficiary.
+    function collectGrantFees(uint256 positionId) external returns (uint256 quoteFeesPaid, uint256 memeFeesPaid);
 
-    /// @notice Closes a grant position and settles principal (ADR-008 §5).
-    /// @dev The beneficiary is owed their quote deposit `D`. It is paid in quote first; when the position no longer
-    ///      holds that much quote, grant meme covers the shortfall, converted at the geometric mean of the price the
-    ///      position was opened at and the exit price. That is the one conversion at which moving the pool price
-    ///      around an exit is worth nothing to the LP doing it: the exit price is theirs to move, and at spot a
-    ///      crash-exit-rebuy round trip drained the grant meme. With q = sqrt(P_exit / P_entry) <= 1 the beneficiary
-    ///      receives D*q in quote plus meme worth D*q*(1-q), so D*(1 - (1-q)^2) in all: 99% of the deposit after a
-    ///      20% price fall, 91% after 50%, 75% after 75%, against D*q for the same capital held without a grant.
-    ///      Quote above `D` goes to the treasury/incentive pool and every meme not paid out is burned. Fees are
-    ///      settled separately and in full to the beneficiary.
-    ///      An exit is never refused on price. The settlement above is indifferent to the exit price, and the one
-    ///      part a moved price could steer, the excess recycled to the incentive pool, is capped at the excess the
-    ///      position would hold at the hook's reference price whenever the pool has moved off that reference; the
-    ///      rest of the excess goes to the treasury. Pumping the price around an exit so that a second position
-    ///      collects the "excess" therefore pays nothing.
+    /// @notice Beneficiary only, after the minimum LP time. Closes a grant position and settles principal (PRD 6 v0.14).
+    /// @dev Fees are collected first and paid in full to the beneficiary. The principal the position returns,
+    ///      `quoteOut` and `memeOut`, is valued at the hook's rate-limited reference price P:
+    ///      V = quoteOut + memeOut * P and the beneficiary's entitlement is E = V * (1 - g), g the protocol share
+    ///      frozen at activation. E is paid in quote first (up to quoteOut) and any rest in meme at P (up to memeOut).
+    ///      The protocol's share is retired: the remaining quote goes to the Community Treasury, the remaining meme is
+    ///      burned. No cap either way and no redistribution between positions.
+    ///      An exit is never refused on price. Valuing at the reference rather than spot makes moving the pool around
+    ///      one's own exit a loss: a pump to r*P0 nets -D(sqrt r - 1)^2 / (2 sqrt r) in value at P0, a dump to s*P0
+    ///      nets -G(1 - sqrt s)^2 / (2 sqrt s) in meme, where spot valuation would let a pump extract the grant meme.
+    ///      Known residual: the reference follows the pool at up to 8 ticks per second, so a pump held long enough for
+    ///      it to follow lets a large position sell its meme share to the protocol at the pumped price. Same-block
+    ///      manipulation is unprofitable; the cost of this grows with the time the price must be held off-market.
+    ///      Every transfer to the beneficiary (fees and principal) is made last.
     /// @param minQuoteOut Reverts when the quote leg pays less than this.
     /// @param minMemeOut Reverts when the meme leg pays less than this. Zero for a pure-quote exit.
     function exitGrantPosition(uint256 positionId, uint256 minQuoteOut, uint256 minMemeOut)
         external
-        returns (uint256 quoteToUser, uint256 memeToUser, uint256 excessQuote, uint256 memeBurned);
+        returns (uint256 quoteToUser, uint256 memeToUser, uint256 quoteToTreasury, uint256 memeBurned);
 
     // ---- views ----
     function campaign(address meme) external view returns (Campaign memory);
@@ -287,7 +275,13 @@ interface IPerkLPGrantVault {
         external
         view
         returns (uint256 quoteAmount, uint128 liquidity);
-    /// @notice Incentive quote the position would be paid now (zero once it has exited).
-    function pendingIncentive(uint256 positionId) external view returns (uint256);
+    /// @notice Grant meme the campaign can still turn into liquidity: reserve - totalActivated while ACTIVE, else 0.
+    function inventoryRemaining(address meme) external view returns (uint256);
+    /// @notice Principal settlement `exitGrantPosition` would make now, at the current reference price, excluding the
+    ///         fees it also pays. All zeros once the position has exited.
+    function exitPreview(uint256 positionId)
+        external
+        view
+        returns (uint256 quoteToUser, uint256 memeToUser, uint256 quoteToTreasury, uint256 memeBurned);
     function leafHash(GrantLeaf calldata leaf) external pure returns (bytes32);
 }

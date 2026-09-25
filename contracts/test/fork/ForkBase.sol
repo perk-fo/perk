@@ -110,7 +110,7 @@ abstract contract ForkBase is PerkDeployer {
         topo.curve = new BondingCurve(address(topo.factory), address(topo.feeRouter));
         topo.referral = new ReferralRegistry();
 
-        topo.locker = new InitialLpLocker(address(topo.positionManager), address(topo.treasury));
+        topo.locker = new InitialLpLocker(address(topo.positionManager), address(topo.feeRouter));
         topo.graduation = deployGraduation(
             owner,
             address(topo.factory),
@@ -132,11 +132,7 @@ abstract contract ForkBase is PerkDeployer {
             topo.poolManager,
             address(topo.positionManager),
             IPerkLPGrantVault.Config({
-                rootDelaySeconds: 1 days,
-                rootDeadlineSeconds: 14 days,
-                minActivation: 1e18,
-                excessToIncentiveBps: 10_000,
-                maxPriceDeviationTicks: 500
+                rootDelaySeconds: 1 days, rootDeadlineSeconds: 14 days, minActivation: 1e18, maxPriceDeviationTicks: 500
             })
         );
 

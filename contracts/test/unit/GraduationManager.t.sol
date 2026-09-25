@@ -378,7 +378,7 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
         assertGt(t.erc20Quote.balanceOf(address(t.feeRouter)), routerBefore);
     }
 
-    function test_collectFees_sendsToFeeRecipient() public {
+    function test_collectFees_sendsToDev() public {
         address meme = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.erc20Quote, keccak256("fees-a"));
         t.graduation.graduate(meme);
         IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
@@ -388,9 +388,13 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
         _swapQuoteIn(g.key, quoteIs0, SWAP_IN, 0);
         _swapQuoteIn(g.key, quoteIs0, SWAP_IN, 0);
 
-        uint256 beforeQ = t.erc20Quote.balanceOf(address(t.treasury));
+        address dev = t.feeRouter.launchFees(meme).dev;
+        assertEq(dev, creator);
+        uint256 beforeQ = t.erc20Quote.balanceOf(dev);
+        uint256 treasuryBefore = t.erc20Quote.balanceOf(address(t.treasury));
         t.locker.collectFees(g.positionTokenId);
-        assertGt(t.erc20Quote.balanceOf(address(t.treasury)), beforeQ);
+        assertGt(t.erc20Quote.balanceOf(dev), beforeQ);
+        assertEq(t.erc20Quote.balanceOf(address(t.treasury)), treasuryBefore);
         assertEq(IERC721(address(t.positionManager)).ownerOf(g.positionTokenId), address(t.locker));
         assertGt(t.positionManager.getPositionLiquidity(g.positionTokenId), 0);
     }

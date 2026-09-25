@@ -25,8 +25,8 @@ import {IPerkFeeRouter} from "../src/interfaces/IPerkFeeRouter.sol";
 ///           phase1()        creator launches; alice/bob/carol opt in, bob binds alice; buyer graduates the curve; anyone graduates
 ///           (off-chain)     indexer snapshot -> deployer proposeRoot -> wait GRANT_ROOT_DELAY_SECONDS
 ///           phase2(meme)    activateRoot; register alice/bob/carol from LIFECYCLE_PROOFS json; bob, alice, carol activate; swapper trades
-///           phase3(meme)    after TEST_MIN_LP_SECONDS: bob exits (principal cap, excess -> incentive pool); alice/carol collect
-///           phase4(meme)    after the window: finalizeGrant; alice & carol exit; sweepIncentive
+///           phase3(meme)    after TEST_MIN_LP_SECONDS: bob exits (co-owned settlement at the reference price); alice collects
+///           phase4(meme)    after the window: finalizeGrant; alice & carol exit
 contract LifecycleTestnet is Script {
     struct Roles {
         uint256 creatorPk;
@@ -149,7 +149,7 @@ contract LifecycleTestnet is Script {
         _activate(a, meme, r.alicePk, false, true);
         _activate(a, meme, r.carolPk, false, false);
 
-        // swapper: two buys push the price up so bob's exit shows the principal cap and the excess routing
+        // swapper: two buys push the price up so bob's exit shows the settlement after a price move
         vm.startBroadcast(r.swapperPk);
         _buy(a, meme, 0.002 ether);
         _buy(a, meme, 0.002 ether);
@@ -159,7 +159,7 @@ contract LifecycleTestnet is Script {
         console2.log("alice inviter credit earned", al.inviterCreditEarned);
         console2.log("alice inviter credit activated", al.inviterCreditActivated);
         console2.log("campaign totalActivated", a.vault.campaign(meme).totalActivated);
-        console2.log("campaign activeLiquidity", a.vault.campaign(meme).activeLiquidity);
+        console2.log("inventory remaining", a.vault.inventoryRemaining(meme));
     }
 
     // ------------------------------------------------------------------ phase 3
@@ -170,23 +170,23 @@ contract LifecycleTestnet is Script {
         uint256 balBefore = vm.addr(r.bobPk).balance;
 
         vm.startBroadcast(r.bobPk);
-        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = a.vault.exitGrantPosition(bobPos, 0, 0);
+        (uint256 toUser, uint256 memeToUser, uint256 toTreasury, uint256 burned) =
+            a.vault.exitGrantPosition(bobPos, 0, 0);
         vm.stopBroadcast();
-        console2.log("bob quoteDeposited", bp.quoteDeposited);
-        console2.log("bob quoteToUser (capped at deposit)", toUser);
-        console2.log("bob excess -> incentive pool", excess);
+        console2.log("bob quoteDeposited / protocol share (wad)", bp.quoteDeposited, bp.protocolShareWad);
+        console2.log("bob quoteToUser", toUser);
+        console2.log("bob memeToUser", memeToUser);
+        console2.log("bob quote -> treasury", toTreasury);
         console2.log("bob meme burned", burned);
         console2.log("bob balance delta (incl. gas)", int256(vm.addr(r.bobPk).balance) - int256(balBefore));
 
         uint256 alicePos = _livePosition(a, meme, vm.addr(r.alicePk));
-        uint256 carolPos = _livePosition(a, meme, vm.addr(r.carolPk));
-        console2.log("alice pending incentive", a.vault.pendingIncentive(alicePos));
-        console2.log("carol pending incentive", a.vault.pendingIncentive(carolPos));
+        (uint256 pq, uint256 pm,,) = a.vault.exitPreview(alicePos);
+        console2.log("alice exit preview quote / meme", pq, pm);
         vm.startBroadcast(r.alicePk);
-        (uint256 qf, uint256 mf, uint256 inc) = a.vault.collectGrantFees(alicePos);
+        (uint256 qf, uint256 mf) = a.vault.collectGrantFees(alicePos);
         vm.stopBroadcast();
-        console2.log("alice collected quote fees / meme burned / incentive", qf, mf, inc);
-        console2.log("campaign incentiveBalance", a.vault.campaign(meme).incentiveBalance);
+        console2.log("alice collected quote fees / meme fees", qf, mf);
     }
 
     // ------------------------------------------------------------------ phase 4
@@ -199,23 +199,16 @@ contract LifecycleTestnet is Script {
 
         uint256 alicePos = _livePosition(a, meme, vm.addr(r.alicePk));
         vm.startBroadcast(r.alicePk);
-        (uint256 aUser,, uint256 aExcess,) = a.vault.exitGrantPosition(alicePos, 0, 0);
+        (uint256 aUser,, uint256 aTreasury,) = a.vault.exitGrantPosition(alicePos, 0, 0);
         vm.stopBroadcast();
-        console2.log("alice quoteToUser / excess", aUser, aExcess);
+        console2.log("alice quoteToUser / to treasury", aUser, aTreasury);
 
         uint256 carolPos = _livePosition(a, meme, vm.addr(r.carolPk));
         vm.startBroadcast(r.carolPk);
-        (uint256 cUser,, uint256 cExcess,) = a.vault.exitGrantPosition(carolPos, 0, 0);
+        (uint256 cUser,, uint256 cTreasury,) = a.vault.exitGrantPosition(carolPos, 0, 0);
         vm.stopBroadcast();
-        console2.log("carol quoteToUser / excess", cUser, cExcess);
+        console2.log("carol quoteToUser / to treasury", cUser, cTreasury);
 
-        IPerkLPGrantVault.Campaign memory c = a.vault.campaign(meme);
-        console2.log("incentiveBalance left", c.incentiveBalance);
-        if (c.incentiveBalance > 0) {
-            vm.startBroadcast(r.deployerPk);
-            console2.log("swept to treasury", a.vault.sweepIncentive(meme));
-            vm.stopBroadcast();
-        }
         console2.log("vault meme balance (must be 0)", IERC20(meme).balanceOf(address(a.vault)));
         console2.log("campaign status (4 = EXPIRED)", uint256(a.vault.campaign(meme).status));
     }
@@ -223,9 +216,16 @@ contract LifecycleTestnet is Script {
     // ------------------------------------------------------------------ helpers
     function _activate(Addrs memory a, address meme, uint256 pk, bool withBoost, bool withCredit) internal {
         address who = vm.addr(pk);
-        (uint256 base, uint256 boost, uint256 credit) = a.vault.grantBreakdown(meme, who);
+        (uint256 base,, uint256 credit) = a.vault.grantBreakdown(meme, who);
         uint256 baseAmt = (base * 99) / 100;
-        uint256 boostAmt = withBoost ? (boost * 99) / 100 : 0;
+        uint256 boostAmt;
+        if (withBoost) {
+            // the boost is earned by the base this call activates (10% of base activated, up to the leaf's boost)
+            IPerkLPGrantVault.Allocation memory al = a.vault.allocation(meme, who);
+            uint256 earned = (al.baseActivated + baseAmt) / 10;
+            if (earned > al.inviteeBoost) earned = al.inviteeBoost;
+            boostAmt = earned - al.boostActivated;
+        }
         uint256 creditAmt = withCredit ? credit : 0;
         (uint256 q,) = a.vault.quoteRequired(meme, baseAmt + boostAmt + creditAmt);
         uint256 quoteMax = q + q / 50 + 1;

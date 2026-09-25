@@ -89,7 +89,7 @@ contract LPGrantVaultTest is PerkDeployer, Deployers {
         c = t.vault.campaign(meme);
         assertEq(uint256(c.status), uint256(IPerkLPGrantVault.CampaignStatus.ACTIVE));
         assertEq(c.endTime - c.startTime, 14 days);
-        assertEq(c.referralBudgetUsed, BOB_BOOST);
+        assertEq(t.vault.inventoryRemaining(meme), c.reserve);
 
         // registration
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), _proof(0));
@@ -99,18 +99,23 @@ contract LPGrantVaultTest is PerkDeployer, Deployers {
         (uint256 aBase,,) = t.vault.grantBreakdown(meme, alice);
         assertEq(aBase, ALICE_BASE);
 
-        // bob activates 600k base + full boost at t0 -> alice earns 60k credit
-        uint256 bobPos = _activate(meme, bob, 600_000 ether, BOB_BOOST, 0);
+        // no boost before any base is activated
+        (, uint256 bobBoost,) = t.vault.grantBreakdown(meme, bob);
+        assertEq(bobBoost, 0);
+        // bob activates 600k base at t0, which earns him a 60k boost he activates in the same call; alice earns 60k
+        uint256 bobPos = _activate(meme, bob, 600_000 ether, 60_000 ether, 0);
         IPerkLPGrantVault.GrantPosition memory bp = t.vault.position(bobPos);
         assertEq(bp.beneficiary, bob);
         assertGt(bp.liquidity, 0);
         assertGt(bp.quoteDeposited, 0);
-        assertApproxEqRel(bp.grantMemeAmount, 700_000 ether, 1e6); // liquidity rounds down by a few wei
+        assertApproxEqRel(bp.grantMemeAmount, 660_000 ether, 1e6); // liquidity rounds down by a few wei
+        assertApproxEqRel(bp.protocolShareWad, 0.5e18, 1e15); // full range: the grant meme is half the value
+        assertEq(t.vault.allocation(meme, bob).boostEarned, 60_000 ether);
+        assertEq(t.vault.inventoryRemaining(meme), c.reserve - bp.grantMemeAmount);
         IPerkLPGrantVault.Allocation memory aa = t.vault.allocation(meme, alice);
         assertEq(aa.inviterCreditEarned, 60_000 ether);
         (,, uint256 aCredit) = t.vault.grantBreakdown(meme, alice);
         assertEq(aCredit, 60_000 ether);
-        assertEq(t.vault.campaign(meme).referralBudgetUsed, BOB_BOOST + 60_000 ether);
 
         // halfway: alice's base decayed to 50%; she activates 1M base + her 60k credit
         vm.warp(t.vault.campaign(meme).startTime + 7 days);
@@ -135,7 +140,7 @@ contract LPGrantVaultTest is PerkDeployer, Deployers {
         uint256 supplyBefore = IERC20(meme).totalSupply();
         uint256 bobQuoteBefore = t.quoteToken.balanceOf(bob);
         uint256 bobMemeBefore = IERC20(meme).balanceOf(bob);
-        (uint256 qf, uint256 mf,) = t.vault.collectGrantFees(bobPos);
+        (uint256 qf, uint256 mf) = t.vault.collectGrantFees(bobPos);
         assertGt(qf, 0);
         assertGt(mf, 0);
         assertEq(t.quoteToken.balanceOf(bob) - bobQuoteBefore, qf);
@@ -150,21 +155,26 @@ contract LPGrantVaultTest is PerkDeployer, Deployers {
         vm.expectRevert(IPerkLPGrantVault.NotBeneficiary.selector);
         t.vault.exitGrantPosition(alicePos, 0, 0);
 
-        // bob exits (his min LP time elapsed long ago): principal capped, excess recycled to alice's active liquidity
-        vm.warp(block.timestamp + 1 hours); // the reference catches up, so the whole excess counts as genuine
+        // bob exits (his min LP time elapsed long ago): co-owned settlement at the reference price
+        vm.warp(block.timestamp + 1 hours); // the reference catches up with the pool
         supplyBefore = IERC20(meme).totalSupply();
         bobQuoteBefore = t.quoteToken.balanceOf(bob);
+        (uint256 pq, uint256 pm, uint256 pt, uint256 pb) = t.vault.exitPreview(bobPos);
         vm.prank(bob);
-        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(bobPos, 0, 0);
-        assertLe(toUser, bp.quoteDeposited);
-        assertGt(excess, 0); // price went up after two buys
-        assertGt(burned, 0);
+        (uint256 toUser, uint256 memeToUser, uint256 toTreasury, uint256 burned) =
+            t.vault.exitGrantPosition(bobPos, 0, 0);
+        assertEq(toUser, pq);
+        assertEq(memeToUser, pm);
+        assertEq(toTreasury, pt);
+        assertEq(burned, pb);
+        assertGt(toUser, 0);
+        assertGt(burned, 0); // the protocol's share of the meme is retired
         assertEq(supplyBefore - IERC20(meme).totalSupply(), burned);
-        assertGe(t.quoteToken.balanceOf(bob) - bobQuoteBefore, toUser);
+        assertEq(t.quoteToken.balanceOf(bob) - bobQuoteBefore, toUser); // fees were collected just before
         assertTrue(t.vault.position(bobPos).exited);
+        (pq, pm, pt, pb) = t.vault.exitPreview(bobPos);
+        assertEq(pq + pm + pt + pb, 0);
         c = t.vault.campaign(meme);
-        assertEq(c.incentiveBalance, excess);
-        assertApproxEqAbs(t.vault.pendingIncentive(alicePos), c.incentiveBalance, 1); // mulDiv floors
 
         // window over: finalize burns the unactivated reserve; alice can still collect / exit later
         vm.warp(c.endTime + 1);
@@ -178,18 +188,10 @@ contract LPGrantVaultTest is PerkDeployer, Deployers {
 
         uint256 aliceQuoteBefore = t.quoteToken.balanceOf(alice);
         vm.prank(alice);
-        (toUser,, excess,) = t.vault.exitGrantPosition(alicePos, 0, 0);
-        // alice received principal (capped) + fees + the recycled incentive
-        assertGt(t.quoteToken.balanceOf(alice) - aliceQuoteBefore, toUser);
-        assertEq(t.vault.campaign(meme).activeLiquidity, 0);
-        // alice was the last position: her own excess goes straight to the treasury; at most rounding dust is left
-        uint256 dust = t.vault.campaign(meme).incentiveBalance;
-        assertLe(dust, 1);
-        if (dust > 0) {
-            assertEq(t.vault.sweepIncentive(meme), dust);
-        }
-        vm.expectRevert(IPerkLPGrantVault.NothingToSweep.selector);
-        t.vault.sweepIncentive(meme);
+        (toUser,,,) = t.vault.exitGrantPosition(alicePos, 0, 0);
+        // alice received her share of the principal plus her position's fees
+        assertGe(t.quoteToken.balanceOf(alice) - aliceQuoteBefore, toUser);
+        assertGt(toUser, 0);
         // the vault never keeps meme
         assertEq(IERC20(meme).balanceOf(address(t.vault)), 0);
     }

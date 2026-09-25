@@ -64,24 +64,14 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer, Gra
     /// @param poolManager_ Uniswap v4 PoolManager (placeholder address is fine for factory-only tests).
     /// @return t Wired topology addresses.
     function deployPerkV1(address owner, address poolManager_) internal returns (Topology memory t) {
-        return deployPerkV1(owner, poolManager_, 10_000);
-    }
-
-    /// @notice Same as `deployPerkV1(owner, poolManager_)` with a custom `excessToIncentiveBps` on the grant vault.
-    function deployPerkV1(address owner, address poolManager_, uint16 excessToIncentiveBps)
-        internal
-        returns (Topology memory t)
-    {
-        return deployPerkV1(owner, poolManager_, excessToIncentiveBps, 500);
+        return deployPerkV1(owner, poolManager_, uint24(500));
     }
 
     /// @notice As above with a custom grant price guard; `type(uint24).max` switches it off.
-    function deployPerkV1(
-        address owner,
-        address poolManager_,
-        uint16 excessToIncentiveBps,
-        uint24 maxPriceDeviationTicks
-    ) internal returns (Topology memory t) {
+    function deployPerkV1(address owner, address poolManager_, uint24 maxPriceDeviationTicks)
+        internal
+        returns (Topology memory t)
+    {
         t.owner = owner;
         t.poolManager = poolManager_;
         t.nativeQuote = Currency.wrap(address(0));
@@ -105,7 +95,7 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer, Gra
         t.referral = new ReferralRegistry();
 
         (t.positionManager, t.permit2) = deployPosm(IPoolManager(poolManager_));
-        t.locker = new InitialLpLocker(address(t.positionManager), address(t.treasury));
+        t.locker = new InitialLpLocker(address(t.positionManager), address(t.feeRouter));
         t.graduation = deployGraduation(
             owner,
             address(t.factory),
@@ -130,7 +120,6 @@ abstract contract PerkDeployer is HookDeployer, PosmDeployer, VaultDeployer, Gra
                 rootDelaySeconds: 1 days,
                 rootDeadlineSeconds: 14 days,
                 minActivation: 1e18,
-                excessToIncentiveBps: excessToIncentiveBps,
                 maxPriceDeviationTicks: maxPriceDeviationTicks
             })
         );

@@ -67,19 +67,18 @@ contract SmokeGrantTestnet is Script {
                 IPerkLPGrantVault.GrantPosition memory p = vault.position(ids[i]);
                 if (p.exited || p.meme != meme) continue;
                 if (block.timestamp >= p.activatedAt + c.minLpSeconds) {
-                    (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) =
+                    (uint256 toUser, uint256 memeToUser, uint256 toTreasury, uint256 burned) =
                         vault.exitGrantPosition(ids[i], 0, 0);
                     console2.log("exited position", ids[i]);
                     console2.log("quote to user", toUser);
                     console2.log("meme to user", memeToUser);
-                    console2.log("excess", excess);
+                    console2.log("quote to treasury", toTreasury);
                     console2.log("meme burned", burned);
                 } else {
-                    (uint256 qf, uint256 mf, uint256 inc) = vault.collectGrantFees(ids[i]);
+                    (uint256 qf, uint256 mf) = vault.collectGrantFees(ids[i]);
                     console2.log("collected fees for position", ids[i]);
                     console2.log("quote fees", qf);
                     console2.log("meme fees", mf);
-                    console2.log("incentive paid", inc);
                 }
             }
         }

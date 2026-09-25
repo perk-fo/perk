@@ -271,9 +271,16 @@ contract SeedDemo is Script {
 
     function _activate(A memory a, address meme, uint256 pk, bool withBoost, bool withCredit) internal {
         address who = vm.addr(pk);
-        (uint256 base, uint256 boost, uint256 credit) = a.vault.grantBreakdown(meme, who);
+        (uint256 base,, uint256 credit) = a.vault.grantBreakdown(meme, who);
         uint256 baseAmt = (base * 99) / 100;
-        uint256 boostAmt = withBoost ? (boost * 99) / 100 : 0;
+        uint256 boostAmt;
+        if (withBoost) {
+            // the boost is earned by the base this call activates (10% of base activated, up to the leaf's boost)
+            IPerkLPGrantVault.Allocation memory al = a.vault.allocation(meme, who);
+            uint256 earned = (al.baseActivated + baseAmt) / 10;
+            if (earned > al.inviteeBoost) earned = al.inviteeBoost;
+            boostAmt = earned - al.boostActivated;
+        }
         uint256 creditAmt = withCredit ? credit : 0;
         (uint256 q,) = a.vault.quoteRequired(meme, baseAmt + boostAmt + creditAmt);
         uint256 quoteMax = q + q / 50 + 1;

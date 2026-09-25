@@ -34,7 +34,6 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
     event GrantRootCancelled(address indexed meme, bytes32 root);
     event ReferralCreditCapped(address indexed meme, address indexed inviter, uint256 requested, uint256 granted);
     event Received(Currency indexed quote, address indexed from, uint256 amount, bytes32 indexed ref);
-    event IncentiveSwept(address indexed meme, uint256 toTreasury);
 
     function setUp() public {
         _setUpPerk();
@@ -157,7 +156,9 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         t.vault.proposeRoot(meme, root, "ipfs://dataset", 1, 0);
     }
 
-    function test_finalizeGrant_and_sweepIncentive_lifecycle() public {
+    /// @dev finalizeGrant burns exactly what never became liquidity, reserve - totalActivated; positions opened before
+    ///      it still exit afterwards, and each exit's protocol quote reaches the treasury.
+    function test_finalizeGrant_burnsReserveMinusActivated_andPositionsStillExit() public {
         address meme = _activeDefault(keccak256("finalize"));
         _registerDefault(meme);
         uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
@@ -168,43 +169,40 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
 
         IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
         vm.warp(c.endTime);
-        uint256 vaultBal = IERC20(meme).balanceOf(address(t.vault));
+        uint256 supplyBefore = IERC20(meme).totalSupply();
         uint256 burnedAtFinalize = t.vault.finalizeGrant(meme);
-        assertEq(burnedAtFinalize, vaultBal);
+        assertEq(burnedAtFinalize, c.reserve - c.totalActivated);
+        assertEq(supplyBefore - IERC20(meme).totalSupply(), burnedAtFinalize);
         assertEq(IERC20(meme).balanceOf(address(t.vault)), 0);
         assertEq(uint256(t.vault.campaign(meme).status), uint256(IPerkLPGrantVault.CampaignStatus.EXPIRED));
+        assertEq(t.vault.campaign(meme).burned, burnedAtFinalize);
+        assertEq(t.vault.inventoryRemaining(meme), 0);
 
         vm.expectRevert(
             abi.encodeWithSelector(IPerkLPGrantVault.InvalidStatus.selector, IPerkLPGrantVault.CampaignStatus.EXPIRED)
         );
         t.vault.finalizeGrant(meme);
 
-        vm.expectRevert(IPerkLPGrantVault.NothingToSweep.selector);
-        t.vault.sweepIncentive(meme);
-
         PoolKey memory key = t.graduation.graduationOf(meme).key;
         _swap(key, _quoteIs0(meme), 30 ether, 0);
         _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(block.timestamp + 1 hours); // the reference catches up, so the whole excess counts as genuine
+        vm.warp(block.timestamp + 1 hours); // the reference catches up with the pool
 
         vm.prank(alice);
         t.vault.exitGrantPosition(alicePos, 0, 0);
-        vm.prank(bob);
-        t.vault.exitGrantPosition(bobPos, 0, 0);
-
-        c = t.vault.campaign(meme);
-        uint256 leftover = c.incentiveBalance;
-        if (leftover > 0) {
+        (,, uint256 toTreasury,) = t.vault.exitPreview(bobPos);
+        uint256 treasuryBefore = t.quoteToken.balanceOf(address(t.treasury));
+        if (toTreasury > 0) {
             bytes32 launchRef = keccak256(abi.encode(block.chainid, address(t.factory), meme));
             vm.expectEmit(true, true, true, true, address(t.treasury));
-            emit Received(t.erc20Quote, address(t.vault), leftover, launchRef);
-            vm.expectEmit(true, false, false, true, address(t.vault));
-            emit IncentiveSwept(meme, leftover);
-            assertEq(t.vault.sweepIncentive(meme), leftover);
-            assertEq(t.vault.campaign(meme).incentiveBalance, 0);
+            emit Received(t.erc20Quote, address(t.vault), toTreasury, launchRef);
         }
-        vm.expectRevert(IPerkLPGrantVault.NothingToSweep.selector);
-        t.vault.sweepIncentive(meme);
+        vm.prank(bob);
+        (,, uint256 paid,) = t.vault.exitGrantPosition(bobPos, 0, 0);
+        assertEq(paid, toTreasury);
+        assertEq(t.quoteToken.balanceOf(address(t.treasury)) - treasuryBefore, toTreasury);
+        assertEq(IERC20(meme).balanceOf(address(t.vault)), 0);
+        assertEq(t.quoteToken.balanceOf(address(t.vault)), 0);
     }
 
     // -------------------------------------------------------------------------
@@ -373,73 +371,6 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
     }
 
     // -------------------------------------------------------------------------
-    // Incentives accrue by liquidity-seconds
-    // -------------------------------------------------------------------------
-
-    /// @dev Security: the incentive pool used to pay by instantaneous liquidity, so an allocation holder could
-    ///      activate right in front of a large exit and take a share of its excess. A position shares in an exit by
-    ///      the liquidity-seconds it has accrued, and one opened in the same block has accrued none.
-    function test_incentive_activatingJustBeforeAnExit_earnsNothingFromIt() public {
-        address meme = _activeDefault(keccak256("jit"));
-        _registerDefault(meme);
-        uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 carolPos = _activate(meme, carol, CAROL_BASE, 0, 0);
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(vm.getBlockTimestamp() + 1 days + 1); // a genuine rise that has held
-
-        // bob sees carol's exit coming and activates right in front of it, with more liquidity than alice has
-        (uint256 bobBase,,) = t.vault.grantBreakdown(meme, bob);
-        uint256 bobPos = _activate(meme, bob, bobBase, 0, 0);
-        vm.prank(carol);
-        (,, uint256 excess,) = t.vault.exitGrantPosition(carolPos, 0, 0);
-        assertGt(excess, 0);
-        uint256 pool = t.vault.campaign(meme).incentiveBalance;
-        assertEq(pool, excess, "all of a genuine excess is recycled");
-        assertEq(t.vault.position(bobPos).activatedAt, vm.getBlockTimestamp(), "bob opened in the exit's block");
-
-        assertEq(t.vault.pendingIncentive(bobPos), 0);
-        (,, uint256 bobPaid) = t.vault.collectGrantFees(bobPos);
-        assertEq(bobPaid, 0);
-        vm.warp(vm.getBlockTimestamp() + 2 days); // staying on does not buy a share of an exit that is already settled
-        (,, bobPaid) = t.vault.collectGrantFees(bobPos);
-        assertEq(bobPaid, 0);
-        (,, uint256 alicePaid) = t.vault.collectGrantFees(alicePos);
-        assertApproxEqAbs(alicePaid, pool, 1);
-    }
-
-    /// @dev Two positions of different ages share an exit's excess in proportion to liquidity * age.
-    function test_incentive_isSharedByLiquiditySeconds() public {
-        address meme = _activeDefault(keccak256("liquidity-seconds"));
-        _registerDefault(meme);
-        uint256 carolPos = _activate(meme, carol, CAROL_BASE, 0, 0);
-        uint256 alicePos = _activate(meme, alice, ALICE_BASE / 2, 0, 0);
-        uint256 t0 = vm.getBlockTimestamp();
-        vm.warp(t0 + 3 days);
-        (uint256 bobBase,,) = t.vault.grantBreakdown(meme, bob);
-        uint256 bobPos = _activate(meme, bob, bobBase, 0, 0);
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(t0 + 6 days);
-
-        vm.prank(carol);
-        t.vault.exitGrantPosition(carolPos, 0, 0);
-        uint256 pool = t.vault.campaign(meme).incentiveBalance;
-        assertGt(pool, 0);
-        IPerkLPGrantVault.GrantPosition memory a = t.vault.position(alicePos);
-        IPerkLPGrantVault.GrantPosition memory b = t.vault.position(bobPos);
-        assertEq(b.activatedAt - a.activatedAt, 3 days);
-        uint256 wa = uint256(a.liquidity) * (t0 + 6 days - a.activatedAt);
-        uint256 wb = uint256(b.liquidity) * (t0 + 6 days - b.activatedAt);
-        assertApproxEqAbs(t.vault.pendingIncentive(alicePos), (pool * wa) / (wa + wb), 2);
-        assertApproxEqAbs(t.vault.pendingIncentive(bobPos), (pool * wb) / (wa + wb), 2);
-        assertLe(t.vault.pendingIncentive(alicePos) + t.vault.pendingIncentive(bobPos), pool);
-        assertEq(t.vault.pendingIncentive(carolPos), 0, "an exited position is owed nothing");
-    }
-
-    // -------------------------------------------------------------------------
     // Allocations and decay
     // -------------------------------------------------------------------------
 
@@ -452,17 +383,23 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         t.vault.registerAllocation(meme, _leafStruct(carol, CAROL_BASE + 1, 0), MerkleTree.proof(leaves, 2));
     }
 
-    function test_grantBreakdown_boostDecaysWithBase() public {
-        address meme = _activeDefault(keccak256("boost-decay"));
+    /// @dev The invitee boost is earned only as base is activated (10% of it, up to the leaf's boost) and does not
+    ///      decay once earned.
+    function test_grantBreakdown_boostEarnedByBaseActivation_doesNotDecay() public {
+        address meme = _activeDefault(keccak256("boost-earned"));
         t.vault.registerAllocation(meme, _leafStruct(bob, BOB_BASE, BOB_BOOST), MerkleTree.proof(leaves, 1));
         (uint256 b0, uint256 g0,) = t.vault.grantBreakdown(meme, bob);
         assertEq(b0, BOB_BASE);
-        assertEq(g0, BOB_BOOST);
+        assertEq(g0, 0);
+
+        _activate(meme, bob, 200_000 ether, 0, 0);
+        (, uint256 g1,) = t.vault.grantBreakdown(meme, bob);
+        assertEq(g1, 20_000 ether);
 
         vm.warp(t.vault.campaign(meme).startTime + 7 days);
-        (uint256 b1, uint256 g1,) = t.vault.grantBreakdown(meme, bob);
-        assertEq(b1, BOB_BASE / 2);
-        assertEq(g1, BOB_BOOST / 2);
+        (uint256 b2, uint256 g2,) = t.vault.grantBreakdown(meme, bob);
+        assertEq(b2, (BOB_BASE - 200_000 ether) / 2);
+        assertEq(g2, 20_000 ether, "an earned boost does not decay");
     }
 
     function test_decayFactorX18_and_grantBreakdown_zeros() public {
@@ -573,11 +510,15 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
         t.vault.registerAllocation(meme, _leafStruct(bob, BOB_BASE, BOB_BOOST), MerkleTree.proof(leaves, 1));
 
-        _activate(meme, bob, 0, BOB_BOOST, 0);
-        assertEq(t.vault.allocation(meme, alice).inviterCreditEarned, 0);
+        vm.prank(bob);
+        vm.expectRevert(IPerkLPGrantVault.ExceedsClaimable.selector); // no boost before any base is activated
+        t.vault.activateGrant(meme, 0, 1 ether, 0, 1 ether, 0);
 
         _activate(meme, bob, 600_000 ether, 0, 0);
         assertEq(t.vault.allocation(meme, alice).inviterCreditEarned, 60_000 ether);
+        _activate(meme, bob, 0, 60_000 ether, 0); // boost activation earns nobody anything
+        assertEq(t.vault.allocation(meme, alice).inviterCreditEarned, 60_000 ether);
+        assertEq(t.vault.allocation(meme, bob).boostEarned, 60_000 ether);
 
         uint256 credit = 60_000 ether;
         _activate(meme, alice, 0, 0, credit);
@@ -608,23 +549,15 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         assertLe(granted, aliceBase / 2);
     }
 
-    function test_inviterCredit_budgetClip_neverExceedsReferralBudget() public {
+    /// @dev Credits are nominal: the referral budget sizes the snapshot's boosts but no longer gates credits.
+    function test_inviterCredit_notGatedByReferralBudget() public {
         address meme = _graduated(t.erc20Quote, keccak256("budget"));
-        uint256 room = 100 ether;
-        uint256 totalBoost = t.vault.campaign(meme).referralBudget - room;
+        uint256 totalBoost = t.vault.campaign(meme).referralBudget - 100 ether; // boosts declared up to the budget
         _proposeAndActivateRoot(meme, root, _defaultTotalBase(), totalBoost);
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
         t.vault.registerAllocation(meme, _leafStruct(bob, BOB_BASE, BOB_BOOST), MerkleTree.proof(leaves, 1));
-
-        uint256 requested = 600_000 ether / 10;
-        vm.expectEmit(true, true, false, true, address(t.vault));
-        emit ReferralCreditCapped(meme, alice, requested, room);
         _activate(meme, bob, 600_000 ether, 0, 0);
-
-        IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
-        assertEq(t.vault.allocation(meme, alice).inviterCreditEarned, room);
-        assertEq(c.referralBudgetUsed, c.referralBudget);
-        assertLe(c.referralBudgetUsed, c.referralBudget);
+        assertEq(t.vault.allocation(meme, alice).inviterCreditEarned, 60_000 ether);
     }
 
     function test_inviterCredit_bindAfterGraduation_earnsNothing() public {
@@ -685,7 +618,7 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
 
         uint256 aliceBefore = t.quoteToken.balanceOf(alice);
         vm.prank(stranger);
-        (uint256 qf,,) = t.vault.collectGrantFees(pos);
+        (uint256 qf,) = t.vault.collectGrantFees(pos);
         assertGt(qf, 0);
         assertEq(t.quoteToken.balanceOf(alice) - aliceBefore, qf);
         assertEq(t.quoteToken.balanceOf(stranger), 10_000_000 ether);
@@ -724,87 +657,6 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         t.vault.exitGrantPosition(pos, 0, 0);
     }
 
-    /// @dev Price up: the deposit is paid entirely in quote, the whole meme side is burned, the rest is protocol upside.
-    function test_exitGrantPosition_priceUp_paysDepositInQuote_memeAllBurned() public {
-        address meme = _activeDefault(keccak256("price-up"));
-        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
-        uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 deposited = t.vault.position(pos).quoteDeposited;
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(block.timestamp + 1 days + 1);
-        uint256 memeBefore = IERC20(meme).balanceOf(alice);
-        vm.prank(alice);
-        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
-        assertEq(toUser, deposited); // capped at the original deposit
-        assertEq(memeToUser, 0); // quote covered it, so no meme principal is paid out
-        assertEq(IERC20(meme).balanceOf(alice), memeBefore); // only fees would move meme, and none were earned
-        assertGt(excess, 0);
-        assertGt(burned, 0);
-    }
-
-    /// @dev Price down: quote alone no longer covers the deposit, so the grant meme tops the user back up to it.
-    function test_exitGrantPosition_priceDown_grantMemeCoversShortfall() public {
-        address meme = _activeDefault(keccak256("price-down"));
-        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
-        uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        IPerkLPGrantVault.GrantPosition memory p = t.vault.position(pos);
-        uint256 deposited = p.quoteDeposited;
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        vm.prank(buyer);
-        IERC20(meme).transfer(swapper, 20_000_000 ether);
-        _sellMeme(key, _quoteIs0(meme), meme, 20_000_000 ether);
-        vm.warp(block.timestamp + 1 days + 1);
-        t.vault.collectGrantFees(pos); // settle fees first: the assertions below are about principal only
-        uint256 memeBefore = IERC20(meme).balanceOf(alice);
-        vm.prank(alice);
-        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
-        assertLt(toUser, deposited); // the pool no longer holds the whole deposit in quote
-        assertGt(memeToUser, 0); // ... so the grant meme covers the shortfall
-        assertEq(IERC20(meme).balanceOf(alice) - memeBefore, memeToUser);
-        assertEq(excess, 0); // nothing above the deposit is left over
-        assertGt(burned, 0); // the protocol's remaining share is still burned
-
-        // q = sqrt(P_exit / P_entry) = quote side now / quote side at entry, for a full-range position
-        uint256 q = (toUser * 1e18) / deposited;
-        // the top-up is G(1-q)/q meme, out of G/q withdrawn
-        assertApproxEqRel(memeToUser, (p.grantMemeAmount * (1e18 - q)) / q, 1e12);
-        // at the exit price the beneficiary holds D(1 - (1-q)^2): most of the deposit, never more than it
-        uint256 held = toUser + _memeValueInQuote(meme, memeToUser);
-        assertApproxEqRel(held, deposited - (deposited * (1e18 - q) ** 2) / 1e36, 1e12);
-        assertLt(held, deposited);
-        assertGt(held, (deposited * 95) / 100); // this fall costs an unprotected LP far more: see toUser
-    }
-
-    /// @dev A deep collapse: the quote side is nearly gone, the grant meme covers most of the deposit at the
-    ///      geometric-mean price, and the beneficiary is still better off than the quote side alone.
-    function test_exitGrantPosition_priceCollapse_userKeepsGeometricShare() public {
-        address meme = _activeDefault(keccak256("collapse"));
-        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
-        uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        IPerkLPGrantVault.GrantPosition memory p = t.vault.position(pos);
-        uint256 deposited = p.quoteDeposited;
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        uint256 bal = IERC20(meme).balanceOf(buyer);
-        vm.prank(buyer);
-        IERC20(meme).transfer(swapper, bal);
-        _sellMeme(key, _quoteIs0(meme), meme, (bal * 99) / 100);
-        vm.warp(block.timestamp + 1 days + 1);
-        t.vault.collectGrantFees(pos); // settle fees first: the assertions below are about principal only
-        vm.prank(alice);
-        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
-        assertEq(excess, 0);
-        uint256 q = (toUser * 1e18) / deposited;
-        assertLt(q, 0.5e18); // beyond the point where the whole position is worth less than the deposit
-        assertApproxEqRel(memeToUser, (p.grantMemeAmount * (1e18 - q)) / q, 1e12);
-        assertGt(memeToUser, p.grantMemeAmount); // more meme than the grant put in, because the pool bought meme
-        assertGt(burned, 0); // and still never the whole meme side: G/q was withdrawn, G(1-q)/q paid
-        uint256 held = toUser + _memeValueInQuote(meme, memeToUser);
-        assertApproxEqRel(held, deposited - (deposited * (1e18 - q) ** 2) / 1e36, 1e12);
-        assertGt(held, toUser + (toUser * 40) / 100); // the top-up adds (1-q) of the quote side again
-    }
-
     /// @dev Security: the grant meme is paired at the pool price, so activation refuses a price that has only just
     ///      appeared. Crashing the pool to pair the grant with a fraction of the quote, then buying the meme back
     ///      from the new position on the way up, is the attack; it clears for honest users once the price has held.
@@ -836,14 +688,13 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         _activate(meme, alice, claimable, 0, 0);
     }
 
-    /// @dev Exits are never blocked by price. Far above the hook's reference (a pump in the same block), the exit
-    ///      goes through, and the excess the pump created goes to the treasury rather than to the incentive pool,
-    ///      where a second position of the same LP would collect it.
+    /// @dev Exits are never blocked by price. Far above the hook's reference (a pump in the same block), the exit goes
+    ///      through, valued at the reference: the quote the pump pushed into the position beyond the beneficiary's
+    ///      share goes to the treasury, and the whole meme side is burned.
     function test_exitGrantPosition_farAboveReference_succeeds_andTheMoveGoesToTheTreasury() public {
         address meme = _activeDefault(keccak256("guard-exit"));
         _registerDefault(meme);
         uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 bobPos = _activate(meme, bob, BOB_BASE, 0, 0);
         PoolKey memory key = t.graduation.graduationOf(meme).key;
         vm.warp(vm.getBlockTimestamp() + 1 days + 1);
 
@@ -854,15 +705,17 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
 
         uint256 treasuryBefore = t.quoteToken.balanceOf(address(t.treasury));
         vm.prank(alice);
-        (uint256 toUser,, uint256 excess,) = t.vault.exitGrantPosition(alicePos, 0, 0);
-        assertEq(toUser, t.vault.position(alicePos).quoteDeposited);
-        assertGt(excess, 0);
-        assertEq(t.vault.campaign(meme).incentiveBalance, 0, "nothing of the pump is recycled");
-        assertEq(t.quoteToken.balanceOf(address(t.treasury)) - treasuryBefore, excess);
-        assertEq(t.vault.pendingIncentive(bobPos), 0);
+        (uint256 toUser, uint256 memeToUser, uint256 toTreasury, uint256 burned) =
+            t.vault.exitGrantPosition(alicePos, 0, 0);
+        assertGt(toUser, t.vault.position(alicePos).quoteDeposited);
+        assertEq(memeToUser, 0);
+        assertGt(toTreasury, 0);
+        assertGt(burned, 0);
+        assertEq(t.quoteToken.balanceOf(address(t.treasury)) - treasuryBefore, toTreasury);
     }
 
-    /// @dev ... and far below it (a crash), the exit goes through too, with the grant meme covering the shortfall.
+    /// @dev ... and far below it (a crash), the exit goes through too: all the position's quote goes to the
+    ///      beneficiary and meme at the reference price makes up the rest of their share.
     function test_exitGrantPosition_farBelowReference_succeeds() public {
         address meme = _activeDefault(keccak256("crash-exit"));
         _registerDefault(meme);
@@ -878,10 +731,12 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         assertGt(gap < 0 ? -gap : gap, 5000, "a crash of thousands of ticks");
 
         vm.prank(alice);
-        (uint256 toUser, uint256 memeToUser, uint256 excess,) = t.vault.exitGrantPosition(alicePos, 0, 0);
+        (uint256 toUser, uint256 memeToUser, uint256 toTreasury, uint256 burned) =
+            t.vault.exitGrantPosition(alicePos, 0, 0);
         assertLt(toUser, t.vault.position(alicePos).quoteDeposited);
         assertGt(memeToUser, 0);
-        assertEq(excess, 0);
+        assertEq(toTreasury, 0);
+        assertGt(burned, 0);
         assertTrue(t.vault.position(alicePos).exited);
     }
 
@@ -894,14 +749,14 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         _activate(meme, alice, ALICE_BASE, 0, 0);
     }
 
-    /// @dev Whatever the market did between entry and exit, the settlement stays inside its bounds: never more
-    ///      quote than was deposited, never more value than was deposited, never less than the position's own quote
-    ///      side, meme only when quote fell short, and excess only when it did not.
+    /// @dev Whatever the market did between entry and exit, the settlement is the co-ownership split at the reference
+    ///      price: the beneficiary holds (1 - g) of the principal's value, quote first, the treasury receives quote
+    ///      only when no meme is paid, and the exit pays exactly what exitPreview showed in the same block.
     function testFuzz_exitGrantPosition_settlementBounds(uint256 seed) public {
         address meme = _activeDefault(keccak256(abi.encode("fuzz-exit", seed)));
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
         uint256 pos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 deposited = t.vault.position(pos).quoteDeposited;
+        uint64 g = t.vault.position(pos).protocolShareWad;
         PoolKey memory key = t.graduation.graduationOf(meme).key;
 
         if (seed % 2 == 0) {
@@ -912,23 +767,26 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         } else {
             _swap(key, _quoteIs0(meme), bound(seed >> 8, 0.001 ether, 200 ether), 0);
         }
-        vm.warp(block.timestamp + 2 days);
+        vm.warp(block.timestamp + 2 days); // the reference has caught up: spot and reference share a tick
         t.vault.collectGrantFees(pos);
 
+        (uint256 pq, uint256 pm, uint256 pt, uint256 pb) = t.vault.exitPreview(pos);
         uint256 supplyBefore = IERC20(meme).totalSupply();
         vm.prank(alice);
-        (uint256 toUser, uint256 memeToUser, uint256 excess, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
-
-        assertLe(toUser, deposited);
+        (uint256 toUser, uint256 memeToUser, uint256 toTreasury, uint256 burned) = t.vault.exitGrantPosition(pos, 0, 0);
+        assertEq(toUser, pq);
+        assertEq(memeToUser, pm);
+        assertEq(toTreasury, pt);
+        assertEq(burned, pb);
         assertEq(supplyBefore - IERC20(meme).totalSupply(), burned);
-        if (toUser < deposited) {
-            assertEq(excess, 0);
-            assertGt(memeToUser, 0);
-            assertGt(burned, 0); // the top-up is always a strict part of the meme withdrawn
-            assertLe(toUser + _memeValueInQuote(meme, memeToUser), deposited + 1e6);
-        } else {
-            assertEq(memeToUser, 0);
-        }
+        if (memeToUser > 0) assertEq(toTreasury, 0, "quote is paid first");
+
+        (, int24 refTick) = t.hook.referencePrice(t.graduation.graduationOf(meme).poolId);
+        uint160 sqrtRef = TickMath.getSqrtPriceAtTick(refTick);
+        uint256 principal = toUser + toTreasury + _memeValueInQuoteAt(meme, memeToUser + burned, sqrtRef);
+        uint256 held = toUser + _memeValueInQuoteAt(meme, memeToUser, sqrtRef);
+        assertApproxEqRel(held, (principal * (1e18 - g)) / 1e18, 1e12);
+        assertLe(held, (principal * (1e18 - g)) / 1e18 + 1);
     }
 
     /// @dev The meme leg has its own slippage bound, so a user expecting a top-up is not silently paid in quote only.
@@ -940,39 +798,6 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         vm.prank(alice);
         vm.expectRevert(IPerkLPGrantVault.SlippageExceeded.selector);
         t.vault.exitGrantPosition(pos, 0, type(uint256).max);
-    }
-
-    function test_incentiveAccounting_splitCollectAndCap() public {
-        address meme = _activeDefault(keccak256("inc"));
-        _registerDefault(meme);
-        uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 bobPos = _activate(meme, bob, BOB_BASE, 0, 0);
-        uint256 carolPos = _activate(meme, carol, CAROL_BASE, 0, 0);
-        uint128 l1 = t.vault.position(alicePos).liquidity;
-        uint128 l2 = t.vault.position(bobPos).liquidity;
-
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(block.timestamp + 1 days + 1);
-
-        vm.prank(carol);
-        (,, uint256 excess,) = t.vault.exitGrantPosition(carolPos, 0, 0);
-        assertGt(excess, 0);
-        uint256 pool = t.vault.campaign(meme).incentiveBalance;
-        uint256 pendingA = t.vault.pendingIncentive(alicePos);
-        uint256 pendingB = t.vault.pendingIncentive(bobPos);
-        assertApproxEqAbs(pendingA, (pool * l1) / (uint256(l1) + uint256(l2)), 1);
-        assertApproxEqAbs(pendingB, (pool * l2) / (uint256(l1) + uint256(l2)), 1);
-        assertApproxEqAbs(pendingA + pendingB, pool, 1);
-
-        (,, uint256 paidA) = t.vault.collectGrantFees(alicePos);
-        assertEq(t.vault.pendingIncentive(alicePos), 0);
-        assertEq(t.vault.pendingIncentive(bobPos), pendingB);
-        (,, uint256 paidB) = t.vault.collectGrantFees(bobPos);
-        assertEq(t.vault.pendingIncentive(bobPos), 0);
-        assertLe(paidA + paidB, pool);
-        assertLe(paidA + paidB, t.vault.campaign(meme).incentiveBalance + paidA + paidB);
     }
 
     function test_activateGrant_native_refundsUnused_and_msgValueMismatch() public {
@@ -1024,41 +849,11 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
     }
 }
 
-/// @dev Separate topology so `excessToIncentiveBps = 5_000` is set at construction (no `vm.store`).
-contract LPGrantVaultHalfIncentiveTest is GrantTestBase {
-    function setUp() public {
-        _setUpPerk(5000);
-        _bindBobToAlice();
-    }
-
-    function test_exitGrantPosition_excessToIncentiveBps_splitsHalf() public {
-        address meme = _activeDefault(keccak256("half"));
-        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
-        t.vault.registerAllocation(meme, _leafStruct(bob, BOB_BASE, BOB_BOOST), MerkleTree.proof(leaves, 1));
-        _activate(meme, alice, ALICE_BASE, 0, 0);
-        uint256 bobPos = _activate(meme, bob, BOB_BASE, 0, 0);
-
-        PoolKey memory key = t.graduation.graduationOf(meme).key;
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(block.timestamp + 1 days + 1);
-
-        uint256 treBefore = t.quoteToken.balanceOf(address(t.treasury));
-        vm.prank(bob);
-        (,, uint256 excess,) = t.vault.exitGrantPosition(bobPos, 0, 0);
-        assertGt(excess, 0);
-        uint256 toPool = (excess * 5000) / PerkConstants.BPS;
-        uint256 toTreasury = excess - toPool;
-        assertEq(t.vault.campaign(meme).incentiveBalance, toPool);
-        assertEq(t.quoteToken.balanceOf(address(t.treasury)) - treBefore, toTreasury);
-    }
-}
-
 /// @dev The exit settlement has to be indifferent to price manipulation by itself, not because a guard happens to
 ///      stand in front of it. This topology switches the vault's price guard off and attacks the settlement directly.
 contract LPGrantVaultExitManipulationTest is GrantTestBase {
     function setUp() public {
-        _setUpPerk(10_000, type(uint24).max);
+        _setUpPerk(type(uint24).max);
         _bindBobToAlice();
     }
 
@@ -1160,11 +955,10 @@ contract LPGrantVaultExitManipulationTest is GrantTestBase {
     }
 }
 
-/// @dev Two positions and the deployed guard values (500 ticks, every unit of excess recycled). An LP holding both
-///      pumps the price, exits one position into the pump, collects the recycled "excess" with the other and
-///      trades the price back. That used to net about 2% of the exiting deposit, paid in grant meme that would
-///      otherwise have been burned. The recycled excess is now measured at the hook's reference price, so the pump
-///      recycles nothing and only costs the attacker its swap fees, inside the guard band and far outside it.
+/// @dev Two positions and the deployed guard value (500 ticks). An LP holding both pumps the price, exits one position
+///      into the pump and trades the price back before exiting the other. Valued at the spot price the pumped exit
+///      would have extracted grant meme; valued at the hook's reference price it only costs the attacker, inside the
+///      guard band and far outside it.
 contract LPGrantVaultPumpExitTest is GrantTestBase {
     using PoolIdLibrary for PoolKey;
 
@@ -1174,7 +968,7 @@ contract LPGrantVaultPumpExitTest is GrantTestBase {
     bytes32[] internal big;
 
     function setUp() public {
-        _setUpPerk(); // excessToIncentiveBps 10_000, maxPriceDeviationTicks 500: the deployed values
+        _setUpPerk(); // maxPriceDeviationTicks 500: the deployed value
         big = new bytes32[](4);
         big[0] = MerkleTree.leaf(alice, A_BASE, 0);
         big[1] = MerkleTree.leaf(bob, B_BASE, 0);
@@ -1222,20 +1016,17 @@ contract LPGrantVaultPumpExitTest is GrantTestBase {
         assertGt(moved < 0 ? -moved : moved, int256(pumpTicks) - 20, "the pump reached its target");
 
         vm.prank(alice);
-        (,, uint256 excess,) = t.vault.exitGrantPosition(posA, 0, 0); // never refused, whatever the price
-        (,, uint256 incentive) = t.vault.collectGrantFees(posB);
+        (,, uint256 toTreasury,) = t.vault.exitGrantPosition(posA, 0, 0); // never refused, whatever the price
         _swapTo(key, !q0, -int256(1_000_000_000 ether), p0); // meme back in, down to the starting price exactly
         assertEq(_sqrtPriceOf(meme), p0);
         vm.prank(bob);
         t.vault.exitGrantPosition(posB, 0, 0);
         uint256 attacked = _wealth(meme, p0);
 
-        emit log_named_uint("excess created by the pump", excess);
-        emit log_named_uint("incentive collected by the second position", incentive);
+        emit log_named_uint("pumped quote retired to the treasury", toTreasury);
         emit log_named_int("attacker profit vs honest (quote wei)", int256(attacked) - int256(honest));
-        assertGt(excess, 0);
-        assertEq(incentive, 0, "the pump's excess is not recycled");
-        assertLt(attacked, honest, "pump-exit-collect does not pay");
+        assertGt(toTreasury, 0);
+        assertLt(attacked, honest, "pump-exit-restore does not pay");
     }
 
     function _wealth(address meme, uint160 sqrtP) internal view returns (uint256) {
@@ -1306,8 +1097,7 @@ contract GrantHandler {
     uint256 public ghostQuoteDeposited;
     uint256 public ghostQuoteToUserOnExit;
     uint256 public ghostFeesPaid;
-    uint256 public ghostIncentivesPaid;
-    uint256 public ghostExcess;
+    uint256 public ghostToTreasury;
 
     constructor(
         IPerkLPGrantVault vault_,
@@ -1358,9 +1148,8 @@ contract GrantHandler {
         uint256[] memory ids = vault.positionsOf(actors[actorSeed % 3]);
         if (ids.length == 0) return;
         uint256 pos = ids[posSeed % ids.length];
-        try vault.collectGrantFees(pos) returns (uint256 qf, uint256, uint256 inc) {
+        try vault.collectGrantFees(pos) returns (uint256 qf, uint256) {
             ghostFeesPaid += qf;
-            ghostIncentivesPaid += inc;
         } catch {}
     }
 
@@ -1374,14 +1163,13 @@ contract GrantHandler {
         if (block.timestamp < p.activatedAt + minLp) {
             vm.warp(p.activatedAt + minLp);
         }
-        try vault.collectGrantFees(pos) returns (uint256 qf, uint256, uint256 inc) {
+        try vault.collectGrantFees(pos) returns (uint256 qf, uint256) {
             ghostFeesPaid += qf;
-            ghostIncentivesPaid += inc;
         } catch {}
         vm.prank(who);
-        try vault.exitGrantPosition(pos, 0, 0) returns (uint256 toUser, uint256, uint256 excess, uint256) {
+        try vault.exitGrantPosition(pos, 0, 0) returns (uint256 toUser, uint256, uint256 toTreasury, uint256) {
             ghostQuoteToUserOnExit += toUser;
-            ghostExcess += excess;
+            ghostToTreasury += toTreasury;
         } catch {}
     }
 
@@ -1479,28 +1267,34 @@ contract LPGrantVaultInvariantTest is GrantTestBase {
         else assertLe(c.reserve - accounted, n * 2);
     }
 
-    function invariant_quotePaidNeverExceedsDepositsFeesIncentives() public view {
+    /// @dev The vault never keeps quote (unused quote is refunded, exits pay it all out) and never turns more meme into
+    ///      liquidity than the reserve holds.
+    function invariant_noQuoteKept_inventoryNeverOverdrawn() public view {
         IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
-        assertLe(
-            handler.ghostQuoteToUserOnExit(),
-            handler.ghostQuoteDeposited() + handler.ghostFeesPaid() + handler.ghostIncentivesPaid()
-        );
-        assertLe(c.incentiveBalance, handler.ghostExcess());
+        assertEq(t.quoteToken.balanceOf(address(t.vault)), 0);
+        assertLe(c.totalActivated, c.reserve);
+        assertEq(t.vault.inventoryRemaining(meme), c.reserve - c.totalActivated);
     }
 
-    function invariant_referralBudgetAndPositionCaps() public view {
-        IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
-        assertLe(c.referralBudgetUsed, c.referralBudget);
+    function invariant_allocationCaps() public view {
         address[3] memory who = [alice, bob, carol];
         for (uint256 a; a < 3; ++a) {
             uint256[] memory ids = t.vault.positionsOf(who[a]);
             uint256 sum;
+            uint256 boostSum;
             for (uint256 i; i < ids.length; ++i) {
                 IPerkLPGrantVault.GrantPosition memory p = t.vault.position(ids[i]);
                 sum += p.baseMemeActivated + p.inviteeBoostActivated + p.inviterCreditActivated;
+                boostSum += p.inviteeBoostActivated;
             }
             IPerkLPGrantVault.Allocation memory alloc = t.vault.allocation(meme, who[a]);
             assertLe(sum, alloc.baseAllocation + alloc.inviteeBoost + alloc.inviterCreditEarned);
+            assertEq(boostSum, alloc.boostActivated);
+            assertLe(alloc.boostActivated, alloc.boostEarned);
+            assertLe(alloc.boostEarned, alloc.inviteeBoost);
+            assertLe(alloc.boostEarned, alloc.baseActivated / 10);
+            assertLe(alloc.inviterCreditEarned, alloc.baseAllocation / 2);
+            assertLe(alloc.inviterCreditActivated, alloc.inviterCreditEarned);
         }
     }
 }

@@ -45,16 +45,12 @@ abstract contract GrantTestBase is PerkDeployer, Deployers {
     bytes32 internal root;
 
     function _setUpPerk() internal {
-        _setUpPerk(10_000);
+        _setUpPerk(500);
     }
 
-    function _setUpPerk(uint16 excessToIncentiveBps) internal {
-        _setUpPerk(excessToIncentiveBps, 500);
-    }
-
-    function _setUpPerk(uint16 excessToIncentiveBps, uint24 maxPriceDeviationTicks) internal {
+    function _setUpPerk(uint24 maxPriceDeviationTicks) internal {
         deployFreshManagerAndRouters();
-        t = deployPerkV1(address(this), address(manager), excessToIncentiveBps, maxPriceDeviationTicks);
+        t = deployPerkV1(address(this), address(manager), maxPriceDeviationTicks);
         _fundActors();
         _setDefaultLeaves();
     }
