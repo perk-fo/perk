@@ -99,7 +99,7 @@ export default function PoolDetailPage() {
           </Link>
         </Notice>
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-12">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
           <div className="min-w-0 space-y-6 lg:col-span-7">
             <Panel title={t("pool.facts.title")}>
               <div className="divide-y divide-line">

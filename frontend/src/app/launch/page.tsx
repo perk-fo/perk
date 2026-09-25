@@ -244,7 +244,7 @@ export default function CreatePage() {
     <div>
       <PageHeader eyebrow={t("home.door.launchTag")} title={t("create.title")} description={t("create.subtitle")} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         {/* left: form */}
         <div className="space-y-6">
           <Panel title={t("create.section.basic")}>
@@ -290,7 +290,7 @@ export default function CreatePage() {
           </Panel>
 
           <Panel title={t("create.section.quote")}>
-            <div role="radiogroup" aria-label={t("create.section.quote")} className="grid gap-3 sm:grid-cols-2">
+            <div role="radiogroup" aria-label={t("create.section.quote")} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {quotes.filter(isLaunchable).map((q) => {
                 const selected = q.address.toLowerCase() === quoteAddress.toLowerCase();
                 const notice = quoteNotice(q, locale, t("create.quote.rwaNotice"));

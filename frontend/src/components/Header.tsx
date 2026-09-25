@@ -196,10 +196,13 @@ export function Header() {
   return (
     <>
       {/* two rows on a phone (brand + controls, then nav) and not sticky there: rows pinned to the top would take a
-          large share of a small screen */}
+          large share of a small screen. The first row must hold the brand and every control on a 320 px screen, so
+          phones get tighter gaps, a shorter connect label, no role chip on the account button (the menu lists the
+          roles) and, on the narrowest screens (below 360 px, or 390 px with a wallet connected), the chick without the
+          wordmark. */}
       <header className="z-20 border-b border-line bg-ink/90 backdrop-blur-md sm:sticky sm:top-0">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 sm:px-8 sm:py-4 lg:flex-nowrap">
-          <PerkBrand className="order-1" />
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:gap-x-6 sm:px-8 sm:py-4 lg:flex-nowrap">
+          <PerkBrand className="order-1" wordmarkClassName={isConnected ? "max-[389px]:hidden" : "max-[359px]:hidden"} />
           <nav className="order-3 -mx-1 flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-1 text-[14px] font-bold sm:order-2 sm:w-auto sm:pb-0">
             {nav.map((item) => {
               const active = item.match(pathname);
@@ -208,7 +211,7 @@ export function Header() {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`group relative whitespace-nowrap rounded-lg px-2.5 py-2 transition-colors duration-fast ${
+                  className={`group relative whitespace-nowrap rounded-lg px-2 py-2 transition-colors duration-fast sm:px-2.5 ${
                     active ? "text-bone" : "text-muted hover:text-bone"
                   }`}
                 >
@@ -224,7 +227,7 @@ export function Header() {
               );
             })}
           </nav>
-          <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3">
+          <div className="order-2 ml-auto flex shrink-0 items-center gap-1.5 sm:order-3 sm:gap-2">
             <button
               type="button"
               onClick={() => wrongChain && switchChain({ chainId: configured.id })}
@@ -265,7 +268,8 @@ export function Header() {
                   )
                 }
               >
-                {t("header.connect")}
+                <span className="sm:hidden">{t("header.connectShort")}</span>
+                <span className="hidden sm:inline">{t("header.connect")}</span>
                 <span aria-hidden className="nudge hidden sm:inline-block">
                   ↗
                 </span>

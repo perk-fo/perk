@@ -15,7 +15,7 @@ export default function AdminRolesPage() {
   return (
     <SectionGate section="roles">
       <SectionIntro title={t("admin.nav.roles")} body={t("admin.roles.body")} />
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <CoreAdminPanel />
         <GrantAdminPanel vault={deployment.lpGrantVault} canWrite={roles.owns.vault} />
       </div>

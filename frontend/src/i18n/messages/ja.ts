@@ -117,6 +117,7 @@ const messages: Record<string, string> = {
   "header.nav.launches": "ローンチ",
   "header.nav.create": "作成",
   "header.connect": "ウォレットを接続",
+  "header.connectShort": "接続",
   "header.disconnect": "切断",
   "header.theme.title": "テーマ",
   "header.theme.system": "システム",

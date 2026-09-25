@@ -113,7 +113,7 @@ export default function HomePage() {
       {/* three ways in */}
       <section className="mb-20">
         <SectionHeading eyebrow={t("home.paths.eyebrow")} title={t("home.paths.title")} aside={t("home.paths.aside")} />
-        <div className="fade-up-stagger grid gap-4 md:grid-cols-3 md:gap-5">
+        <div className="fade-up-stagger grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-5">
           {PATHS.map((p) => (
             <Link key={p.href} href={p.href} className={`panel group flex flex-col p-7 ${p.sun ? "panel-sun" : ""}`}>
               <div className="mb-7 flex items-center justify-between">
@@ -151,7 +151,7 @@ export default function HomePage() {
       {featuredItems.length > 0 && (
         <section className="mb-20">
           <SectionHeading eyebrow={t("home.featured.eyebrow")} title={t("home.featured")} />
-          <div className="fade-up-stagger grid gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+          <div className="fade-up-stagger grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
             {featuredItems.map((item) => (
               <LaunchCard key={item.meme} item={item} />
             ))}
@@ -174,7 +174,7 @@ export default function HomePage() {
           }
         />
         {list.isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
             {Array.from({ length: 3 }, (_, i) => (
               <LaunchCardSkeleton key={i} />
             ))}
@@ -196,7 +196,7 @@ export default function HomePage() {
             </Link>
           </div>
         ) : (
-          <div className="fade-up-stagger grid gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+          <div className="fade-up-stagger grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
             {items.map((item) => (
               <LaunchCard key={item.meme} item={item} />
             ))}

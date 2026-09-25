@@ -58,13 +58,15 @@ export function AccountMenu() {
         className="btn-ghost flex h-10 items-center gap-2 pl-3.5 pr-2 text-[13px]"
       >
         <span className="mono">{shortAddress(address)}</span>
-        {showChip ? (
-          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold leading-none ${ROLE_TONE[tier]}`}>{t(`role.${tier}`)}</span>
-        ) : (
-          <span className="pr-1.5 text-subtle" aria-hidden>
-            ▾
+        {/* on a phone the chip would push the header onto a third row; the menu lists every role anyway */}
+        {showChip && (
+          <span className={`hidden rounded-full px-2 py-0.5 text-[11px] font-bold leading-none sm:inline ${ROLE_TONE[tier]}`}>
+            {t(`role.${tier}`)}
           </span>
         )}
+        <span className={`pr-1.5 text-subtle ${showChip ? "sm:hidden" : ""}`} aria-hidden>
+          ▾
+        </span>
       </button>
       {open && (
         <>

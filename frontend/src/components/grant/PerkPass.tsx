@@ -117,7 +117,7 @@ export function PerkPass() {
             {issued ? t("pass.titleIssued") : t("pass.title")}
           </h2>
 
-          <ul className="mt-5 grid gap-2.5 sm:grid-cols-3">
+          <ul className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             {(["snapshot", "grant", "invite"] as const).map((k) => (
               <li key={k} className="pass-perk">
                 <span className="num text-xs text-flare">{t(`pass.perk.${k}.tag`)}</span>
@@ -210,7 +210,7 @@ function PassLoading({ label }: { label: string }) {
         <div className="min-w-0 flex-1 p-6 sm:p-8">
           <div className="skel h-3 w-32" />
           <div className="skel mt-5 h-9 w-3/4 max-w-[460px]" />
-          <div className="mt-6 grid gap-2.5 sm:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <div key={i} className="skel h-[68px]" />
             ))}

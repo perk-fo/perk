@@ -270,7 +270,7 @@ export default function MePage() {
             </Link>
           </Panel>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {created.map((l) => (
               <LaunchCard key={l.meme} item={l} />
             ))}

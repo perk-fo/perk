@@ -18,7 +18,7 @@ export function SiteFooter() {
   return (
     <footer className="border-t border-line">
       <div className="mx-auto w-full max-w-page px-4 pt-12 sm:px-8">
-        <div className="grid gap-10 pb-10 md:grid-cols-[1.3fr_1fr_0.7fr] md:gap-16">
+        <div className="grid grid-cols-1 gap-10 pb-10 md:grid-cols-[1.3fr_1fr_0.7fr] md:gap-16">
           <div>
             <PerkBrand size={40} text={28} />
             <p className="mt-5 max-w-sm text-[13px] leading-relaxed text-subtle">{t("footer.note")}</p>

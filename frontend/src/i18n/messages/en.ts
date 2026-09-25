@@ -117,6 +117,7 @@ const messages: Record<string, string> = {
   "header.nav.launches": "Launches",
   "header.nav.create": "Create",
   "header.connect": "Connect wallet",
+  "header.connectShort": "Connect",
   "header.disconnect": "Disconnect",
   "header.theme.title": "Theme",
   "header.theme.system": "System",

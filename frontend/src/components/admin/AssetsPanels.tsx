@@ -215,7 +215,7 @@ function DisplayEditor({ asset, onSaved }: { asset: QuoteAsset; onSaved: () => v
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="label">{t("admin.assets.displayName")}</span>
           <input value={displayName} maxLength={40} onChange={(e) => setDisplayName(e.target.value)} placeholder={asset.symbol} className={`${CONTROL} mt-1.5`} />
@@ -252,7 +252,7 @@ function DisplayEditor({ asset, onSaved }: { asset: QuoteAsset; onSaved: () => v
       <fieldset>
         <legend className="label">{t("admin.assets.notice")}</legend>
         <p className="mt-1 text-xs text-subtle">{t("admin.assets.noticeHint")}</p>
-        <div className="mt-2 grid gap-3 lg:grid-cols-3">
+        <div className="mt-2 grid grid-cols-1 gap-3 lg:grid-cols-3">
           {LOCALES.map((l) => (
             <label key={l} className="block">
               <span className="text-xs text-muted">{t(`admin.assets.locale.${l}`)}</span>
@@ -510,7 +510,7 @@ export function NewQuotePanel() {
             </fieldset>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="label">{t("admin.newQuote.threshold", { symbol: symbol! })}</span>
               <input

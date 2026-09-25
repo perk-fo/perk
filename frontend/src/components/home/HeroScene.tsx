@@ -101,7 +101,7 @@ export function HeroScene() {
         </div>
       </Link>
 
-      <span className="eyebrow absolute bottom-1 left-6 text-[10px] normal-case tracking-[0.18em]" aria-hidden>
+      <span className="eyebrow absolute bottom-1 left-6 right-20 text-[10px] normal-case tracking-[0.18em]" aria-hidden>
         {t("home.credential.caption")}
       </span>
       <Blossom size={58} tone="honey" spin className="absolute bottom-5 right-3" />

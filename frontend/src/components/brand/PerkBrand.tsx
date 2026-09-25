@@ -10,17 +10,20 @@ export function PerkBrand({
   text = 26,
   mode = "idle",
   className,
+  wordmarkClassName,
 }: {
   href?: string | null;
   size?: number;
   text?: number;
   mode?: ChickMode;
   className?: string;
+  /** e.g. hide the wordmark on the narrowest phones, where the chick alone carries the brand */
+  wordmarkClassName?: string;
 }) {
   const inner = (
     <>
       <PerkChick size={size} mode={mode} />
-      <span className="wordmark leading-none" style={{ fontSize: text }}>
+      <span className={`wordmark leading-none ${wordmarkClassName ?? ""}`} style={{ fontSize: text }}>
         Perk<span className="text-tangerine">.</span>
       </span>
     </>

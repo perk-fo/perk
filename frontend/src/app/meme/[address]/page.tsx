@@ -383,7 +383,7 @@ export default function MemePage() {
       )}
 
       <Panel title={t("meme.facts.title")}>
-        <div className="grid gap-x-10 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-10 sm:grid-cols-2">
           <div className="divide-y divide-line">
             <Kv label={t("meme.facts.template")} value={templateLabel(launch.templateId, quotes)} />
             <Kv label="Hook" value={deployment.hook} copy href={explorerAddressUrl(chainId, deployment.hook)} />
@@ -404,7 +404,7 @@ export default function MemePage() {
         </div>
       </Panel>
 
-      <div className="grid gap-6 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-8">
           <Panel className="flex h-full flex-col">
             {showCurve && (
@@ -461,7 +461,7 @@ export default function MemePage() {
             </div>
 
             {showCurve && curveConfig && curveState && (
-              <div className="mt-auto pt-6 grid gap-x-10 gap-y-6 sm:grid-cols-3">
+              <div className="mt-auto pt-6 grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-3">
                 <Stat
                   label={t("meme.curve.raised")}
                   value={formatAmount(curveState.realQuote, quoteDecimals, { locale })}
@@ -578,7 +578,7 @@ export default function MemePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-7">
           <TradeTable
             trades={trades}
@@ -603,7 +603,7 @@ export default function MemePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Panel title={t("meme.rewards.title")}>
           <Stat
             label={t("common.claimable")}

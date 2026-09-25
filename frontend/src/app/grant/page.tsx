@@ -111,7 +111,7 @@ export default function GrantHubPage() {
               {list.length === 0 ? (
                 <Panel className="py-8 text-center text-sm text-subtle">{t("grant.hub.noneActive")}</Panel>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {list.map((r) => (
                     <CampaignCard key={r.launch.meme} row={r} group={g} claimable={claimableOf.get(r.launch.meme.toLowerCase())} />
                   ))}

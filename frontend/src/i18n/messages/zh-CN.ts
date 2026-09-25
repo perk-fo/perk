@@ -119,6 +119,7 @@ const messages: Record<string, string> = {
   "header.nav.launches": "发行",
   "header.nav.create": "创建",
   "header.connect": "连接钱包",
+  "header.connectShort": "连接",
   "header.disconnect": "断开连接",
   "header.theme.title": "主题",
   "header.theme.system": "跟随系统",

@@ -224,7 +224,7 @@ export function GrantJoin(props: {
             className="mt-3 w-full accent-[rgb(var(--c-flare))]"
             disabled={busy}
           />
-          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <p className="text-muted">
               {t("join.getMeme")} <span className="num text-bone">{fmtMeme(total)} {memeSymbol}</span>
             </p>

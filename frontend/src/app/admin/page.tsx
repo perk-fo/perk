@@ -13,7 +13,7 @@ export default function AdminOverviewPage() {
   const sections = ADMIN_SECTIONS.filter((s) => roles.can(s.key));
   return (
     <div className="space-y-6">
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sections.map((s) => (
           <li key={s.key}>
             <Link href={`/admin/${s.key}`} className="panel block h-full p-5 transition-colors duration-fast hover:border-line-strong">
