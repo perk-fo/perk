@@ -12,9 +12,8 @@ tmp/
 # foundry
 contracts/out/
 contracts/cache/
-contracts/broadcast/*/31337/
-# simulations only; real runs stay tracked as the deployment trail (no keys in them, deployments/*.json is canonical)
-contracts/broadcast/**/dry-run/
+# Foundry broadcast logs are kept on disk, not tracked; deployments/*.json is the canonical record of each deployment
+contracts/broadcast/
 contracts/lcov.info
 
 # env & secrets
