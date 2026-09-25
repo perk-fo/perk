@@ -10,6 +10,8 @@ import { parseTokenMetadata } from "./metadata";
 const FETCH_TIMEOUT_MS = 5_000;
 const FETCH_MAX_BYTES = 64 * 1024;
 const RETRY_AFTER_SEC = 10 * 60;
+/** An ipfs:// launch marked invalid is checked again this often: its content cannot change, but a gateway's answer can. */
+const IPFS_INVALID_RETRY_AFTER_SEC = 60 * 60;
 const GC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const GC_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -105,18 +107,22 @@ async function mark(
 }
 
 /**
- * One resolver pass: launches in `pending`, plus `unreachable` whose last check is at least 10 minutes ago.
+ * One resolver pass: launches in `pending`, plus `unreachable` whose last check is at least 10 minutes ago, plus
+ * `invalid` ones with an ipfs:// URI checked at least an hour ago (a gateway can answer with an error page once).
  * Each launch is resolved on its own: whatever goes wrong with one (its JSON refused by the database, say) marks that
  * launch `invalid` and the pass moves on, so no single launch can hold back the ones after it.
  */
 export async function resolvePendingMetadata(deps: MetadataResolverDeps): Promise<void> {
   const now = (deps.now ?? unixNow)();
   const retryBefore = now - RETRY_AFTER_SEC;
+  const ipfsRetryBefore = now - IPFS_INVALID_RETRY_AFTER_SEC;
   const rows = await deps.db<PendingLaunch[]>`
     select chain_id, meme, token_uri, metadata_status, metadata_checked_at
     from launches
     where metadata_status = 'pending'
        or (metadata_status = 'unreachable' and coalesce(metadata_checked_at, 0) <= ${retryBefore})
+       or (metadata_status = 'invalid' and token_uri like 'ipfs://%'
+           and coalesce(metadata_checked_at, 0) <= ${ipfsRetryBefore})
     order by created_block asc
     limit 50
   `;

@@ -507,6 +507,33 @@ describe("metadata resolver robustness", () => {
     expect(calls).toBe(3); // ipfs.io is both the configured gateway and a fallback, and is asked once
   });
 
+  test("test_resolver_ipfsInvalidIsRecheckedHourly_otherInvalidIsNot", async () => {
+    await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable', 'invalid')`;
+    const onIpfs = "0x0000000000000000000000000000000000000bf3";
+    const onHttps = "0x0000000000000000000000000000000000000bf4";
+    await insertLaunch(onIpfs, "ipfs://bafkreiaraowk5rh2eupjzfqaqiqlkx46cwxbkmt7klovwdipaosh6znuxq", 43);
+    await insertLaunch(onHttps, "https://bad.example/meta.json", 44);
+    let good = false;
+    const fetch: FetchLike = async () =>
+      good
+        ? new Response('{"name":"Mole","symbol":"MOLE","image":"https://x.example/i.png"}', { status: 200 })
+        : new Response("<html>gateway error</html>", { status: 200 });
+    const status = async (meme: string) =>
+      (await db<{ metadata_status: string }[]>`select metadata_status from launches where meme = ${meme}`)[0]
+        ?.metadata_status;
+    const now = 1_700_000_000;
+    await resolvePendingMetadata({ db, config, media, fetch, lookup: PUBLIC_DNS, now: () => now });
+    expect(await status(onIpfs)).toBe("invalid");
+    expect(await status(onHttps)).toBe("invalid");
+
+    good = true;
+    await resolvePendingMetadata({ db, config, media, fetch, lookup: PUBLIC_DNS, now: () => now + 59 * 60 });
+    expect(await status(onIpfs)).toBe("invalid");
+    await resolvePendingMetadata({ db, config, media, fetch, lookup: PUBLIC_DNS, now: () => now + 60 * 60 });
+    expect(await status(onIpfs)).toBe("ok");
+    expect(await status(onHttps)).toBe("invalid");
+  });
+
   test("test_resolver_refusesPrivateHostsAndDowngrades", async () => {
     await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
     const internal = "0x0000000000000000000000000000000000000bd1";
