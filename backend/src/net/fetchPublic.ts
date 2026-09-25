@@ -1,5 +1,5 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import { isPublicAddress, normaliseIp } from "./ip";
+import { isPublicAddress, normaliseIp, parseIPv4 } from "./ip";
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -65,6 +65,33 @@ export async function fetchPublic(rawUrl: string, opts: FetchPublicOptions): Pro
   }
 }
 
+/** IPv4 ranges accepted besides public addresses (config.fetchAllowRanges; local development only). */
+let allowedRanges: Array<{ base: number; mask: number }> = [];
+
+/** Accept these IPv4 CIDR ranges as fetch targets too. Throws on a malformed range. */
+export function allowAddressRanges(cidrs: string[]): void {
+  allowedRanges = cidrs.map((cidr) => {
+    const [addr, bits] = cidr.trim().split("/");
+    const octets = parseIPv4(addr ?? "");
+    const prefix = Number(bits);
+    if (!octets || !Number.isInteger(prefix) || prefix < 8 || prefix > 32) throw new Error(`bad range: ${cidr}`);
+    const mask = prefix === 32 ? 0xffffffff : (~((1 << (32 - prefix)) - 1)) >>> 0;
+    return { base: (toUint32(octets) & mask) >>> 0, mask };
+  });
+}
+
+function toUint32(o: number[]): number {
+  return (((o[0]! << 24) >>> 0) + (o[1]! << 16) + (o[2]! << 8) + o[3]!) >>> 0;
+}
+
+function acceptable(ip: string): boolean {
+  if (isPublicAddress(ip)) return true;
+  const v4 = parseIPv4(ip.trim());
+  if (!v4) return false;
+  const n = toUint32(v4);
+  return allowedRanges.some((r) => ((n & r.mask) >>> 0) === r.base);
+}
+
 async function checkUrl(raw: string, lookup: LookupFn): Promise<URL> {
   let url: URL;
   try {
@@ -88,7 +115,7 @@ async function checkUrl(raw: string, lookup: LookupFn): Promise<URL> {
     }
   }
   if (addresses.length === 0) throw new FetchFailedError("the host does not resolve");
-  if (!addresses.every(isPublicAddress)) throw new UrlRefusedError("the host is not a public address");
+  if (!addresses.every(acceptable)) throw new UrlRefusedError("the host is not a public address");
   return url;
 }
 

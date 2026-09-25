@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isPublicAddress, normaliseIp, rateLimitKey } from "../src/net/ip";
-import { FetchFailedError, fetchPublic, UrlRefusedError, type FetchLike, type LookupFn } from "../src/net/fetchPublic";
+import { allowAddressRanges, FetchFailedError, fetchPublic, UrlRefusedError, type FetchLike, type LookupFn } from "../src/net/fetchPublic";
 import { clientAddress } from "../src/api/clientIp";
 
 describe("address classification", () => {
@@ -96,6 +96,22 @@ describe("fetchPublic", () => {
     };
     return { urls, fetch };
   }
+
+  test("test_fetchPublic_acceptsConfiguredRangesOnly", async () => {
+    const r = recorder(() => new Response("{}"));
+    const fakeIp: LookupFn = async () => ["198.18.7.51"];
+    await expect(fetchPublic("https://gateway.example/x.json", opts(r.fetch, fakeIp))).rejects.toBeInstanceOf(UrlRefusedError);
+    allowAddressRanges(["198.18.0.0/15"]);
+    try {
+      await expect(fetchPublic("https://gateway.example/x.json", opts(r.fetch, fakeIp))).resolves.toBeDefined();
+      // the allowance is exactly the range: loopback and other private space stay refused
+      await expect(fetchPublic("https://x.example/", opts(r.fetch, async () => ["127.0.0.1"]))).rejects.toBeInstanceOf(UrlRefusedError);
+      await expect(fetchPublic("https://x.example/", opts(r.fetch, async () => ["10.0.0.1"]))).rejects.toBeInstanceOf(UrlRefusedError);
+    } finally {
+      allowAddressRanges([]);
+    }
+    expect(() => allowAddressRanges(["198.18.0.0/4"])).toThrow();
+  });
 
   test("test_fetchPublic_refusesHostsThatResolvePrivately", async () => {
     const r = recorder(() => new Response("{}"));

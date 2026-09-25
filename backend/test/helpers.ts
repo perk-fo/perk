@@ -87,6 +87,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     maxBodyBytes: 3 * 1024 * 1024,
     wsMaxClientsPerIp: 20,
     allowFileDatasetUris: false,
+    fetchAllowRanges: [],
     ...overrides,
     trustedProxyHops: overrides.trustedProxyHops ?? (overrides.trustProxy ? 1 : 0),
   });

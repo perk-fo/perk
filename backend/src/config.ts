@@ -84,6 +84,12 @@ export interface AppConfig {
    */
   allowFileDatasetUris: boolean;
   /**
+   * IPv4 ranges (CIDR) that outbound fetches accept in addition to public addresses (FETCH_ALLOW_RANGES, comma
+   * separated). For a development machine behind a proxy that answers every DNS query with a "fake IP" (for example
+   * 198.18.0.0/15), where no host would otherwise pass the public-address check. Never on chain 196.
+   */
+  fetchAllowRanges: string[];
+  /**
    * Where each quote asset's US-dollar price comes from (PRICE_SOURCES, a JSON object from `native`, a quote address
    * or a quote symbol to a source string, merged over the defaults: native OKB from OKX's OKB-USDT ticker, tAAPL and
    * other "t" + US ticker stocks from CNBC's quote for the ticker). See src/prices/sources.ts.
@@ -175,6 +181,10 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   if (allowFileDatasetUris && chainId === XLAYER_MAINNET) {
     throw new Error("ALLOW_FILE_DATASET_URIS is for local development and cannot be used on chain 196");
   }
+  const fetchAllowRanges = overrides.fetchAllowRanges ?? listEnv("FETCH_ALLOW_RANGES");
+  if (fetchAllowRanges.length > 0 && chainId === XLAYER_MAINNET) {
+    throw new Error("FETCH_ALLOW_RANGES is for local development and cannot be used on chain 196");
+  }
   for (const secret of [rpcUrl, databaseUrl, pinataJwt]) registerSecret(secret);
   return {
     chainId: checkInt("CHAIN_ID", chainId, 1),
@@ -216,6 +226,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       1,
     ),
     allowFileDatasetUris,
+    fetchAllowRanges,
     priceSources: overrides.priceSources ?? parsePriceSources(process.env.PRICE_SOURCES),
   };
 }

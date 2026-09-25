@@ -5,8 +5,10 @@ import type { RawLog } from "../chain/events";
  * Version of what the indexer derives from logs. Bump it when a release adds or changes a handler for events that
  * may already be behind the cursor: on boot an index built by an older version is rebuilt from the start block.
  *   2: admin roles (factory OwnershipTransferred, vault PublisherUpdated); template status from the struct.
+ *   3: chain-string sanitising and quarantine; also rebuilds indexes that a pre-lock indexer running alongside
+ *      during a rolling deploy left with gaps.
  */
-export const INDEX_VERSION = 2;
+export const INDEX_VERSION = 3;
 
 /**
  * Tables that hold decisions people made rather than facts derived from logs. A rebuild of the index keeps them.

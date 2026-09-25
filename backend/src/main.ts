@@ -9,6 +9,7 @@ import { createWsHub } from "./api/ws";
 import { runDatasetLoader } from "./grants/datasets";
 import { createMediaStore } from "./media/store";
 import { runMetadataResolver } from "./media/resolver";
+import { allowAddressRanges } from "./net/fetchPublic";
 import { PriceService } from "./prices/service";
 import { errorText, log } from "./log";
 
@@ -74,6 +75,7 @@ async function main(): Promise<void> {
         allowFileUris: cfg.allowFileDatasetUris,
       }),
     );
+    allowAddressRanges(cfg.fetchAllowRanges);
     tasks.push(runMetadataResolver({ db, config: cfg, media, log }));
     tasks.push(prices.run());
     tasks.push(new Promise(() => {}));
