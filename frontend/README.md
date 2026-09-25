@@ -57,11 +57,16 @@ redirects here.
 
 **`/me`** - the wallet's own view: holdings, claimable amounts, grant positions, launches and invitations.
 
+**`/docs`** - how Perk works, for someone new to it: the life of a token, fees, templates and the config hash,
+pairing assets, LP Grant, referrals, what is fixed and what can be paused, and a glossary. The text is in
+`src/i18n/docs`, one file per locale; the contract table at the end reads the live deployment.
+
 ## Conventions
 
 Every write simulates first and checks eligibility and network before the wallet opens, then shows preparation,
 signing, confirmation and completion. A rejected signature and a mined revert are both failures, not successes.
 Custom errors are decoded from the ABI into readable messages in the user's language.
 
-All copy goes through the three-locale system in `src/i18n`; `bun run i18n:check` fails on a missing key or on CJK
-hard-coded in a component. The visual system is described in `DESIGN.md`.
+All copy goes through the three-locale system in `src/i18n`; `bun run i18n:check` fails on a missing key, on CJK
+hard-coded in a component, or on a Docs locale whose sections differ from the English ones. The visual system is
+described in `DESIGN.md`.

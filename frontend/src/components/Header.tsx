@@ -181,6 +181,7 @@ export function Header() {
     { href: "/pool", label: t("nav.pool"), match: (p: string) => p.startsWith("/pool") },
     { href: "/grant", label: t("nav.grant"), match: (p: string) => p.startsWith("/grant") },
     { href: "/launch", label: t("nav.launch"), match: (p: string) => p.startsWith("/launch") },
+    { href: "/docs", label: t("nav.docs"), match: (p: string) => p.startsWith("/docs") },
     // only wallets holding an admin role see the admin entry (everyone else gets a not-found page there)
     ...(adminRoles.isAdmin
       ? [{ href: "/admin", label: t("nav.admin"), match: (p: string) => p.startsWith("/admin") }]
@@ -203,7 +204,7 @@ export function Header() {
       <header className="z-20 border-b border-line bg-ink/90 backdrop-blur-md sm:sticky sm:top-0">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:gap-x-6 sm:px-8 sm:py-4 lg:flex-nowrap">
           <PerkBrand className="order-1" wordmarkClassName={isConnected ? "max-[389px]:hidden" : "max-[359px]:hidden"} />
-          <nav className="order-3 -mx-1 flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-1 text-[14px] font-bold sm:order-2 sm:w-auto sm:pb-0">
+          <nav className="order-3 -mx-1 flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-1 text-[14px] font-bold max-[389px]:gap-0 max-[389px]:text-[13px] sm:order-2 sm:w-auto sm:pb-0">
             {nav.map((item) => {
               const active = item.match(pathname);
               return (
@@ -211,14 +212,14 @@ export function Header() {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`group relative whitespace-nowrap rounded-lg px-2 py-2 transition-colors duration-fast sm:px-2.5 ${
+                  className={`group relative whitespace-nowrap rounded-lg px-2 py-2 transition-colors duration-fast max-[389px]:px-1 sm:px-2.5 ${
                     active ? "text-bone" : "text-muted hover:text-bone"
                   }`}
                 >
                   {/* an underline beneath the word (never over it) marks the current section; it draws in on hover */}
                   <span
                     aria-hidden
-                    className={`absolute inset-x-2.5 bottom-0 h-[3px] origin-left rounded-full transition-transform duration-300 ease-spring ${
+                    className={`absolute inset-x-2.5 bottom-0 h-[3px] max-[389px]:inset-x-1 origin-left rounded-full transition-transform duration-300 ease-spring ${
                       active ? "scale-x-100 bg-tangerine dark:bg-yolk" : "scale-x-0 bg-honey group-hover:scale-x-100"
                     }`}
                   />
