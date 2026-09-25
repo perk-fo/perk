@@ -5,7 +5,8 @@ import { useMemo } from "react";
 import { useDeployment } from "@/lib/hooks";
 import { useFeatured, useLaunchList, useStats } from "@/lib/api-hooks";
 import { API_URL, isApiUnreachable } from "@/lib/api";
-import { Sparkle } from "@/components/art/Sparkle";
+import { Blossom } from "@/components/art/Blossom";
+import { LiquidityIcon, RocketIcon, SwapIcon } from "@/components/ui/Icon";
 import { Notice } from "@/components/ui/Notice";
 import { LaunchCard, LaunchCardSkeleton } from "@/components/LaunchCard";
 import { HeroScene } from "@/components/home/HeroScene";
@@ -14,9 +15,9 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { useT } from "@/i18n/provider";
 
 const PATHS = [
-  { tag: "home.door.tradeTag", href: "/trade", title: "nav.trade", body: "home.door.trade", cta: "home.door.tradeCta", icon: "↗", sun: false },
-  { tag: "home.door.grantTag", href: "/grant", title: "nav.grant", body: "home.door.grant", cta: "home.door.grantCta", icon: "⇄", sun: false },
-  { tag: "home.door.launchTag", href: "/launch", title: "nav.launch", body: "home.door.launch", cta: "home.door.launchCta", icon: "✳", sun: true },
+  { tag: "home.door.tradeTag", href: "/trade", title: "nav.trade", body: "home.door.trade", cta: "home.door.tradeCta", icon: SwapIcon, sun: false },
+  { tag: "home.door.grantTag", href: "/grant", title: "nav.grant", body: "home.door.grant", cta: "home.door.grantCta", icon: LiquidityIcon, sun: false },
+  { tag: "home.door.launchTag", href: "/launch", title: "nav.launch", body: "home.door.launch", cta: "home.door.launchCta", icon: RocketIcon, sun: true },
 ] as const;
 
 export default function HomePage() {
@@ -51,7 +52,7 @@ export default function HomePage() {
       <section className="grid grid-cols-1 items-center gap-6 pb-14 pt-8 lg:min-h-[600px] lg:grid-cols-[1.15fr_1fr] lg:gap-9 lg:pb-16 lg:pt-14 [&>*]:min-w-0">
         <div className="fade-up min-w-0">
           <p className="mb-6 flex items-center gap-2.5 text-[12px] font-bold tracking-wide text-muted">
-            <Sparkle size={18} tone="honey" spin />
+            <Blossom size={18} tone="honey" spin />
             {t("home.hero.kicker")}
           </p>
           <h1 className="hero-title font-display text-[40px] leading-[1.12] sm:text-[52px] lg:text-[60px]">
@@ -125,7 +126,7 @@ export default function HomePage() {
                     p.sun ? "bg-yolk text-charcoal" : "bg-raised text-bone"
                   }`}
                 >
-                  {p.icon}
+                  <p.icon size={20} />
                 </span>
               </div>
               <h3 className="font-display text-[26px] leading-tight">{t(p.title)}</h3>

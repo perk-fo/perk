@@ -3,7 +3,7 @@
 import { useId } from "react";
 
 /**
- * The LP Grant pass's emblem: a golden Easter egg with a cream zigzag band, tangerine dots and the brand asterisk.
+ * The LP Grant pass's emblem: a golden Easter egg with a cream zigzag band, tangerine dots and the brand blossom.
  * `lit` (the pass is issued) adds a light sweep and twinkling sparkles; unlit it is a pale, undecorated-looking
  * promise of one. `wobble` rocks it gently (loading, hover).
  */
@@ -52,9 +52,14 @@ export function GoldenEgg({ size = 96, lit = true, wobble = false }: { size?: nu
           {[30, 46, 62, 78, 94].map((x, i) => (
             <circle key={x} cx={x} cy={i % 2 ? 95 : 45} r="3.4" fill={lit ? "#FF822D" : "#CFCBBA"} />
           ))}
-          <g stroke={lit ? "#FFF8DD" : "#FAF8F0"} strokeWidth="3.2" strokeLinecap="round">
-            <path d="M60 22V36M53 29H67M55 24L65 34M65 24L55 34" />
+          {/* the brand blossom: five petals and a tangerine heart */}
+          <g fill={lit ? "#FFF8DD" : "#FAF8F0"}>
+            {[0, 1, 2, 3, 4].map((i) => {
+              const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+              return <circle key={i} cx={60 + 4.4 * Math.cos(a)} cy={29 + 4.4 * Math.sin(a)} r="3.3" />;
+            })}
           </g>
+          <circle cx="60" cy="29" r="2.3" fill={lit ? "#FF822D" : "#CFCBBA"} />
           {lit && <rect className="golden-egg-sweep" x="-60" y="0" width="50" height="120" fill={`url(#${uid}-sweep)`} />}
         </g>
         <ellipse cx="44" cy="34" rx="7" ry="13" fill="#fff" opacity={lit ? 0.55 : 0.4} transform="rotate(24 44 34)" />

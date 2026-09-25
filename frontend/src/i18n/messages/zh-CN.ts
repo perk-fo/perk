@@ -930,7 +930,7 @@ const messages: Record<string, string> = {
   "egg.pattern.stripes": "条纹",
   "egg.pattern.polka": "波点",
   "egg.pattern.waves": "波浪纹",
-  "egg.pattern.sparkles": "星芒",
+  "egg.pattern.blossoms": "小花",
   "egg.pattern.dipped": "双色浸染",
   "egg.pattern.crack": "细裂纹",
   "egg.species.chick": "小鸡",

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRef, type PointerEvent } from "react";
 import { PerkChick } from "@/components/brand/PerkChick";
-import { Sparkle } from "@/components/art/Sparkle";
+import { Blossom } from "@/components/art/Blossom";
 import { useT } from "@/i18n/provider";
 
 /**
@@ -104,7 +104,7 @@ export function HeroScene() {
       <span className="eyebrow absolute bottom-1 left-6 text-[10px] normal-case tracking-[0.18em]" aria-hidden>
         {t("home.credential.caption")}
       </span>
-      <Sparkle size={58} tone="honey" spin className="absolute bottom-5 right-3" />
+      <Blossom size={58} tone="honey" spin className="absolute bottom-5 right-3" />
     </div>
   );
 }

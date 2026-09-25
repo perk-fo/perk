@@ -24,7 +24,7 @@ import { unpackBalanceDelta } from "@/lib/trades";
 import { formatAmount, fmtBps, signedPct } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
-import { Sparkle } from "@/components/art/Sparkle";
+import { Blossom } from "@/components/art/Blossom";
 import { useT } from "@/i18n/provider";
 import { usePauseFlags } from "@/lib/pause";
 
@@ -593,7 +593,7 @@ export function OrderPanel({
           onClick={onSubmit}
         >
           <span className="inline-flex items-center justify-center gap-1.5">
-            {flash && <Sparkle size={12} tone="flare" twinkle />}
+            {flash && <Blossom size={12} tone="flare" twinkle />}
             {cta}
           </span>
         </Button>

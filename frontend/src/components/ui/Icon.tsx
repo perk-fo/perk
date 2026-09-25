@@ -70,3 +70,36 @@ export function GlobeIcon(p: IconProps) {
     </Svg>
   );
 }
+
+/** Two opposed arrows: exchanging one asset for another (trading). */
+export function SwapIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
+      <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
+    </Svg>
+  );
+}
+
+/** A drop with a plus: liquidity, topped up (LP Grant subsidises liquidity). */
+export function LiquidityIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M8 1.75c2.4 2.9 4.25 5.3 4.25 7.7a4.25 4.25 0 0 1-8.5 0c0-2.4 1.85-4.8 4.25-7.7Z" />
+      <path d="M8 7.6v3.6M6.2 9.4h3.6" />
+    </Svg>
+  );
+}
+
+/** A small rocket: launching a token. */
+export function RocketIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M8 1.75c2.1 1.5 3.1 3.7 3.1 6.2V11H4.9V7.95c0-2.5 1-4.7 3.1-6.2Z" />
+      <circle cx="8" cy="6.6" r="1.1" />
+      <path d="M4.9 8.9 3 10.8V12.6h1.9M11.1 8.9 13 10.8V12.6h-1.9" />
+      <path d="M7 13.2 8 14.5l1-1.3" />
+    </Svg>
+  );
+}
+

@@ -1,6 +1,6 @@
 /**
  * HashEgg — the default picture of a launch: an Easter egg generated from its configHash. The hash picks the shell
- * colour, the decoration (speckles, zigzag band, stripes, polka dots, waves, sparkles, a dipped two-tone base or a
+ * colour, the decoration (speckles, zigzag band, stripes, polka dots, waves, blossoms, a dipped two-tone base or a
  * hatching crack), the decoration's colours, the egg's width and a slight tilt. Nothing is random: the same hash
  * always gives the same egg, so the preview on /launch and the on-chain record look identical. The launch's module
  * bits sit as five small dots in the nest under the egg (from 44px up). Without a hash it draws the dashed outline
@@ -25,7 +25,7 @@ export const SHELLS: ReadonlyArray<{ name: string; fill: string; inks: readonly 
 ];
 
 /** The decorations, in the order `decoration()` draws them; keys the trait label (egg.pattern.*). */
-export const PATTERNS = ["speckles", "zigzag", "stripes", "polka", "waves", "sparkles", "dipped", "crack"] as const;
+export const PATTERNS = ["speckles", "zigzag", "stripes", "polka", "waves", "blossoms", "dipped", "crack"] as const;
 
 export function bytesOf(hash: string): number[] {
   const h = hash.replace(/^0x/, "").padEnd(64, "0").slice(0, 64);
@@ -61,14 +61,14 @@ function wave(y: number, amp: number): string {
   return d;
 }
 
-function asterisk(x: number, y: number, r: number, colour: string, key: string | number): ReactNode {
-  const d = r * 0.7;
+function blossom(x: number, y: number, r: number, colour: string, heart: string, key: string | number): ReactNode {
   return (
-    <g key={key} stroke={colour} strokeWidth={r * 0.42} strokeLinecap="round">
-      <path d={`M${x} ${y - r}V${y + r}`} />
-      <path d={`M${x - r} ${y}H${x + r}`} />
-      <path d={`M${x - d} ${y - d}L${x + d} ${y + d}`} />
-      <path d={`M${x + d} ${y - d}L${x - d} ${y + d}`} />
+    <g key={key}>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+        return <circle key={i} cx={x + r * 0.62 * Math.cos(a)} cy={y + r * 0.62 * Math.sin(a)} r={r * 0.5} fill={colour} />;
+      })}
+      <circle cx={x} cy={y} r={r * 0.36} fill={heart} />
     </g>
   );
 }
@@ -116,11 +116,12 @@ export function decoration(kind: number, b: number[], ink: string, accent: strin
           <path d={wave(94, 8)} stroke={ink} strokeWidth={5} />
         </g>
       );
-    case 5: // the brand's asterisks
+    case 5: // the brand's blossoms
       return Array.from({ length: 7 }, (_, i) => {
         const x = 30 + (b[(i * 3) % 32]! % 60);
         const y = 28 + (b[(i * 3 + 1) % 32]! % 72);
-        return asterisk(x, y, 4 + (b[(i * 3 + 2) % 32]! % 3), i % 3 === 0 ? accent : ink, i);
+        const petals = i % 3 === 0 ? accent : ink;
+        return blossom(x, y, 5 + (b[(i * 3 + 2) % 32]! % 3), petals, petals === ink ? accent : ink, i);
       });
     case 6: // dipped: a second colour on the lower half with a wavy edge, dots on the line
       return (

@@ -939,7 +939,7 @@ const messages: Record<string, string> = {
   "egg.pattern.stripes": "Stripes",
   "egg.pattern.polka": "Polka dots",
   "egg.pattern.waves": "Waves",
-  "egg.pattern.sparkles": "Sparkles",
+  "egg.pattern.blossoms": "Blossoms",
   "egg.pattern.dipped": "Two-tone dip",
   "egg.pattern.crack": "Hairline crack",
   "egg.species.chick": "Chick",

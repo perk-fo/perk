@@ -26,7 +26,7 @@ the home page; every other page follows the same system.
   screens) to peek inside a sealed egg; the artwork is public metadata anyway, so this is play, not secrecy.
 - The chick is the brand's voice. It appears in the lockup, loading states, empty states, transaction toasts and the
   not-found page, and nowhere as decoration for its own sake.
-- The eight-spoke asterisk (`art/Sparkle`) is the main ornament: section kicker, the corner of the hero scene, one of
+- The five-petal blossom (`art/Blossom`) is the main ornament: section kicker, the corner of the hero scene, one of
   the egg patterns.
 - Shape language: buttons and inputs are 12px rounded rectangles, cards 20px, badges fully round, eggs split along
   a zigzag crack. Stacked, slightly rotated cards are the signature composition.
@@ -103,7 +103,7 @@ Everything here stops under `prefers-reduced-motion`.
   points its eyes at the pointer; `loading` wobbles the egg while the chick rises out of it and flaps; `static`
   does nothing (favicons, tiny sizes).
 - The hero credential card leans toward the pointer (up to 12 degrees), its backing cards fan out while it is
-  hovered, the orbit rings turn slowly, the plus signs float, and the corner asterisk spins.
+  hovered, the orbit rings turn slowly, the plus signs float, and the corner blossom spins.
 - Linked cards lift 4px with a longer shadow and a honey border on a springy curve; their icons wiggle, arrows
   (`.nudge`) slide up and right, launch eggs open (see Concepts).
 - Buttons rise 2px on hover and press to 97%; the primary one gains a tangerine glow.
@@ -118,7 +118,7 @@ Everything here stops under `prefers-reduced-motion`.
   The favicon (`app/icon.svg`, `public/brand/perk-chick.svg`) is the static chick; `app/apple-icon.png` is rendered
   from it.
 - `art/HashEgg` the egg on its own, derived from the hash: ten shell colours, eight patterns (speckles, zigzag band,
-  stripes, polka dots, waves, sparkles, a two-tone dip, a hairline crack), width and tilt, with the module bits as
+  stripes, polka dots, waves, blossoms, a two-tone dip, a hairline crack), width and tilt, with the module bits as
   dots in the nest from 44px. Without a hash it draws a dashed outline (loading placeholder). `eggLook` and
   `decoration` are shared with the avatar.
 - `art/Hatchling` the fallback creature: chick, duckling, penguin, owlet, dino, croc, turtle or dragon, each with
@@ -127,7 +127,7 @@ Everything here stops under `prefers-reduced-motion`.
 - `art/LaunchAvatar` the launch in its egg with the four states above; `mode="detail"` swaps the hover peek for the
   X-ray lens. An image that fails to load falls back to the hatchling. `meme/LaunchTraits` lists the traits.
 - `art/GoldenEgg` the LP Grant pass: a gold egg with a cream zigzag band, lit once the pass is issued.
-- `art/Sparkle` the asterisk (`spin` for the slow turn), `art/CurveChart`, `art/PriceChart`, `art/DecayRing`.
+- `art/Blossom` the flower ornament (`spin` for the slow turn), `art/CurveChart`, `art/PriceChart`, `art/DecayRing`.
 - `ui/Panel` (bold title, right slot), `ui/PageHeader` and `ui/SectionHeading`, `ui/Stat`, `ui/Kv`,
   `ui/ModuleBlocks`, `ui/Ticket`, `ui/Pill` (tinted badges; `yolk` for "graduation pending"), `ui/Button` (primary /
   ghost / danger), `ui/Field`, `ui/Segmented`, `ui/Notice`, `ui/EmptyState`, `ui/FeeSplitBar`, `ui/Icon`,

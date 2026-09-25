@@ -8,7 +8,7 @@ import { useDeployment, useTx } from "@/lib/hooks";
 import { useInvite } from "@/lib/use-referral";
 import { forgetInviter } from "@/lib/referral";
 import { GoldenEgg } from "@/components/art/GoldenEgg";
-import { Sparkle } from "@/components/art/Sparkle";
+import { Blossom } from "@/components/art/Blossom";
 import { Spinner } from "@/components/ui/Spinner";
 import { InviteLinkRow } from "@/components/InviteLinkRow";
 import { TxStatus } from "@/components/TxStatus";
@@ -110,7 +110,7 @@ export function PerkPass() {
       <div className="pass-body">
         <div className="min-w-0 flex-1 p-6 sm:p-8">
           <p className="label-en flex items-center gap-2 text-flare">
-            <Sparkle size={9} tone="flare" />
+            <Blossom size={9} tone="flare" />
             {t("pass.kicker")}
           </p>
           <h2 className="mt-3 font-display text-3xl leading-[1.05] sm:text-[40px]">
@@ -128,7 +128,7 @@ export function PerkPass() {
 
           {invitedBy && (
             <p className="pass-ribbon mt-5">
-              <Sparkle size={8} tone="amber" />
+              <Blossom size={8} tone="amber" />
               {t(hasInviter ? "pass.invitedBy" : "pass.inviteWaiting", { who: shortAddress(invitedBy) })}
             </p>
           )}
@@ -188,12 +188,12 @@ export function PerkPass() {
         </div>
       )}
 
-      {/* claim celebration: a ring of sparkles bursting out of the stub */}
+      {/* claim celebration: a ring of blossoms bursting out of the stub */}
       {celebrate && (
         <div className="pass-burst" aria-hidden>
           {Array.from({ length: 10 }, (_, i) => (
             <span key={i} style={{ ["--a" as string]: `${i * 36}deg` }}>
-              <Sparkle size={i % 2 ? 10 : 14} tone={i % 3 ? "flare" : "amber"} />
+              <Blossom size={i % 2 ? 10 : 14} tone={i % 3 ? "flare" : "amber"} />
             </span>
           ))}
         </div>
