@@ -8,6 +8,7 @@ const messages: Record<string, string> = {
     "Each launch's template, modules and parameters form a configHash at creation and cannot be replaced once the official pool is initialized. Each launch's egg, and the creature in it when no artwork is uploaded, is generated from that hash.",
 
   "common.invalidAmount": "Invalid amount",
+  "common.decimalsUnknown": "{symbol} decimals not loaded yet; the amount cannot be read",
   "common.modules": "Modules",
   "common.networkTitle": "Network",
   "common.noDeployment": "No synced deployment on the current chain.",
@@ -33,6 +34,9 @@ const messages: Record<string, string> = {
   "quote.category.native": "Native",
   "quote.category.ecosystem": "Ecosystem token",
   "quote.category.rwa": "Tokenised US stock (RWA)",
+
+  "usd.title": "In US dollars at 1 {symbol} = {rate}",
+  "usd.titleNow": "Today's value in US dollars, at 1 {symbol} = {rate}",
 
   "grant.countdown.dhm": "{d}d {h}h {m}m",
   "grant.countdown.hms": "{h}h {m}m {s}s",
@@ -68,7 +72,7 @@ const messages: Record<string, string> = {
   "errors.name.RootDelayNotElapsed": "Root delay has not elapsed yet",
   "errors.name.SelfReferral": "You cannot invite yourself",
   "errors.name.SlippageExceeded": "Price moved beyond your slippage; raise it or retry",
-  "errors.name.PriceUnstable": "The pool price just moved sharply. Grant positions open and close only once the price has settled; try again in a few minutes",
+  "errors.name.PriceUnstable": "The pool price just moved sharply. New grant positions open only once the price has settled; try again in a few minutes. Exits are never blocked.",
   "errors.name.WindowClosed": "The window has closed",
   "errors.name.ZeroAmount": "Amount must be greater than zero",
   "errors.name.ERC20InsufficientBalance": "Insufficient balance",
@@ -156,6 +160,7 @@ const messages: Record<string, string> = {
     "Tokenised US stocks may be subject to trading hours, issuer permissions, freezes, redemption limits and jurisdictional requirements.",
   "create.quote.native": "Native gas asset",
   "create.quote.decimals": "decimals {n}",
+  "create.quote.decimalsUnknown": "decimals not loaded",
   "create.rwa.more": "Details",
   "create.rwa.less": "Collapse",
   "create.template.testnet": "Testnet",
@@ -949,6 +954,7 @@ const messages: Record<string, string> = {
   "egg.accessory.shades": "Shades",
   "egg.accessory.bow": "Bow",
   "egg.accessory.crown": "Crown",
+  "grant.register.afterActivation": "Registration opens once the root is activated.",
 };
 
 export default messages;

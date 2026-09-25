@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
-import { useLaunchList, useLpPositions } from "@/lib/api-hooks";
+import { useLaunchList, useLpPositions, useUsdRates } from "@/lib/api-hooks";
 import { API_URL, isApiUnreachable } from "@/lib/api";
 import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
@@ -13,6 +13,8 @@ import { LaunchAvatar } from "@/components/art/LaunchAvatar";
 import { formatAmount, formatNumber, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { UsdFigure } from "@/components/ui/Usd";
+import { quoteAmountToUsd, quotePriceToUsd, usdRateOf } from "@/lib/usd";
 import { PageHeader } from "@/components/ui/SectionHeading";
 
 /**
@@ -26,6 +28,7 @@ export default function PoolPage() {
   const [q, setQ] = useState("");
   const list = useLaunchList({ status: "3", sort: "volume", limit: 100 });
   const positions = useLpPositions(address);
+  const rates = useUsdRates();
   const apiDown = isApiUnreachable(list.error);
 
   const pools = useMemo(() => {
@@ -138,6 +141,8 @@ export default function PoolPage() {
                 {pools.map((item) => {
                   const href = `/pool/${item.meme}`;
                   const m = item.market;
+                  const rate = usdRateOf(rates, item.quote);
+                  const usd = { rate, symbol: item.quoteSymbol };
                   return (
                     <tr
                       key={item.meme}
@@ -156,11 +161,19 @@ export default function PoolPage() {
                         </span>
                       </td>
                       <td className="num px-2 py-3 text-right">
-                        {m.lastPrice !== null && m.lastPrice > 0 ? <Subscripted text={formatPrice(m.lastPrice, locale)} /> : <span className="text-faint">—</span>}
+                        {m.lastPrice !== null && m.lastPrice > 0 ? (
+                          <UsdFigure kind="price" usd={quotePriceToUsd(m.lastPrice, rate)} {...usd}>
+                            <Subscripted text={formatPrice(m.lastPrice, locale)} />
+                          </UsdFigure>
+                        ) : (
+                          <span className="text-faint">—</span>
+                        )}
                       </td>
                       <td className="num hidden px-2 py-3 text-right text-bone md:table-cell">
-                        {formatAmount(BigInt(m.volume24hQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
-                        <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
+                        <UsdFigure compact usd={quoteAmountToUsd(m.volume24hQuote, item.quoteDecimals, rate)} {...usd}>
+                          {formatAmount(BigInt(m.volume24hQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
+                          <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
+                        </UsdFigure>
                       </td>
                       <td className="num hidden px-2 py-3 text-right text-muted lg:table-cell">
                         {item.curve ? `${(item.curve.totalFeeBps / 100).toFixed(2)}%` : "—"}
@@ -169,7 +182,7 @@ export default function PoolPage() {
                         <Link
                           href={href}
                           onClick={(e) => e.stopPropagation()}
-                          className="rounded-full bg-raised px-3.5 py-1.5 text-[13px] font-medium text-bone transition-colors duration-fast hover:bg-flare/10 hover:text-flare"
+                          className="rounded-full bg-raised px-3.5 py-1.5 text-[13px] font-medium text-bone transition-colors duration-fast hover:bg-yolk/40"
                         >
                           {t("pool.lp.add")}
                         </Link>

@@ -8,6 +8,7 @@ const messages: Record<string, string> = {
     "各ローンチのテンプレート・モジュール・パラメータは発行時に configHash を形成し、公式プールの初期化後は変更できません。各ローンチの卵（画像がない場合は中の生き物も）はこのハッシュから生成されます。",
 
   "common.invalidAmount": "数量の形式が正しくありません",
+  "common.decimalsUnknown": "{symbol} の小数点桁数を読み込み中のため、数量を読み取れません",
   "common.modules": "モジュール",
   "common.networkTitle": "ネットワーク",
   "common.noDeployment": "現在のチェーンには同期済みのデプロイがありません。",
@@ -33,6 +34,9 @@ const messages: Record<string, string> = {
   "quote.category.native": "ネイティブ",
   "quote.category.ecosystem": "エコシステムトークン",
   "quote.category.rwa": "トークン化米国株（RWA）",
+
+  "usd.title": "1 {symbol} = {rate} で換算した米ドル建ての金額",
+  "usd.titleNow": "現在の 1 {symbol} = {rate} で換算した米ドル建ての価値",
 
   "grant.countdown.dhm": "{d} 日 {h} 時間 {m} 分",
   "grant.countdown.hms": "{h} 時間 {m} 分 {s} 秒",
@@ -68,7 +72,7 @@ const messages: Record<string, string> = {
   "errors.name.RootDelayNotElapsed": "公示期間がまだ終わっていません",
   "errors.name.SelfReferral": "自分自身は招待できません",
   "errors.name.SlippageExceeded": "価格がスリッページ設定を超えて動きました",
-  "errors.name.PriceUnstable": "プール価格が急変した直後です。Grant ポジションは価格が落ち着いてからのみ開始・退出できます。数分後にもう一度お試しください",
+  "errors.name.PriceUnstable": "プール価格が急変した直後です。新しい Grant ポジションは価格が落ち着いてから開始できます。数分後にもう一度お試しください。退出が妨げられることはありません。",
   "errors.name.WindowClosed": "期間が終了しています",
   "errors.name.ZeroAmount": "数量は 0 より大きくしてください",
   "errors.name.ERC20InsufficientBalance": "残高不足です",
@@ -158,6 +162,7 @@ const messages: Record<string, string> = {
     "トークン化米国株には、取引時間、発行者権限、凍結、償還制限、法域要件が存在する場合があります。",
   "create.quote.native": "ネイティブ Gas 資産",
   "create.quote.decimals": "小数点 {n} 桁",
+  "create.quote.decimalsUnknown": "小数点桁数を読み込み中",
   "create.rwa.more": "詳細",
   "create.rwa.less": "折りたたむ",
   "create.template.testnet": "テストネット",
@@ -953,6 +958,7 @@ const messages: Record<string, string> = {
   "egg.accessory.shades": "サングラス",
   "egg.accessory.bow": "リボン",
   "egg.accessory.crown": "王冠",
+  "grant.register.afterActivation": "ルートが有効化されると登録できます。",
 };
 
 export default messages;

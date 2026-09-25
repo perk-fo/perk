@@ -15,7 +15,7 @@ import { useT } from "@/i18n/provider";
 export const MAX_FEATURED = 12;
 
 const SEARCH_CLASS =
-  "block w-full rounded-full border border-line-strong bg-ink/50 px-4 py-2 text-sm outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-flare focus:ring-2 focus:ring-flare/20";
+  "block w-full rounded-full border border-line-strong bg-ink/50 px-4 py-2 text-sm outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-honey focus:ring-2 focus:ring-honey/30";
 
 /** Launches matching an address, name or symbol, hidden ones included. Empty text lists the newest. */
 function useLaunchSearch(text: string) {
@@ -184,7 +184,7 @@ function ModerationRow({ item }: { item: AdminLaunch }) {
               value={reason}
               maxLength={200}
               onChange={(e) => setReason(e.target.value)}
-              className="mt-1.5 block w-full rounded-[10px] border border-line-strong bg-ink/50 px-3.5 py-2 text-sm outline-none focus:border-flare focus:ring-2 focus:ring-flare/20"
+              className="mt-1.5 block w-full rounded-[10px] border border-line-strong bg-ink/50 px-3.5 py-2 text-sm outline-none focus:border-honey focus:ring-2 focus:ring-honey/30"
             />
             <span className="mt-1 block text-xs text-subtle">{t("admin.moderation.reasonHint")}</span>
           </label>

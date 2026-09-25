@@ -38,7 +38,7 @@ import { useT } from "@/i18n/provider";
 const CATEGORIES: QuoteCategory[] = ["native", "ecosystem", "rwa", "stablecoin", "other"];
 const LOCALES: Array<keyof QuoteNotice> = ["en", "zh-CN", "ja"];
 const CONTROL =
-  "block w-full rounded-[10px] border border-line-strong bg-ink/50 px-3.5 py-2 text-sm text-bone outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-flare focus:ring-2 focus:ring-flare/20";
+  "block w-full rounded-[10px] border border-line-strong bg-ink/50 px-3.5 py-2 text-sm text-bone outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-honey focus:ring-2 focus:ring-honey/30";
 
 // ---------------------------------------------------------------------------------------------- the list
 
@@ -558,7 +558,7 @@ export function NewQuotePanel() {
                   <span className="flex min-w-0 items-center gap-2.5">
                     <span
                       className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] ${
-                        s.done ? "bg-verdigris/15 text-verdigris" : s === next ? "bg-flare/15 text-flare" : "bg-raised text-subtle"
+                        s.done ? "bg-verdigris/15 text-verdigris" : s === next ? "bg-yolk/35 text-bone" : "bg-raised text-subtle"
                       }`}
                       aria-hidden
                     >

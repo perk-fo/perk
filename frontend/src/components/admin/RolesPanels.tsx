@@ -20,7 +20,7 @@ import { adminErrorText } from "@/components/admin/errors";
 import { useT, type TFn } from "@/i18n/provider";
 
 const INPUT_CLASS =
-  "mono block w-full rounded-full border border-line-strong bg-ink/50 px-4 py-2 text-[13px] outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-flare focus:ring-2 focus:ring-flare/20";
+  "mono block w-full rounded-full border border-line-strong bg-ink/50 px-4 py-2 text-[13px] outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-honey focus:ring-2 focus:ring-honey/30";
 
 /** Who owns the contracts, and a warning while an ownership transfer is half done. */
 export function CoreAdminPanel() {

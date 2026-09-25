@@ -10,11 +10,15 @@ import { Pill, launchStatusPill } from "@/components/ui/Pill";
 import { formatAmount, formatPrice, fmtBps, shortHash } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { UsdFigure } from "@/components/ui/Usd";
+import { useUsdRates } from "@/lib/api-hooks";
+import { formatUsdPrice, quoteAmountToUsd, quotePriceToUsd, usdRateOf } from "@/lib/usd";
 
 /**
  * Gallery card for one launch (home, featured, "my launches"): the launch in its egg (hatched once graduated), name,
  * price, status, and either the curve with its progress while bonding or the pool once graduated. Hovering the card
- * lifts the lid of the egg and the creature peeks out.
+ * lifts the lid of the egg and the creature peeks out. The price is in US dollars with the quote price under it, or
+ * in the quote alone when it has no USD rate; the curve stays in the quote it raises.
  */
 export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string }) {
   const { t, locale } = useT();
@@ -25,6 +29,8 @@ export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string 
   const curveState = curveStateShape(item);
   const price = item.market.lastPrice;
   const progress = Number(progressBpsOf(item));
+  const rate = usdRateOf(useUsdRates(), item.quote);
+  const priceUsd = quotePriceToUsd(price, rate);
   return (
     <Link
       href={href ?? `/meme/${item.meme}`}
@@ -43,12 +49,23 @@ export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string 
         </div>
         <div className="num shrink-0 text-right text-[13px] leading-tight text-muted">
           {price !== null && price > 0 ? (
-            <>
-              <div className="font-bold text-bone">
-                <Subscripted text={formatPrice(price, locale)} />
+            priceUsd !== null && rate !== null ? (
+              <div title={t("usd.title", { symbol, rate: formatUsdPrice(rate, locale) })}>
+                <div className="font-bold text-bone">
+                  <Subscripted text={formatUsdPrice(priceUsd, locale)} />
+                </div>
+                <div className="mt-0.5 text-xs">
+                  <Subscripted text={formatPrice(price, locale)} /> {symbol}
+                </div>
               </div>
-              <div className="mt-0.5 text-xs">{symbol}</div>
-            </>
+            ) : (
+              <>
+                <div className="font-bold text-bone">
+                  <Subscripted text={formatPrice(price, locale)} />
+                </div>
+                <div className="mt-0.5 text-xs">{symbol}</div>
+              </>
+            )
           ) : null}
         </div>
       </div>
@@ -90,8 +107,10 @@ export function LaunchCard({ item, href }: { item: LaunchSummary; href?: string 
             </div>
             <div className="num mt-1.5 flex items-baseline justify-between gap-3">
               <span className="text-subtle">{t("meme.market.volume24h")}</span>
-              <span className="font-bold">
-                {formatAmount(BigInt(item.market.volume24hQuote), decimals, { locale })} {symbol}
+              <span className="text-right font-bold">
+                <UsdFigure usd={quoteAmountToUsd(item.market.volume24hQuote, decimals, rate)} rate={rate} symbol={symbol}>
+                  {formatAmount(BigInt(item.market.volume24hQuote), decimals, { locale })} {symbol}
+                </UsdFigure>
               </span>
             </div>
           </div>

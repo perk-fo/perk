@@ -60,7 +60,7 @@ export function ImageDrop({
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
         className={`relative grid h-28 w-28 shrink-0 place-items-center overflow-hidden rounded-[22px] border border-dashed transition-colors duration-fast ${
-          over ? "border-flare bg-flare/10" : shown ? "border-line-strong" : "border-line-strong hover:border-line-strong"
+          over ? "border-honey bg-yolk/15" : shown ? "border-line-strong" : "border-line-strong hover:border-line-strong"
         }`}
         aria-label={t("launch.image.pick")}
       >

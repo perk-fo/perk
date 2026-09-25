@@ -15,7 +15,11 @@ export interface QuoteInfo {
   address: Address;
   isNative: boolean;
   symbol: string;
-  decimals: number;
+  /**
+   * Null while unknown: neither the API nor the AssetRegistry read has answered. It is never guessed (a 6-decimal
+   * asset read as 18 is off by 10^12), so anything that turns user input into an amount waits for it.
+   */
+  decimals: number | null;
   enabled: boolean;
   rewardCompatible: boolean;
   /** Display label and default notice resolve via `quote.category.*` / `create.quote.rwaNotice` messages. */
@@ -71,7 +75,11 @@ function fromApi(a: QuoteAsset, deployment: Deployment): QuoteInfo {
   };
 }
 
-function fromChain(
+/**
+ * A quote from the deployment file plus its AssetRegistry.assetInfo read (`info`, undefined while the read is
+ * pending or when it failed). Without `info` an ERC-20's decimals stay null: unknown, not assumed.
+ */
+export function fromChain(
   entry: { address: Address; symbol: string },
   deployment: Deployment,
   info?: { enabled: boolean; rewardCompatible: boolean; isNative: boolean; decimals: number; symbol: string },
@@ -82,7 +90,7 @@ function fromChain(
     address: entry.address,
     isNative,
     symbol,
-    decimals: isNative ? 18 : (info?.decimals ?? 18),
+    decimals: isNative ? 18 : (info?.decimals ?? null),
     enabled: isNative ? true : (info?.enabled ?? true),
     rewardCompatible: isNative ? true : (info?.rewardCompatible ?? true),
     category: defaultCategory(entry.address, symbol, deployment),
@@ -134,6 +142,13 @@ export function useQuotes(): { quotes: QuoteInfo[]; isLoading: boolean } {
   }, [deployment, apiAssets.data, entries, erc20Entries, data]);
 
   return { quotes, isLoading: apiAssets.isLoading || (isLoading && erc20Entries.length > 0) };
+}
+
+/** A quote whose decimals are known: the only kind a transaction may be built with. */
+export type KnownQuote = QuoteInfo & { decimals: number };
+
+export function hasKnownDecimals(q: QuoteInfo | undefined): q is KnownQuote {
+  return q !== undefined && q.decimals !== null;
 }
 
 /** Find a known quote by address; undefined for unknown quotes. */

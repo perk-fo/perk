@@ -23,7 +23,13 @@ describe("formatAmount", () => {
   test("trims trailing zeros and caps fraction digits", () => {
     expect(formatAmount(1_500_000_000_000_000_000n, 18, { locale: "en" })).toBe("1.5");
     expect(formatAmount(1_234_567n, 6, { locale: "en", maxFrac: 2 })).toBe("1.23");
-    expect(formatAmount(undefined)).toBe("—");
+    expect(formatAmount(undefined, 18)).toBe("—");
+  });
+  test("unknown decimals render a dash, never an amount read as 18 decimals", () => {
+    expect(formatAmount(1_234_567n, null, { locale: "en" })).toBe("—");
+    expect(formatAmount(1_234_567n, undefined, { locale: "en" })).toBe("—");
+    // what the old default would have shown for 1.234567 of a 6-decimal asset
+    expect(formatAmount(1_234_567n, null, { locale: "en" })).not.toBe("0.000000000001");
   });
   test("groups the integer part", () => {
     expect(formatAmount(1_000_000n * 10n ** 18n, 18, { locale: "en" })).toBe("1,000,000");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Address, Hex } from "viem";
 import { api, isNotFound } from "./api";
@@ -17,6 +17,7 @@ import { mergeTrades, perkSocket, type WsStatus } from "./ws";
 import type { Trade } from "./trades";
 import type { HolderRow } from "./holders";
 import { useTabVisible } from "./hooks";
+import { usableUsdRates, type UsdRates } from "./usd";
 
 const LIVE_MS = 6_000;
 
@@ -189,6 +190,32 @@ export function useLpPositions(address: Address | undefined) {
 /** Quote currencies from the indexer: on-chain status plus how the site shows them. */
 export function useQuoteAssets() {
   return useQuery({ queryKey: ["api", "quote-assets"], queryFn: api.quoteAssets, staleTime: 15_000, refetchInterval: 60_000 });
+}
+
+/** US-dollar prices of the quote assets, polled every 60 s while the tab is visible. */
+export function usePrices() {
+  const visible = useTabVisible();
+  return useQuery({
+    queryKey: ["api", "prices"],
+    queryFn: api.prices,
+    refetchInterval: live(visible, 60_000),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+/**
+ * The USD rates worth showing now, by lowercase quote address (lib/usd). Empty while unknown, when the API has no
+ * price for a quote, when it marked one stale, and when this page has not managed to refresh them for 15 minutes:
+ * every caller then shows its quote figure alone.
+ */
+export function useUsdRates(): UsdRates {
+  const q = usePrices();
+  return useMemo(
+    () => usableUsdRates(q.data?.prices, q.dataUpdatedAt, Date.now()),
+    // a failed refetch re-checks the age of what is kept
+    [q.data, q.dataUpdatedAt, q.errorUpdatedAt],
+  );
 }
 
 /** The home page's featured launches, in the order General Admins set. */

@@ -24,14 +24,15 @@ export function formatDate(
 
 /**
  * Format a bigint token amount for display: locale-grouped integer part, up to `maxFrac`
- * fraction digits with trailing zeros trimmed.
+ * fraction digits with trailing zeros trimmed. Unknown decimals render as a dash rather than a guess: there is no
+ * default, since reading a 6-decimal amount as 18 would be off by 10^12.
  */
 export function formatAmount(
   value: bigint | undefined,
-  decimals = 18,
+  decimals: number | null | undefined,
   { maxFrac = 6, locale = DEFAULT_LOCALE }: { maxFrac?: number; locale?: string } = {},
 ): string {
-  if (value === undefined) return "—";
+  if (value === undefined || decimals === null || decimals === undefined) return "—";
   const s = formatUnits(value, decimals);
   const [int, frac] = s.split(".");
   const intGrouped = formatNumber(BigInt(int), locale, { maximumFractionDigits: 0 });

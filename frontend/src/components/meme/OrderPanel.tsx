@@ -19,7 +19,7 @@ import {
   MIN_SQRT_PRICE_PLUS_ONE,
   TESTNET_SWAP_ROUTER,
 } from "@/lib/deployments";
-import type { QuoteInfo } from "@/lib/quotes";
+import type { KnownQuote } from "@/lib/quotes";
 import { unpackBalanceDelta } from "@/lib/trades";
 import { formatAmount, fmtBps, signedPct } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
@@ -77,7 +77,8 @@ export function OrderPanel({
   meme: Address;
   memeSymbol: string;
   memeDecimals: number;
-  quoteMeta: QuoteInfo;
+  /** Only a quote with known decimals: input is parsed with them, so they must never be guessed. */
+  quoteMeta: KnownQuote;
   curve: Address;
   status: number;
   chainId: number;
@@ -420,7 +421,7 @@ export function OrderPanel({
           }}
           aria-pressed={mode === "buy"}
           className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors duration-fast ${
-            mode === "buy" ? "bg-knob text-verdigris shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
+            mode === "buy" ? "bg-knob text-bone shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
           }`}
         >
           {t("meme.trade.buy")}
@@ -433,7 +434,7 @@ export function OrderPanel({
           }}
           aria-pressed={mode === "sell"}
           className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors duration-fast ${
-            mode === "sell" ? "bg-knob text-rose shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
+            mode === "sell" ? "bg-knob text-bone shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-muted hover:text-bone"
           }`}
         >
           {t("meme.trade.sell")}
@@ -449,7 +450,7 @@ export function OrderPanel({
           }}
           inputMode="decimal"
           placeholder="0"
-          className="num w-full rounded-full border border-line-strong bg-ink/50 py-3 pl-5 pr-20 text-[22px] outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-flare focus:ring-2 focus:ring-flare/20"
+          className="num w-full rounded-full border border-line-strong bg-ink/50 py-3 pl-5 pr-20 text-[22px] outline-none transition-[border-color,box-shadow] duration-fast placeholder:text-faint hover:border-faint focus:border-honey focus:ring-2 focus:ring-honey/30"
         />
         <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 num text-sm text-subtle">
           {spendSymbol}
@@ -538,7 +539,7 @@ export function OrderPanel({
             aria-pressed={!slipCustom && slipBps === bps}
             className={`num h-6 rounded-full px-2.5 text-xs transition-colors duration-fast ${
               !slipCustom && slipBps === bps
-                ? "bg-flare/10 font-medium text-flare"
+                ? "bg-yolk font-bold text-charcoal"
                 : "bg-raised text-muted hover:text-bone"
             }`}
           >
@@ -548,7 +549,7 @@ export function OrderPanel({
         {/* One control, two states: the Custom pill becomes the input in place, already focused, and picking a
             preset turns it back into the pill. The typed value is kept, so switching back to Custom restores it. */}
         {slipCustom ? (
-          <label className="num inline-flex h-6 cursor-text items-stretch overflow-hidden rounded-full border border-flare/60 bg-ink/50 text-xs focus-within:border-flare focus-within:ring-2 focus-within:ring-flare/20">
+          <label className="num inline-flex h-6 cursor-text items-stretch overflow-hidden rounded-full border border-honey bg-ink/50 text-xs focus-within:ring-2 focus-within:ring-honey/30">
             <input
               autoFocus
               value={customSlip}
@@ -556,7 +557,7 @@ export function OrderPanel({
               inputMode="decimal"
               placeholder="1.5"
               aria-label={t("meme.order.slippageCustom")}
-              className="w-12 bg-transparent pl-2.5 pr-1 text-left text-bone caret-flare outline-none placeholder:text-faint"
+              className="w-12 bg-transparent pl-2.5 pr-1 text-left text-bone caret-bone outline-none placeholder:text-faint"
             />
             {/* the unit is an adornment in its own segment, not part of the editable text */}
             <span

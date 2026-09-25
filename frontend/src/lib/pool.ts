@@ -19,7 +19,11 @@ export const ACTION = {
   BURN_POSITION: 0x03,
   SETTLE_PAIR: 0x0d,
   TAKE_PAIR: 0x11,
+  SWEEP: 0x14,
 } as const;
+
+/** The native currency is address zero in a v4 pool key. */
+export const NATIVE = "0x0000000000000000000000000000000000000000" as Address;
 
 export interface PoolKey {
   currency0: Address;
@@ -40,6 +44,7 @@ const DECREASE_PARAMS = parseAbiParameters(
 const BURN_PARAMS = parseAbiParameters("uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes hookData");
 
 const PAIR_PARAMS = parseAbiParameters("address currency0, address currency1");
+const SWEEP_PARAMS = parseAbiParameters("address currency, address to");
 const TAKE_PAIR_PARAMS = parseAbiParameters("address currency0, address currency1, address recipient");
 
 function tape(actions: readonly number[]): Hex {
@@ -56,7 +61,13 @@ export function fullRange(tickSpacing: number): { tickLower: number; tickUpper: 
   return { tickLower: -usable, tickUpper: usable };
 }
 
-/** Mint a new full-range position and pay for it from the wallet. */
+/**
+ * Mint a new full-range position and pay for it from the wallet.
+ *
+ * With a native currency0 the wallet sends `amount0Max` as the transaction value, but SETTLE_PAIR pays only the exact
+ * debt; whatever is left stays in the PositionManager, where the next caller's SWEEP would take it. So the tape ends
+ * with SWEEP(currency0, owner), returning the unused native amount in the same transaction.
+ */
 export function encodeMint(input: {
   key: PoolKey;
   tickLower: number;
@@ -66,22 +77,26 @@ export function encodeMint(input: {
   amount1Max: bigint;
   owner: Address;
 }): { actions: Hex; params: Hex[] } {
-  return {
-    actions: tape([ACTION.MINT_POSITION, ACTION.SETTLE_PAIR]),
-    params: [
-      encodeAbiParameters(POOL_KEY_PARAMS, [
-        input.key,
-        input.tickLower,
-        input.tickUpper,
-        input.liquidity,
-        input.amount0Max,
-        input.amount1Max,
-        input.owner,
-        "0x",
-      ]),
-      encodeAbiParameters(PAIR_PARAMS, [input.key.currency0, input.key.currency1]),
-    ],
-  };
+  const native0 = input.key.currency0.toLowerCase() === NATIVE;
+  const actions: number[] = [ACTION.MINT_POSITION, ACTION.SETTLE_PAIR];
+  const params: Hex[] = [
+    encodeAbiParameters(POOL_KEY_PARAMS, [
+      input.key,
+      input.tickLower,
+      input.tickUpper,
+      input.liquidity,
+      input.amount0Max,
+      input.amount1Max,
+      input.owner,
+      "0x",
+    ]),
+    encodeAbiParameters(PAIR_PARAMS, [input.key.currency0, input.key.currency1]),
+  ];
+  if (native0) {
+    actions.push(ACTION.SWEEP);
+    params.push(encodeAbiParameters(SWEEP_PARAMS, [input.key.currency0, input.owner]));
+  }
+  return { actions: tape(actions), params };
 }
 
 /**
@@ -168,8 +183,5 @@ export function liquidityForAmounts(input: {
   const l1 = (input.amount1 * Q96) / (p - a);
   return l0 < l1 ? l0 : l1;
 }
-
-/** The native currency is address zero in a v4 pool key. */
-export const NATIVE = "0x0000000000000000000000000000000000000000" as Address;
 
 export const MAX_UINT128 = maxUint128;

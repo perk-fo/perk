@@ -34,7 +34,7 @@ describe("full range", () => {
 });
 
 describe("action tapes", () => {
-  test("mint pays for the position: MINT_POSITION then SETTLE_PAIR", () => {
+  test("mint with native currency0 pays for the position, then sweeps the unused native back to the owner", () => {
     const { actions, params } = encodeMint({
       key: KEY,
       tickLower: -887220,
@@ -44,8 +44,9 @@ describe("action tapes", () => {
       amount1Max: 20n,
       owner: OWNER,
     });
-    expect(actions).toBe(`0x${ACTION.MINT_POSITION.toString(16).padStart(2, "0")}0d`);
-    expect(params).toHaveLength(2);
+    // MINT_POSITION, SETTLE_PAIR, SWEEP: without the sweep the rest of msg.value stays in the PositionManager
+    expect(actions).toBe("0x020d14");
+    expect(params).toHaveLength(3);
     const [, , , liquidity, a0, a1, owner] = decodeAbiParameters(
       parseAbiParameters(
         "(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks), int24, int24, uint256, uint128, uint128, address, bytes",
@@ -56,6 +57,24 @@ describe("action tapes", () => {
     expect(a0).toBe(10n);
     expect(a1).toBe(20n);
     expect((owner as string).toLowerCase()).toBe(OWNER);
+    const [currency, to] = decodeAbiParameters(parseAbiParameters("address, address"), params[2]!);
+    expect(currency).toBe(NATIVE);
+    expect((to as string).toLowerCase()).toBe(OWNER);
+  });
+
+  test("mint with two ERC-20s settles exactly and needs no sweep", () => {
+    const erc20Key: PoolKey = { ...KEY, currency0: "0x0000000000000000000000000000000000000011" as Address };
+    const { actions, params } = encodeMint({
+      key: erc20Key,
+      tickLower: -887220,
+      tickUpper: 887220,
+      liquidity: 1_000n,
+      amount0Max: 10n,
+      amount1Max: 20n,
+      owner: OWNER,
+    });
+    expect(actions).toBe(`0x${ACTION.MINT_POSITION.toString(16).padStart(2, "0")}0d`);
+    expect(params).toHaveLength(2);
   });
 
   test("collect is a zero-liquidity decrease so principal is untouched", () => {

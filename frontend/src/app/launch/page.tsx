@@ -119,10 +119,12 @@ export default function CreatePage() {
     return m;
   }, [visibleBases, activeReads]);
 
+  // undefined: the quote's decimals are not known yet, so the amount cannot be read (never guessed)
   const devBuyQuote = useMemo(() => {
     if (!devBuyInput.trim()) return 0n;
+    if (quote?.decimals == null) return undefined;
     try {
-      return parseUnits(devBuyInput, quote?.decimals ?? 18);
+      return parseUnits(devBuyInput, quote.decimals);
     } catch {
       return null; // invalid input
     }
@@ -168,7 +170,7 @@ export default function CreatePage() {
   const createTx = useTx();
 
   const approved =
-    !needsApprove || (allowance.data !== undefined && devBuyQuote !== null && allowance.data >= devBuyQuote);
+    !needsApprove || (allowance.data !== undefined && devBuyQuote != null && allowance.data >= devBuyQuote);
 
   const pause = usePauseFlags();
   const canSubmit =
@@ -178,7 +180,7 @@ export default function CreatePage() {
     !!symbol.trim() &&
     image.status === "done" &&
     launchStep === "idle" &&
-    devBuyQuote !== null &&
+    devBuyQuote != null &&
     !pause.isPaused("launch") &&
     approved &&
     !createTx.isPending &&
@@ -312,7 +314,11 @@ export default function CreatePage() {
                       </div>
                       <div className="num mt-2 text-xs text-subtle">
                         {q.displayName ? `${q.symbol} · ` : ""}
-                        {q.isNative ? t("create.quote.native") : t("create.quote.decimals", { n: q.decimals })}
+                        {q.isNative
+                          ? t("create.quote.native")
+                          : q.decimals === null
+                            ? t("create.quote.decimalsUnknown")
+                            : t("create.quote.decimals", { n: q.decimals })}
                       </div>
                     </div>
                     {notice && (
@@ -375,7 +381,13 @@ export default function CreatePage() {
               placeholder="0"
               inputMode="decimal"
               numeric
-              error={devBuyQuote === null ? t("common.invalidAmount") : undefined}
+              error={
+                devBuyQuote === null
+                  ? t("common.invalidAmount")
+                  : devBuyQuote === undefined
+                    ? t("common.decimalsUnknown", { symbol: quote?.symbol ?? "Quote" })
+                    : undefined
+              }
             />
             {needsApprove && !approved && (
               <div className="mt-3">

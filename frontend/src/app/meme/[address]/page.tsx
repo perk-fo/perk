@@ -7,7 +7,7 @@ import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { isAddress, type Address } from "viem";
 import { feeRouterAbi, graduationManagerAbi, holderRewardDistributorAbi } from "@/generated/abis";
 import { useDeployment, useTabVisible, useTx } from "@/lib/hooks";
-import { useApiHolders, useApiTrades, useHealth, useLaunchDetail } from "@/lib/api-hooks";
+import { useApiHolders, useApiTrades, useHealth, useLaunchDetail, useUsdRates } from "@/lib/api-hooks";
 import { API_URL, isApiUnreachable } from "@/lib/api";
 import {
   curveConfigShape,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/api-adapters";
 import { NATIVE_QUOTE } from "@/lib/deployments";
 import { templateLabel } from "@/lib/templates";
-import { findQuote, useQuotes, type QuoteInfo } from "@/lib/quotes";
+import { findQuote, useQuotes, type KnownQuote } from "@/lib/quotes";
 import { amountToNumber, tradePriceNumber } from "@/lib/trades";
 import {
   formatAmount,
@@ -53,7 +53,9 @@ import { usePauseFlags } from "@/lib/pause";
 import { RoleGate } from "@/components/RoleGate";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { UsdFigure } from "@/components/ui/Usd";
 import { PerkLoader } from "@/components/brand/PerkLoader";
+import { quoteAmountToUsd, quotePriceToUsd, usdRateOf } from "@/lib/usd";
 
 const TRADE_PAGE = 20;
 
@@ -108,6 +110,7 @@ export default function MemePage() {
   const { chainId, deployment } = useDeployment();
   const { address: account } = useAccount();
   const { quotes } = useQuotes();
+  const usdRates = useUsdRates();
   const { t, locale } = useT();
   const visible = useTabVisible();
   const [chartMode, setChartMode] = useState<"price" | "curve">("price");
@@ -145,16 +148,20 @@ export default function MemePage() {
   const rescueAt = Number((graduationOnchain as { rescueExecutableAt?: bigint } | undefined)?.rescueExecutableAt ?? 0n);
   const pause = usePauseFlags();
 
-  const quoteMeta: QuoteInfo | undefined = useMemo(() => {
-    const q = findQuote(quotes, launch?.quote as Address | undefined);
-    if (q || !launch) return q;
+  // Quote decimals are never guessed: the quote list's value, else this launch's own record from the indexer, which
+  // read them on chain. Without either there is no quote to trade with (OrderPanel parses input with them).
+  const quoteMeta: KnownQuote | undefined = useMemo(() => {
+    if (!launch || !d) return undefined;
+    const q = findQuote(quotes, launch.quote as Address);
     const addr = launch.quote as Address;
     const isNative = addr.toLowerCase() === NATIVE_QUOTE.toLowerCase();
+    const decimals = isNative ? 18 : (q?.decimals ?? d.quoteDecimals);
+    if (q) return { ...q, decimals };
     return {
       address: addr,
       isNative,
       symbol: isNative ? "OKB" : "ERC20",
-      decimals: 18,
+      decimals,
       enabled: true,
       rewardCompatible: true,
       category: isNative ? "native" : "rwa",
@@ -164,7 +171,7 @@ export default function MemePage() {
       listed: true,
       activeTemplates: null,
     };
-  }, [quotes, launch]);
+  }, [quotes, launch, d]);
 
   const status = launch?.status ?? 0;
   const graduated = status === 3;
@@ -186,10 +193,11 @@ export default function MemePage() {
   const claimTx = useTx();
   const devTx = useTx();
 
-  const quoteDecimals = quoteMeta?.decimals ?? 18;
+  const quoteDecimals = quoteMeta?.decimals; // undefined until the launch record has loaded
   const quoteSymbol = quoteMeta?.symbol ?? "OKB";
 
   const lastPrice = useMemo(() => {
+    if (quoteDecimals === undefined) return undefined;
     if (stats.hasPrice && stats.lastPriceMeme > 0n) {
       const q = amountToNumber(stats.lastPriceQuote, quoteDecimals);
       const m = amountToNumber(stats.lastPriceMeme, memeDecimals);
@@ -201,16 +209,18 @@ export default function MemePage() {
   const change = signedPct(stats.changeBps, locale);
   const chartTrades = useMemo(
     () =>
-      trades
-        .filter((tr) => tr.timestamp > 0)
-        .map((tr) => ({
-          ts: tr.timestamp,
-          price: tradePriceNumber(tr, quoteDecimals, memeDecimals),
-          quoteVolume: amountToNumber(tr.quoteAmount, quoteDecimals),
-          side: tr.side,
-          mine: !!account && tr.wallet.toLowerCase() === account.toLowerCase(),
-        }))
-        .sort((a, b) => a.ts - b.ts),
+      quoteDecimals === undefined
+        ? []
+        : trades
+            .filter((tr) => tr.timestamp > 0)
+            .map((tr) => ({
+              ts: tr.timestamp,
+              price: tradePriceNumber(tr, quoteDecimals, memeDecimals),
+              quoteVolume: amountToNumber(tr.quoteAmount, quoteDecimals),
+              side: tr.side,
+              mine: !!account && tr.wallet.toLowerCase() === account.toLowerCase(),
+            }))
+            .sort((a, b) => a.ts - b.ts),
     [trades, quoteDecimals, memeDecimals, account],
   );
 
@@ -246,7 +256,7 @@ export default function MemePage() {
       </Notice>
     );
   }
-  if (!launch || !d) return <MemePageSkeleton />;
+  if (!launch || !d || quoteMeta === undefined || quoteDecimals === undefined) return <MemePageSkeleton />;
 
   const statusPill = launchStatusPill(status, t);
   // two return values → viem gives a tuple [quote, quoteAmount], not an object
@@ -256,6 +266,9 @@ export default function MemePage() {
       ? t("meme.market.graduatedPool", { id: shortHash(launch.poolId) })
       : fmtBps(progressBps ?? 0n, locale);
   const totalFeeBps = curveConfig?.totalFeeBps ?? 100;
+  // US dollars first where the quote has a rate; the charts and the curve stay in the quote they trade in
+  const usdRate = usdRateOf(usdRates, launch.quote);
+  const usd = { rate: usdRate, symbol: quoteSymbol };
   // withheld by the API while admins hide it (d.moderation)
   const media = d.metadata;
   const mediaLinks = media ? (Object.entries(media.links).filter(([, v]) => !!v) as Array<[string, string]>) : [];
@@ -313,25 +326,42 @@ export default function MemePage() {
             )}
           </div>
         </div>
-        <div className="panel grid min-w-0 flex-1 grid-cols-2 overflow-hidden sm:grid-cols-3 lg:grid-cols-6 [&>*:last-child]:border-r-0">
+        {/* three by two: a US-dollar figure with its quote figure under it needs more than a sixth of this width */}
+        <div className="panel grid min-w-0 flex-1 grid-cols-2 overflow-hidden sm:grid-cols-3 [&>*:last-child]:border-r-0 lg:[&>*:nth-child(-n+3)]:border-b lg:[&>*:nth-child(3n)]:border-r-0">
           <Tile
             label={t("meme.market.price")}
-            value={lastPrice !== undefined ? <><Subscripted text={formatPrice(lastPrice, locale)} /> {quoteSymbol}</> : "—"}
+            value={
+              lastPrice !== undefined ? (
+                <UsdFigure kind="price" usd={quotePriceToUsd(lastPrice, usdRate)} {...usd}>
+                  <Subscripted text={formatPrice(lastPrice, locale)} /> {quoteSymbol}
+                </UsdFigure>
+              ) : (
+                "—"
+              )
+            }
             wrap
           />
           <Tile label={t("meme.market.change24h")} value={change.text} tone={change.tone} />
           <Tile
             label={t("meme.market.mcap")}
             value={
-              stats.mcapQuote > 0n
-                ? `${formatAmount(stats.mcapQuote, quoteDecimals, { locale, maxFrac: 2 })} ${quoteSymbol}`
-                : "—"
+              stats.mcapQuote > 0n ? (
+                <UsdFigure usd={quoteAmountToUsd(stats.mcapQuote, quoteDecimals, usdRate)} {...usd}>
+                  {`${formatAmount(stats.mcapQuote, quoteDecimals, { locale, maxFrac: 2 })} ${quoteSymbol}`}
+                </UsdFigure>
+              ) : (
+                "—"
+              )
             }
             wrap
           />
           <Tile
             label={t("meme.market.volume24h")}
-            value={`${formatAmount(stats.volume24h, quoteDecimals, { locale, maxFrac: 6 })} ${quoteSymbol}`}
+            value={
+              <UsdFigure usd={quoteAmountToUsd(stats.volume24h, quoteDecimals, usdRate)} {...usd}>
+                {`${formatAmount(stats.volume24h, quoteDecimals, { locale, maxFrac: 6 })} ${quoteSymbol}`}
+              </UsdFigure>
+            }
             wrap
           />
           <Tile
@@ -444,22 +474,31 @@ export default function MemePage() {
                   unit={quoteSymbol}
                   size="md"
                 />
-                <Stat label={t("meme.curve.progress")} value={fmtBps(progressBps ?? 0n, locale)} tone="flare" size="md" />
+                <Stat label={t("meme.curve.progress")} value={fmtBps(progressBps ?? 0n, locale)} size="md" />
               </div>
             )}
 
             {status === 3 && graduation && (
               <div className="mt-auto pt-6 divide-y divide-line">
-                <Kv label={t("meme.pool.memeIn")} value={formatAmount(graduation.memeToPool, memeDecimals, { locale })} />
-                <Kv
-                  label={t("meme.pool.quoteIn")}
-                  value={`${formatAmount(graduation.quoteToPool, quoteDecimals, { locale })} ${quoteSymbol}`}
-                />
+                <Kv label={t("meme.pool.memeIn")}>
+                  <UsdFigure
+                    approx
+                    usd={quotePriceToUsd(lastPrice !== undefined ? amountToNumber(graduation.memeToPool, memeDecimals) * lastPrice : null, usdRate)}
+                    {...usd}
+                  >
+                    {formatAmount(graduation.memeToPool, memeDecimals, { locale })}
+                  </UsdFigure>
+                </Kv>
+                <Kv label={t("meme.pool.quoteIn")}>
+                  <UsdFigure approx usd={quoteAmountToUsd(graduation.quoteToPool, quoteDecimals, usdRate)} {...usd}>
+                    {`${formatAmount(graduation.quoteToPool, quoteDecimals, { locale })} ${quoteSymbol}`}
+                  </UsdFigure>
+                </Kv>
                 <div className="flex items-center justify-between py-3 text-sm">
                   <span className="text-muted">{t("pool.cta.body")}</span>
                   <Link
                     href={`/pool/${meme}`}
-                    className="shrink-0 rounded-full bg-flare/10 px-3.5 py-1.5 text-[13px] font-medium text-flare transition-colors duration-fast hover:bg-flare/20"
+                    className="shrink-0 rounded-full bg-yolk/30 px-3.5 py-1.5 text-[13px] font-medium text-bone transition-colors duration-fast hover:bg-yolk/50"
                   >
                     {t("pool.lp.title")} →
                   </Link>

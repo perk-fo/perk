@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useReadContract } from "wagmi";
 import { isAddress, type Address } from "viem";
 import { useDeployment, useTabVisible } from "@/lib/hooks";
-import { useLaunchDetail } from "@/lib/api-hooks";
+import { useLaunchDetail, useUsdRates } from "@/lib/api-hooks";
 import { graduationManagerAbi } from "@/generated/abis";
 import { Panel } from "@/components/ui/Panel";
 import { Kv } from "@/components/ui/Kv";
@@ -17,6 +17,9 @@ import type { PoolKey } from "@/lib/pool";
 import { formatAmount, formatPrice } from "@/lib/format";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { UsdFigure } from "@/components/ui/Usd";
+import { quoteAmountToUsd, quotePriceToUsd, usdRateOf } from "@/lib/usd";
+import { amountToNumber } from "@/lib/trades";
 import { PerkLoader } from "@/components/brand/PerkLoader";
 
 /** One pool: what it is on the left, adding and managing your own liquidity on the right. */
@@ -29,6 +32,7 @@ export default function PoolDetailPage() {
   const meme = params.address as Address;
 
   const detail = useLaunchDetail(valid ? meme : undefined);
+  const rates = useUsdRates();
   const d = detail.data;
   const graduated = d?.status === 3;
 
@@ -60,6 +64,10 @@ export default function PoolDetailPage() {
 
   const g = d.graduation;
   const m = d.market;
+  // US dollars first where the quote has a rate; deposits are shown at today's value
+  const rate = usdRateOf(rates, d.quote);
+  const usd = { rate, symbol: d.quoteSymbol };
+  const price = m.lastPrice !== null && m.lastPrice > 0 ? m.lastPrice : null;
 
   return (
     <div className="space-y-6">
@@ -96,29 +104,36 @@ export default function PoolDetailPage() {
             <Panel title={t("pool.facts.title")}>
               <div className="divide-y divide-line">
                 <Kv label={t("trade.col.price")}>
-                  {m.lastPrice !== null && m.lastPrice > 0 ? (
-                    <>
-                      <Subscripted text={formatPrice(m.lastPrice, locale)} /> {d.quoteSymbol}
-                    </>
+                  {price !== null ? (
+                    <UsdFigure kind="price" usd={quotePriceToUsd(price, rate)} {...usd}>
+                      <Subscripted text={formatPrice(price, locale)} /> {d.quoteSymbol}
+                    </UsdFigure>
                   ) : (
                     "—"
                   )}
                 </Kv>
-                <Kv
-                  label={t("trade.col.volume")}
-                  value={`${formatAmount(BigInt(m.volume24hQuote), d.quoteDecimals, { locale, maxFrac: 4 })} ${d.quoteSymbol}`}
-                />
+                <Kv label={t("trade.col.volume")}>
+                  <UsdFigure usd={quoteAmountToUsd(m.volume24hQuote, d.quoteDecimals, rate)} {...usd}>
+                    {`${formatAmount(BigInt(m.volume24hQuote), d.quoteDecimals, { locale, maxFrac: 4 })} ${d.quoteSymbol}`}
+                  </UsdFigure>
+                </Kv>
                 <Kv label={t("pool.col.fee")} value={d.curve ? `${(d.curve.totalFeeBps / 100).toFixed(2)}%` : "—"} />
                 {g && (
                   <>
-                    <Kv
-                      label={t("meme.pool.memeIn")}
-                      value={`${formatAmount(BigInt(g.memeToPool), d.decimals, { locale, maxFrac: 2 })} ${d.symbol}`}
-                    />
-                    <Kv
-                      label={t("meme.pool.quoteIn")}
-                      value={`${formatAmount(BigInt(g.quoteToPool), d.quoteDecimals, { locale })} ${d.quoteSymbol}`}
-                    />
+                    <Kv label={t("meme.pool.memeIn")}>
+                      <UsdFigure
+                        approx
+                        usd={quotePriceToUsd(price !== null ? amountToNumber(BigInt(g.memeToPool), d.decimals) * price : null, rate)}
+                        {...usd}
+                      >
+                        {`${formatAmount(BigInt(g.memeToPool), d.decimals, { locale, maxFrac: 2 })} ${d.symbol}`}
+                      </UsdFigure>
+                    </Kv>
+                    <Kv label={t("meme.pool.quoteIn")}>
+                      <UsdFigure approx usd={quoteAmountToUsd(g.quoteToPool, d.quoteDecimals, rate)} {...usd}>
+                        {`${formatAmount(BigInt(g.quoteToPool), d.quoteDecimals, { locale })} ${d.quoteSymbol}`}
+                      </UsdFigure>
+                    </Kv>
                   </>
                 )}
               </div>

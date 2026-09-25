@@ -10,6 +10,7 @@ const messages: Record<string, string> = {
     "每个发行的模板、模块和参数在发行时形成 configHash，官方池初始化后不可替换。每个发行的蛋（未上传图片时连同蛋里的小生物）都由该哈希生成。",
 
   "common.invalidAmount": "数量格式不正确",
+  "common.decimalsUnknown": "{symbol} 的精度尚未加载，暂时无法识别该数量",
   "common.modules": "模块",
   "common.networkTitle": "网络",
   "common.noDeployment": "当前链没有已同步的部署。",
@@ -35,6 +36,9 @@ const messages: Record<string, string> = {
   "quote.category.native": "原生",
   "quote.category.ecosystem": "生态代币",
   "quote.category.rwa": "代币化美股（RWA）",
+
+  "usd.title": "按 1 {symbol} = {rate} 折算的美元金额",
+  "usd.titleNow": "按当前 1 {symbol} = {rate} 折算的美元价值",
 
   "grant.countdown.dhm": "{d} 天 {h} 小时 {m} 分",
   "grant.countdown.hms": "{h} 小时 {m} 分 {s} 秒",
@@ -70,7 +74,7 @@ const messages: Record<string, string> = {
   "errors.name.RootDelayNotElapsed": "名单公示期还没结束",
   "errors.name.SelfReferral": "不能邀请自己",
   "errors.name.SlippageExceeded": "价格变动超过滑点设置，请调高滑点或重试",
-  "errors.name.PriceUnstable": "池子价格刚刚剧烈波动。Grant 仓位只能在价格稳定后开仓或退出，请几分钟后再试",
+  "errors.name.PriceUnstable": "池子价格刚刚剧烈波动。新的 Grant 仓位要等价格稳定后才能开仓，请几分钟后再试。退出从不受限。",
   "errors.name.WindowClosed": "窗口期已结束",
   "errors.name.ZeroAmount": "数量不能为 0",
   "errors.name.ERC20InsufficientBalance": "余额不足",
@@ -155,6 +159,7 @@ const messages: Record<string, string> = {
   "create.quote.rwaNotice": "代币化美股可能存在交易时间、发行方权限、冻结、赎回限制和司法辖区要求。",
   "create.quote.native": "原生 Gas 资产",
   "create.quote.decimals": "精度 {n} 位",
+  "create.quote.decimalsUnknown": "精度未加载",
   "create.rwa.more": "详情",
   "create.rwa.less": "收起",
   "create.template.testnet": "测试网",
@@ -940,6 +945,7 @@ const messages: Record<string, string> = {
   "egg.accessory.shades": "墨镜",
   "egg.accessory.bow": "蝴蝶结",
   "egg.accessory.crown": "王冠",
+  "grant.register.afterActivation": "根激活后即可登记。",
 };
 
 export default messages;

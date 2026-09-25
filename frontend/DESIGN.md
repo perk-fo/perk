@@ -38,6 +38,13 @@ is the default for a first visit (the brand was designed in it); the theme menu 
 the choice is stored in `perk-theme` and applied before first paint by the script in `app/layout.tsx`. The palette
 variants of the previous design (Graphite, Moss, Stone) were retired with it.
 
+**What colours mean.** Red (`rose`) is reserved for what needs attention or cannot be undone: errors, warnings about
+loss, destructive actions (cancel, exit, pause, rescue), and price declines and sells in market data. Ordinary
+actions and selections never use it, and never use the deep-orange accent (`flare`) as a fill, border or ring either,
+because on a light tint it reads as red. Primary actions are yolk; selected chips and toggles are yolk (or the neutral
+knob of a segmented control); secondary actions highlight with a yolk tint; focus rings are honey. `flare` is for
+accent text and links only, and the tangerine underline marks the current page in the navigation.
+
 | Token | Light | Dark | Use |
 |-------|-------|------|-----|
 | ink | #F8F7F2 | #181916 | Page background |
@@ -188,3 +195,9 @@ Keep each locale in its own language: English appears inside translated copy onl
 technical identifiers such as the config hash and the pool id, and the small monospace eyebrows ("01 / DISCOVER",
 "ON THE MARKET"), which the client's design keeps in English as typography in every locale. They still live in the
 message files, so a locale can translate them. Units follow the number in muted small text. Avoid exclamation marks.
+
+Money is shown in US dollars first wherever the quote asset has a USD rate (`GET /v1/prices`, `lib/usd`, `ui/Usd`):
+prices, volumes, market caps and values read "$" (tiny prices keep the subscript zeros, dense lists shorten to "$1.2M"),
+with the quote figure under them in small muted text. Today's value of something in the past, a trade or a deposit,
+is prefixed "≈"; the tooltip gives the rate used. Without a rate (an unpriced quote, or a stale one) the quote figure
+stands alone exactly as before, never a guessed or zero dollar amount. Charts and the bonding curve stay in the quote.

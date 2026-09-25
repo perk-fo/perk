@@ -6,7 +6,7 @@ import { useAccount, useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import { feeRouterAbi, holderRewardDistributorAbi } from "@/generated/abis";
 import { useLaunchList, useWalletSummary,
-  useLpPositions, useWalletTrades,
+  useLpPositions, useWalletTrades, useUsdRates,
 } from "@/lib/api-hooks";
 import { explorerTxUrl } from "@/lib/chains";
 import { useDeployment, useTx } from "@/lib/hooks";
@@ -26,6 +26,8 @@ import { useRoles, ROLE_ORDER } from "@/lib/roles";
 import { useNow } from "@/lib/hooks";
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
+import { UsdFigure } from "@/components/ui/Usd";
+import { quoteAmountToUsd, quotePriceToUsd, usdRateOf } from "@/lib/usd";
 import { PerkLoader } from "@/components/brand/PerkLoader";
 
 type Claim = { kind: "rewards" | "dev"; launch: LaunchSummary; amount: bigint; payee?: Address };
@@ -40,6 +42,7 @@ export default function MePage() {
   const { address, status: walletStatus } = useAccount();
   const { deployment } = useDeployment();
   const summary = useWalletSummary(address);
+  const rates = useUsdRates();
   const roles = useRoles();
   const lp = useLpPositions(address);
   const s = summary.data;
@@ -100,7 +103,7 @@ export default function MePage() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {held.map((r) => (
-            <Pill key={r} tone={r === "admin" ? "flare" : r === "user" ? "muted" : "amber"}>
+            <Pill key={r} tone={r === "admin" ? "yolk" : r === "user" ? "muted" : "amber"}>
               {t(`role.${r}`)}
             </Pill>
           ))}
@@ -152,6 +155,8 @@ export default function MePage() {
                   const bal = BigInt(h.balance);
                   const price = l.market.lastPrice;
                   const value = price ? (Number(bal) / 10 ** l.decimals) * price : null;
+                  const rate = usdRateOf(rates, l.quote);
+                  const usd = { rate, symbol: l.quoteSymbol };
                   return (
                     <tr key={l.meme} className="border-t border-line">
                       <td className="py-3">
@@ -164,9 +169,23 @@ export default function MePage() {
                         </Link>
                       </td>
                       <td className="num px-2 py-3 text-right">{formatAmount(bal, l.decimals, { locale, maxFrac: 2 })}</td>
-                      <td className="num px-2 py-3 text-right text-muted">{price ? <Subscripted text={formatPrice(price, locale)} /> : "—"}</td>
+                      <td className="num px-2 py-3 text-right text-muted">
+                        {price ? (
+                          <UsdFigure kind="price" usd={quotePriceToUsd(price, rate)} {...usd}>
+                            <Subscripted text={formatPrice(price, locale)} />
+                          </UsdFigure>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="num py-3 pl-2 text-right">
-                        {value !== null ? `${formatNumber(value, locale, { maximumFractionDigits: 6 })} ${l.quoteSymbol}` : "—"}
+                        {value !== null ? (
+                          <UsdFigure usd={quotePriceToUsd(value, rate)} {...usd}>
+                            {`${formatNumber(value, locale, { maximumFractionDigits: 6 })} ${l.quoteSymbol}`}
+                          </UsdFigure>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                     </tr>
                   );
@@ -336,6 +355,7 @@ function TradeHistory({ address, total }: { address: Address; total: number | un
   const { chainId } = useDeployment();
   const now = useNow(15_000);
   const q = useWalletTrades(address);
+  const rates = useUsdRates();
   return (
     <Panel
       title={t("me.trades.title")}
@@ -396,7 +416,19 @@ function TradeHistory({ address, total }: { address: Address; total: number | un
                         {l ? formatAmount(BigInt(tr.memeAmount), l.decimals, { locale, maxFrac: 2 }) : "—"}
                       </td>
                       <td className="num px-2 py-3 text-right">
-                        {l ? `${formatAmount(BigInt(tr.quoteAmount), l.quoteDecimals, { locale, maxFrac: 6 })} ${l.quoteSymbol}` : "—"}
+                        {l ? (
+                          // today's value of a past trade, so marked approximate
+                          <UsdFigure
+                            approx
+                            usd={quoteAmountToUsd(tr.quoteAmount, l.quoteDecimals, usdRateOf(rates, l.quote))}
+                            rate={usdRateOf(rates, l.quote)}
+                            symbol={l.quoteSymbol}
+                          >
+                            {`${formatAmount(BigInt(tr.quoteAmount), l.quoteDecimals, { locale, maxFrac: 6 })} ${l.quoteSymbol}`}
+                          </UsdFigure>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="py-3 pl-2 text-right text-muted">
                         {tr.source === "pool" ? t("me.trades.pool") : t("me.trades.curve")}

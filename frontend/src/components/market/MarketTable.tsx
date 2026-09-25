@@ -9,14 +9,19 @@ import { formatAmount, formatNumber, formatPrice, signedPct } from "@/lib/format
 import { useT } from "@/i18n/provider";
 import { Subscripted } from "@/components/ui/Subscripted";
 import { LaunchAvatar } from "@/components/art/LaunchAvatar";
+import { UsdFigure } from "@/components/ui/Usd";
+import { useUsdRates } from "@/lib/api-hooks";
+import { quoteAmountToUsd, quotePriceToUsd, usdRateOf } from "@/lib/usd";
 
 /**
  * The market as a dense table (DEX-style): one row per launch, whole row clickable to its trading page.
- * Columns narrow away on small screens (price and 24h stay).
+ * Columns narrow away on small screens (price and 24h stay). Price, volume and market cap show US dollars first with
+ * the quote figure under them, or the quote figure alone when the quote has no USD rate.
  */
 export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; startRank?: number }) {
   const { t, locale } = useT();
   const router = useRouter();
+  const rates = useUsdRates();
   return (
     <div className="panel overflow-hidden p-0">
       <div className="overflow-x-auto">
@@ -40,6 +45,8 @@ export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; 
               const pill = launchStatusPill(item.status, t);
               const progress = Number(progressBpsOf(item)) / 100;
               const href = `/meme/${item.meme}`;
+              const rate = usdRateOf(rates, item.quote);
+              const usd = { rate, symbol: item.quoteSymbol };
               return (
                 <tr
                   key={item.meme}
@@ -62,7 +69,13 @@ export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; 
                     </Link>
                   </td>
                   <td className="num px-2 py-3 text-right">
-                    {m.lastPrice !== null && m.lastPrice > 0 ? <Subscripted text={formatPrice(m.lastPrice, locale)} /> : <span className="text-faint">—</span>}
+                    {m.lastPrice !== null && m.lastPrice > 0 ? (
+                      <UsdFigure kind="price" usd={quotePriceToUsd(m.lastPrice, rate)} {...usd}>
+                        <Subscripted text={formatPrice(m.lastPrice, locale)} />
+                      </UsdFigure>
+                    ) : (
+                      <span className="text-faint">—</span>
+                    )}
                   </td>
                   <td
                     className={`num px-2 py-3 text-right ${
@@ -72,15 +85,17 @@ export function MarketTable({ items, startRank = 1 }: { items: LaunchSummary[]; 
                     {m.tradeCount > 0 ? change.text : "—"}
                   </td>
                   <td className="num hidden px-2 py-3 text-right text-bone md:table-cell">
-                    {formatAmount(BigInt(m.volume24hQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
-                    <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
+                    <UsdFigure compact usd={quoteAmountToUsd(m.volume24hQuote, item.quoteDecimals, rate)} {...usd}>
+                      {formatAmount(BigInt(m.volume24hQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
+                      <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
+                    </UsdFigure>
                   </td>
                   <td className="num hidden px-2 py-3 text-right text-bone lg:table-cell">
                     {m.marketCapQuote ? (
-                      <>
-                        {formatAmount(BigInt(m.marketCapQuote), item.quoteDecimals, { locale, maxFrac: 2 })}
+                      <UsdFigure compact usd={quoteAmountToUsd(m.marketCapQuote, item.quoteDecimals, rate)} {...usd}>
+                        {formatAmount(BigInt(m.marketCapQuote), item.quoteDecimals, { locale, maxFrac: 4 })}
                         <span className="ml-1 text-xs text-subtle">{item.quoteSymbol}</span>
-                      </>
+                      </UsdFigure>
                     ) : (
                       <span className="text-faint">—</span>
                     )}

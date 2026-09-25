@@ -9,7 +9,7 @@ import { launchFactoryAbi, lpGrantVaultAbi, referralRegistryAbi } from "@/genera
 import { useDeployment, useNow, useTx } from "@/lib/hooks";
 import { useLaunchDetail } from "@/lib/api-hooks";
 import { GrantJoin } from "@/components/grant/GrantJoin";
-import { findQuote, useQuotes } from "@/lib/quotes";
+import { findQuote, hasKnownDecimals, useQuotes } from "@/lib/quotes";
 import { formatAmount, formatCompact, formatNumber, fmtCountdown, fmtTime, shortAddress } from "@/lib/format";
 import { DecayRing } from "@/components/art/DecayRing";
 import { Panel } from "@/components/ui/Panel";
@@ -76,7 +76,7 @@ function Timeline({
           <li key={p.label} className="relative min-w-0 pt-4">
             <span
               className={`absolute left-0 top-0 h-[11px] w-[11px] rounded-full border-2 ${
-                reached ? "border-verdigris bg-verdigris" : set ? "border-flare bg-ink" : "border-line-strong bg-ink"
+                reached ? "border-verdigris bg-verdigris" : set ? "border-honey bg-ink" : "border-line-strong bg-ink"
               }`}
               aria-hidden
             />
@@ -104,8 +104,8 @@ interface GrantPositionShape {
   tickLower: number;
   tickUpper: number;
   activatedAt: bigint;
-  incentiveDebt: bigint;
-  incentiveSettled: bigint;
+  incentiveCheckpoint: bigint;
+  incentiveTimeCheckpoint: bigint;
   exited: boolean;
 }
 
@@ -122,7 +122,8 @@ function PositionTicket({
   id: bigint;
   position: GrantPositionShape;
   memeDecimals: number;
-  quoteDecimals: number;
+  /** Null while unknown: amounts then show as a dash rather than being read with guessed decimals. */
+  quoteDecimals: number | null;
   quoteSymbol: string;
   minLpSeconds: number;
   vault: Address;
@@ -491,7 +492,7 @@ export default function GrantPage() {
         meme={meme}
         memeSymbol={detail.data?.symbol ?? ""}
         memeDecimals={memeDecimals}
-        quote={quoteMeta}
+        quote={hasKnownDecimals(quoteMeta) ? quoteMeta : undefined}
         status={campaign ? Number(campaign.status) : undefined}
         opensAt={activatableAt}
         now={now}
@@ -582,9 +583,19 @@ export default function GrantPage() {
                 {formatAmount(BigInt(proofJson.leaf.inviteeBoost), memeDecimals, { locale })}
               </p>
               <div className="mt-2">
+                {campaign && Number(campaign.status) !== 3 && (
+                  <p className="mb-2 text-[13px] text-muted">{t("grant.register.afterActivation")}</p>
+                )}
                 <Button
                   tx={registerTx}
-                  disabled={!account || !proofIsMine || registerTx.isPending || registerTx.isConfirming}
+                  disabled={
+                    !account ||
+                    !proofIsMine ||
+                    !campaign ||
+                    Number(campaign.status) !== 3 /* ACTIVE: registrations are tied to the active root */ ||
+                    registerTx.isPending ||
+                    registerTx.isConfirming
+                  }
                   onClick={() =>
                     registerTx.write({
                       address: deployment.lpGrantVault,
@@ -630,7 +641,7 @@ export default function GrantPage() {
                   id={id}
                   position={position}
                   memeDecimals={memeDecimals}
-                  quoteDecimals={quoteMeta?.decimals ?? 18}
+                  quoteDecimals={quoteMeta?.decimals ?? null}
                   quoteSymbol={quoteMeta?.symbol ?? "Quote"}
                   minLpSeconds={minLpSeconds}
                   vault={deployment.lpGrantVault}
