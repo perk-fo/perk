@@ -12,8 +12,7 @@ import { HatchlingArt } from "./Hatchling";
  *              shell and the creature peeks out; moving away closes it again.
  *   cracking   threshold reached, graduation pending: the shell is ajar and trembles.
  *   hatched    graduated: the creature itself, centred in a round frame and never moved or resized to make room for
- *              anything; a few flat pieces of shell (the egg's own colours and pattern) lie on the ground to either
- *              side of its base. The token page plays the hatch once.
+ *              anything; two flat pieces of its shell lie on the ground, one on each side of its base. The token page plays the hatch once.
  *   refunding  the egg stays sealed and goes grey.
  *
  * `mode="detail"` (the token page) swaps the hover peek for an X-ray lens that follows the pointer (a tap toggles it
@@ -39,27 +38,24 @@ const BOTTOM_CLIP = `M0 120 V58 L${ZZ} L120 58 V120 Z`;
 /** The round frame a hatched creature sits in: centred in the picture, so the artwork is never displaced. */
 const FRAME_R = 45;
 
-/** Where the pieces of a hatched egg lie: one ground line for all of them, just under the frame. */
-const GROUND = 112;
+/** Where the pieces of a hatched egg lie: one ground line for both, just under the frame. */
+const GROUND = 109;
 
 /**
- * The two pieces of a hatched egg, seen from the side as they lie on the ground (base at y = 0 on GROUND): cup-shaped
- * pieces with a zigzag rim and a glimpse of the shell's pale inside, a larger one on the left and a smaller, lopsided
- * one on the right. Plain shell colour and a thin outline, no pattern: at list sizes a pattern on pieces this small
- * reads as noise. Two distinct shapes, so they never look like halves that fit back together.
+ * The two pieces of a hatched egg, drawn flat (2D): each is an irregular fragment broken on every edge, a zigzag all
+ * the way round, resting on its base at y = 0 on GROUND. Plain shell colour and a thin outline; a larger piece on the
+ * left and a smaller one of a different shape on the right, so they never look like halves that fit back together.
  */
-const SHARDS: ReadonlyArray<{ x: number; w: number; body: string; inside?: string }> = [
+const SHARDS: ReadonlyArray<{ x: number; w: number; body: string }> = [
   {
     x: 5,
-    w: 24,
-    inside: "M1 -9.6 C4 -13.6 20 -13.6 23 -9.6 C20 -7.8 4 -7.8 1 -9.6 Z",
-    body: "M0 -9 L3.5 -12 L6.5 -8.4 L10 -12.6 L13.5 -8.4 L17 -12 L20.5 -8.4 L24 -10 C24 -3.6 19 0 12 0 C5 0 0 -3.6 0 -9 Z",
+    w: 23,
+    body: "M0.5 0 L1.8 -3.6 L0.4 -6.2 L3.4 -8.6 L5.2 -6.6 L7.8 -10.4 L10.4 -7.4 L13.6 -10.8 L15.8 -7.6 L19 -9.4 L20.2 -6 L22.6 -4.2 L21.4 -1.8 L23 0 L17.6 -1.4 L12.4 0.2 L7 -1.2 Z",
   },
   {
     x: 93,
-    w: 15,
-    inside: "M0.8 -7.6 C3 -10.4 12.6 -8.6 14.3 -5.6 C12 -4.6 3 -5.8 0.8 -7.6 Z",
-    body: "M0 -7 L2.6 -9.4 L5.2 -6.4 L8.4 -8.8 L10.6 -5.6 L12.6 -6.6 L15 -5 C15 -1.8 11.6 0 7.4 0 C3.2 0 0 -2.8 0 -7 Z",
+    w: 16,
+    body: "M0.4 0 L1.6 -3 L0.2 -5.2 L3.2 -7.2 L5.4 -5.4 L8.2 -8.4 L10.2 -5.8 L13.4 -7.4 L14.2 -4.4 L16 -2.6 L14.8 0 L10.6 -1.2 L6.4 0.2 L3.2 -1 Z",
   },
 ];
 
@@ -202,11 +198,15 @@ export function LaunchAvatar({
               className="la-shard"
               style={{ "--from-x": `${(60 - sh.x - sh.w / 2).toFixed(1)}px`, "--from-y": `${(60 - GROUND).toFixed(1)}px` } as CSSProperties}
             >
-              <ellipse cx={sh.x + sh.w / 2} cy={GROUND + 0.8} rx={sh.w * 0.46} ry="1.5" fill="currentColor" opacity="0.14" />
-              <g transform={`translate(${sh.x} ${GROUND})`} stroke="#1C1C1C" strokeOpacity="0.28" strokeWidth="0.9" strokeLinejoin="round">
-                {sh.inside && <path d={sh.inside} fill="#FBF6EA" />}
-                <path d={sh.body} fill={look.fill} />
-              </g>
+              <path
+                d={sh.body}
+                transform={`translate(${sh.x} ${GROUND})`}
+                fill={look.fill}
+                stroke="#1C1C1C"
+                strokeOpacity="0.28"
+                strokeWidth="0.9"
+                strokeLinejoin="round"
+              />
             </g>
           ))}
           {/* the creature, centred: the uploaded artwork as it is, cropped only by the circle, or the hatchling */}
