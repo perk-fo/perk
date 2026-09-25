@@ -123,14 +123,14 @@ describe("price sources", () => {
     const native = { address: NATIVE, symbol: "OKB", isNative: true, category: null };
     const aapl = { address: TAAPL, symbol: "tAAPL", isNative: false, category: null };
     expect(resolveSource(defaults, native)).toEqual({ kind: "okx", instId: "OKB-USDT" });
-    expect(resolveSource(defaults, aapl)).toEqual({ kind: "cnbc", ticker: "AAPL" });
+    expect(resolveSource(defaults, aapl)).toEqual({ kind: "stock", ticker: "AAPL" });
     expect(Object.keys(DEFAULT_PRICE_SOURCES)).toEqual(["native", "tAAPL"]);
     expect(parsePriceSources("  ")).toEqual(defaults);
 
     // an entry overrides the default for the same quote, by any kind of key; the other defaults stay
     const cfg = parsePriceSources(JSON.stringify({ OKB: "fixed:100", [USDC.toUpperCase().replace("0X", "0x")]: "fixed:1" }));
     expect(resolveSource(cfg, native)).toEqual({ kind: "fixed", usd: 100 });
-    expect(resolveSource(cfg, aapl)).toEqual({ kind: "cnbc", ticker: "AAPL" });
+    expect(resolveSource(cfg, aapl)).toEqual({ kind: "stock", ticker: "AAPL" });
     expect(resolveSource(cfg, { address: USDC, symbol: "USDC", isNative: false, category: "stablecoin" })).toEqual({
       kind: "fixed",
       usd: 1,
@@ -150,8 +150,8 @@ describe("price sources", () => {
     const cfg = parsePriceSources(undefined);
     const stock = (symbol: string, category: string | null = null) =>
       resolveSource(cfg, { address: TTSLA, symbol, isNative: false, category });
-    expect(stock("tTSLA")).toEqual({ kind: "cnbc", ticker: "TSLA" });
-    expect(stock("tNVDA", "rwa")).toEqual({ kind: "cnbc", ticker: "NVDA" });
+    expect(stock("tTSLA")).toEqual({ kind: "stock", ticker: "TSLA" });
+    expect(stock("tNVDA", "rwa")).toEqual({ kind: "stock", ticker: "NVDA" });
     // only "t" + an upper-case ticker, and only while admins have not called it something else
     expect(stock("tTSLA", "stablecoin")).toBeNull();
     expect(stock("TSLA")).toBeNull();
@@ -232,6 +232,23 @@ describe("price sources", () => {
     expect(() => parseNasdaqQuote({ data: null, status: { rCode: 400 } })).toThrow(/no quote/);
     expect(() => parseNasdaqQuote(JSON.parse(nasdaqBody("N/A")))).toThrow(/usable/);
     expect(() => parseNasdaqQuote(JSON.parse(nasdaqBody("$0.00")))).toThrow(/usable/);
+  });
+
+  test("test_fetchUsd_stockFallsBackToNasdaq", async () => {
+    // CNBC turned the hosted API away with 403 in September 2026; the stock source then asks Nasdaq
+    const { fetch, calls } = mockFetch({ [AAPL_URL]: text("denied", 403), [NASDAQ_AAPL_URL]: text(nasdaqBody("$231.40")) });
+    expect(await fetchUsd(parsePriceSource("stock:aapl"), { fetch, timeoutMs: 1000 })).toBe(231.4);
+    expect(calls).toEqual([AAPL_URL, NASDAQ_AAPL_URL]);
+    // CNBC answering is enough
+    const ok = mockFetch({ [AAPL_URL]: text(cnbcBody("230.10")) });
+    expect(await fetchUsd(parsePriceSource("stock:AAPL"), { fetch: ok.fetch, timeoutMs: 1000 })).toBe(230.1);
+    expect(ok.calls).toEqual([AAPL_URL]);
+    // both failing names both
+    const bad = mockFetch({ [AAPL_URL]: text("denied", 403), [NASDAQ_AAPL_URL]: text("denied", 403) });
+    await expect(fetchUsd(parsePriceSource("stock:AAPL"), { fetch: bad.fetch, timeoutMs: 1000 })).rejects.toThrow(
+      /stock: cnbc .*403.*nasdaq .*403/,
+    );
+    expect(sourceText(parsePriceSource("stock:aapl"))).toBe("stock:AAPL");
   });
 
   test("test_fetchUsd_requestsTheFixedHosts", async () => {
@@ -325,8 +342,8 @@ describe("PriceService", () => {
     expect(prices.list()).toEqual([
       { quote: NATIVE, symbol: "OKB", usd: 119.73, source: "okx:OKB-USDT", updatedAt: at, stale: false },
       { quote: USDC, symbol: "USDC", usd: 1, source: "fixed:1", updatedAt: at, stale: false },
-      { quote: TAAPL, symbol: "tAAPL", usd: 335.92, source: "cnbc:AAPL", updatedAt: at, stale: false },
-      { quote: TTSLA, symbol: "tTSLA", usd: 431.5, source: "cnbc:TSLA", updatedAt: at, stale: false },
+      { quote: TAAPL, symbol: "tAAPL", usd: 335.92, source: "stock:AAPL", updatedAt: at, stale: false },
+      { quote: TTSLA, symbol: "tTSLA", usd: 431.5, source: "stock:TSLA", updatedAt: at, stale: false },
     ]);
     // FROG has no source and is simply absent; the other chain's quotes are not read
     expect(prices.list().some((p) => p.quote === FROG)).toBe(false);
@@ -337,13 +354,13 @@ describe("PriceService", () => {
   test("test_refresh_asksEachSourceOnce", async () => {
     const { fetch, calls } = healthy();
     // two quotes on one source: one request
-    const prices = service(fetch, parsePriceSources(JSON.stringify({ tTSLA: "cnbc:AAPL", USDC: "fixed:1" })));
+    const prices = service(fetch, parsePriceSources(JSON.stringify({ tTSLA: "stock:AAPL", USDC: "fixed:1" })));
     await prices.refresh();
     expect(calls.filter((u) => u === AAPL_URL)).toHaveLength(1);
     expect(calls).not.toContain(TSLA_URL);
     const tsla = prices.list().find((p) => p.quote === TTSLA)!;
     expect(tsla.usd).toBe(335.92);
-    expect(tsla.source).toBe("cnbc:AAPL");
+    expect(tsla.source).toBe("stock:AAPL");
   });
 
   test("test_refresh_keepsLastGoodValue_thenMarksItStale", async () => {
@@ -352,13 +369,14 @@ describe("PriceService", () => {
       [OKX_URL]: () => (okxUp ? new Response(okxBody("119.73")) : new Response("gateway", { status: 502 })),
       [AAPL_URL]: text(cnbcBody("335.92")),
       [TSLA_URL]: text(STOOQ_NOT_FOUND),
+      "https://api.nasdaq.com/api/quote/TSLA/info?assetclass=stocks": text("denied", 403),
     });
     const prices = service(fetch);
     await prices.refresh();
     const firstAt = Math.floor(now / 1000);
     // an HTML error page is not a price: tTSLA has none, and the failure is logged once
     expect(prices.list().some((p) => p.quote === TTSLA)).toBe(false);
-    expect(logs).toEqual([{ msg: "prices: source failed", fields: { source: "cnbc:TSLA", error: expect.stringContaining("not JSON") } }]);
+    expect(logs).toEqual([{ msg: "prices: source failed", fields: { source: "stock:TSLA", error: expect.stringContaining("not JSON") } }]);
 
     okxUp = false;
     now += 5 * 60_000;
@@ -376,7 +394,7 @@ describe("PriceService", () => {
     expect(prices.list().find((p) => p.quote === TAAPL)!.stale).toBe(false);
     // the same error is not logged every minute
     expect(logs.filter((l) => l.fields?.source === "okx:OKB-USDT").map((l) => l.msg)).toEqual(["prices: source failed"]);
-    expect(logs.filter((l) => l.fields?.source === "cnbc:TSLA")).toHaveLength(2); // again after 15 minutes
+    expect(logs.filter((l) => l.fields?.source === "stock:TSLA")).toHaveLength(2); // again after 15 minutes
 
     okxUp = true;
     now += 60_000;

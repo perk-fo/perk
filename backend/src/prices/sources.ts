@@ -11,6 +11,8 @@ import { FetchFailedError, readBody, type FetchLike } from "../net/fetchPublic";
  *                    in US dollars: the last regular-session price of a US-listed stock (cnbc:AAPL for Apple).
  *   nasdaq:<TICKER>  Nasdaq's public quote API, `data.primaryData.lastSalePrice` of
  *                    https://api.nasdaq.com/api/quote/<TICKER>/info?assetclass=stocks. An alternative to cnbc.
+ *   stock:<TICKER>   cnbc, and nasdaq when cnbc does not answer. The default for tokenised stocks: each service
+ *                    turns away some server addresses (CNBC answered 403 to the hosted API in September 2026).
  *   fixed:<number>   A constant, for stablecoins (fixed:1).
  *   none             No price: switches a default off.
  *
@@ -22,6 +24,7 @@ export type PriceSource =
   | { kind: "okx"; instId: string }
   | { kind: "cnbc"; ticker: string }
   | { kind: "nasdaq"; ticker: string }
+  | { kind: "stock"; ticker: string }
   | { kind: "fixed"; usd: number }
   | { kind: "none" };
 
@@ -31,11 +34,11 @@ export type PriceSource =
  */
 export const DEFAULT_PRICE_SOURCES: Readonly<Record<string, string>> = {
   native: "okx:OKB-USDT",
-  tAAPL: "cnbc:AAPL",
+  tAAPL: "stock:AAPL",
 };
 
 /**
- * A tokenised US stock named "t" + its ticker (tAAPL, tTSLA, tNVDA): priced from CNBC's quote for the ticker unless
+ * A tokenised US stock named "t" + its ticker (tAAPL, tTSLA, tNVDA): priced from the ticker's quote (stock:) unless
  * PRICE_SOURCES says otherwise, and only while General Admins have not given it a category other than "rwa".
  */
 const TOKENISED_STOCK = /^t([A-Z]{1,5})$/;
@@ -73,7 +76,8 @@ export function parsePriceSource(raw: string): PriceSource {
       return { kind: "okx", instId };
     }
     case "cnbc":
-    case "nasdaq": {
+    case "nasdaq":
+    case "stock": {
       const ticker = arg.toUpperCase();
       if (!TICKER.test(ticker)) throw new Error(`"${raw}": ${kind} needs a US ticker such as ${kind}:AAPL`);
       return { kind, ticker };
@@ -87,7 +91,7 @@ export function parsePriceSource(raw: string): PriceSource {
     }
     default:
       throw new Error(
-        `"${raw}": unknown source (use okx:<instId>, cnbc:<ticker>, nasdaq:<ticker>, fixed:<number> or none)`,
+        `"${raw}": unknown source (use okx:<instId>, stock:<ticker>, cnbc:<ticker>, nasdaq:<ticker>, fixed:<number> or none)`,
       );
   }
 }
@@ -99,6 +103,7 @@ export function sourceText(s: PriceSource): string {
       return `okx:${s.instId}`;
     case "cnbc":
     case "nasdaq":
+    case "stock":
       return `${s.kind}:${s.ticker}`;
     case "fixed":
       return `fixed:${s.usd}`;
@@ -183,7 +188,7 @@ export function resolveSource(cfg: PriceSourceConfig, q: PricedQuote): PriceSour
   if (found) return found.kind === "none" ? null : found;
   const stock = TOKENISED_STOCK.exec(q.symbol);
   if (stock && !q.isNative && (q.category === null || q.category === "rwa")) {
-    return { kind: "cnbc", ticker: stock[1] };
+    return { kind: "stock", ticker: stock[1] };
   }
   return null;
 }
@@ -265,6 +270,18 @@ export async function fetchUsd(
   opts: { fetch?: FetchLike; timeoutMs: number },
 ): Promise<number> {
   if (source.kind === "fixed") return source.usd;
+  if (source.kind === "stock") {
+    try {
+      return await fetchUsd({ kind: "cnbc", ticker: source.ticker }, opts);
+    } catch (first) {
+      try {
+        return await fetchUsd({ kind: "nasdaq", ticker: source.ticker }, opts);
+      } catch (second) {
+        const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+        throw new PriceSourceError(`stock: cnbc ${msg(first)}; nasdaq ${msg(second)}`);
+      }
+    }
+  }
   const url = sourceUrl(source);
   if (url === null) throw new PriceSourceError("no source");
   const fetchImpl = opts.fetch ?? globalThis.fetch;
