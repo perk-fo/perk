@@ -43,27 +43,24 @@ const FRAME_R = 45;
 const GROUND = 112;
 
 /**
- * The pieces of a hatched egg, seen from the side as they lie on the ground: each has a flat bottom on GROUND and a
- * low, jagged top, like a flake of shell fallen flat. `shape` is the outline with its base at y = 0; `x` is where its
- * left end lies. Neighbouring pieces overlap as fallen pieces do. `src` picks which part of the egg's pattern the
- * piece carries; `inside` pieces landed face up and show the pale inside of the shell. Small pictures keep the
- * pieces marked `keep`. Later pieces lie on top of earlier ones.
+ * The two pieces of a hatched egg, seen from the side as they lie on the ground (base at y = 0 on GROUND): cup-shaped
+ * pieces with a zigzag rim and a glimpse of the shell's pale inside, a larger one on the left and a smaller, lopsided
+ * one on the right. Plain shell colour and a thin outline, no pattern: at list sizes a pattern on pieces this small
+ * reads as noise. Two distinct shapes, so they never look like halves that fit back together.
  */
-const SHARDS: ReadonlyArray<{
-  shape: string;
-  x: number;
-  src: readonly [number, number];
-  inside?: boolean;
-  keep?: boolean;
-}> = [
-  // left of the frame
-  { shape: "M0 0 L2.8 -3.6 L5.6 -3.7 L8.3 -6.0 L11.1 -5.1 L13.9 -6.5 L16.7 -4.6 L19.4 -5.1 L22.2 -2.2 L25.0 0 Z", x: 8, src: [34, 40], keep: true },
-  { shape: "M0 0 L2.5 -2.2 L5.0 -4.6 L7.5 -3.8 L10.0 -4.6 L12.5 -2.2 L15.0 0 Z", x: 28, src: [60, 80], inside: true },
-  { shape: "M0 0 L2.0 -2.4 L4.0 -1.6 L6.0 0 Z", x: 3, src: [70, 60] },
-  // right of the frame
-  { shape: "M0 0 L2.8 -2.3 L5.5 -5.2 L8.2 -4.7 L11.0 -6.4 L13.8 -4.7 L16.5 -5.2 L19.2 -2.3 L22.0 0 Z", x: 86, src: [80, 50], keep: true },
-  { shape: "M0 0 L2.4 -3.3 L4.8 -3.3 L7.2 -4.4 L9.6 -2.2 L12.0 0 Z", x: 77, src: [44, 90] },
-  { shape: "M0 0 L2.0 -1.7 L4.0 -2.5 L6.0 0 Z", x: 107, src: [50, 30], inside: true },
+const SHARDS: ReadonlyArray<{ x: number; w: number; body: string; inside?: string }> = [
+  {
+    x: 5,
+    w: 24,
+    inside: "M1 -9.6 C4 -13.6 20 -13.6 23 -9.6 C20 -7.8 4 -7.8 1 -9.6 Z",
+    body: "M0 -9 L3.5 -12 L6.5 -8.4 L10 -12.6 L13.5 -8.4 L17 -12 L20.5 -8.4 L24 -10 C24 -3.6 19 0 12 0 C5 0 0 -3.6 0 -9 Z",
+  },
+  {
+    x: 93,
+    w: 15,
+    inside: "M0.8 -7.6 C3 -10.4 12.6 -8.6 14.3 -5.6 C12 -4.6 3 -5.8 0.8 -7.6 Z",
+    body: "M0 -7 L2.6 -9.4 L5.2 -6.4 L8.4 -8.8 L10.6 -5.6 L12.6 -6.6 L15 -5 C15 -1.8 11.6 0 7.4 0 C3.2 0 0 -2.8 0 -7 Z",
+  },
 ];
 
 export function LaunchAvatar({
@@ -169,12 +166,7 @@ export function LaunchAvatar({
         <clipPath id={id("frame")}>
           <circle cx="60" cy="60" r={FRAME_R} />
         </clipPath>
-        {state === "hatched" &&
-          SHARDS.map((sh, i) => (
-            <clipPath key={i} id={id(`shard-${i}`)}>
-              <path d={sh.shape} />
-            </clipPath>
-          ))}
+
         <radialGradient id={id("shade")} cx="38%" cy="32%" r="75%">
           <stop offset="55%" stopColor="#000" stopOpacity="0" />
           <stop offset="100%" stopColor="#000" stopOpacity="0.2" />
@@ -198,38 +190,25 @@ export function LaunchAvatar({
       {state === "hatched" ? (
         <>
           {/* the ground the pieces lie on */}
-          <ellipse cx="60" cy={GROUND + 1} rx="56" ry="3" fill="currentColor" opacity="0.07" />
           {!small && (
             <g stroke="#F9C23C" strokeWidth="3" strokeLinecap="round" className="la-sparks">
               <path d="M108 12v10M103 17h10" />
               <path d="M12 16v8M8 20h8" />
             </g>
           )}
-          {SHARDS.filter((sh) => !small || sh.keep).map((sh) => {
-            const i = SHARDS.indexOf(sh);
-            return (
-              <g
-                key={i}
-                className="la-shard"
-                style={{ "--from-x": `${(60 - sh.x - 8).toFixed(1)}px`, "--from-y": `${(60 - GROUND).toFixed(1)}px` } as CSSProperties}
-              >
-                <g transform={`translate(${sh.x} ${GROUND})`}>
-                  <g clipPath={`url(#${id(`shard-${i}`)})`}>
-                    {sh.inside ? (
-                      <rect x="-2" y="-10" width="32" height="12" fill="#EFE6D2" />
-                    ) : (
-                      // the egg's own shell at half size, so the pattern reads at the piece's scale
-                      <g transform={`scale(0.5) translate(${-sh.src[0]} ${-sh.src[1]})`}>
-                        <rect width="240" height="240" fill={look.fill} />
-                        {decoration(look.kind, look.b, look.ink, look.accent)}
-                      </g>
-                    )}
-                  </g>
-                  <path d={sh.shape} fill="none" stroke="#1C1C1C" strokeOpacity="0.2" strokeWidth="0.8" strokeLinejoin="round" />
-                </g>
+          {SHARDS.map((sh, i) => (
+            <g
+              key={i}
+              className="la-shard"
+              style={{ "--from-x": `${(60 - sh.x - sh.w / 2).toFixed(1)}px`, "--from-y": `${(60 - GROUND).toFixed(1)}px` } as CSSProperties}
+            >
+              <ellipse cx={sh.x + sh.w / 2} cy={GROUND + 0.8} rx={sh.w * 0.46} ry="1.5" fill="currentColor" opacity="0.14" />
+              <g transform={`translate(${sh.x} ${GROUND})`} stroke="#1C1C1C" strokeOpacity="0.28" strokeWidth="0.9" strokeLinejoin="round">
+                {sh.inside && <path d={sh.inside} fill="#FBF6EA" />}
+                <path d={sh.body} fill={look.fill} />
               </g>
-            );
-          })}
+            </g>
+          ))}
           {/* the creature, centred: the uploaded artwork as it is, cropped only by the circle, or the hatchling */}
           <g className="la-creature">
             <g clipPath={`url(#${id("frame")})`}>

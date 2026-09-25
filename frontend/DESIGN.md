@@ -19,8 +19,8 @@ the home page; every other page follows the same system.
   tips the lid open on a hinge and the creature peeks out, then it closes again. **Cracking** while graduation is
   pending: the lid sits ajar and the egg trembles. **Hatched** once graduated: the creature alone, centred in a round
   frame (uploaded artwork is shown as it is, cropped only by the circle, never moved or resized to make room for
-  anything), with a few flat pieces of its shell lying on the ground to either side of its base (all on one ground
-  line, overlapping where they fell, never standing up); hovering grows it slightly from its centre, and the token page plays the hatch once (the pieces burst
+  anything), with two clean pieces of its shell resting on the ground, one on each side of its base (cup-shaped,
+  zigzag rim, plain shell colour, never standing up); hovering grows it slightly from its centre, and the token page plays the hatch once (the pieces burst
   out and settle). **Refunding**: the
   egg stays sealed and turns grey. On the token page an X-ray lens follows the pointer (a tap toggles it on touch
   screens) to peek inside a sealed egg; the artwork is public metadata anyway, so this is play, not secrecy.
