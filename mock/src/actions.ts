@@ -5,6 +5,7 @@
 import {
   encodePacked,
   keccak256,
+  maxUint256,
   parseEther,
   toHex,
   zeroAddress,
@@ -221,12 +222,7 @@ export async function launchToken(
   });
   const params = { ...base, expectedConfigHash: configHash };
   if (quote !== zeroAddress && devBuy > 0n) {
-    await call(cfg, cfg.creator, {
-      address: quote,
-      abi: perkMemeTokenAbi,
-      functionName: "approve",
-      args: [cfg.deployment.factory, devBuy],
-    });
+    await ensureAllowance(cfg, cfg.creator, quote, cfg.deployment.factory, devBuy);
   }
   const tx = await call(cfg, cfg.creator, {
     address: cfg.deployment.factory,
@@ -317,12 +313,7 @@ export async function curveTrade(
     if (balance > 0n) {
       const amount = (balance * BigInt(5 + Math.floor(rand() * 20))) / 100n;
       if (amount > 0n) {
-        await call(cfg, trader, {
-          address: meme,
-          abi: perkMemeTokenAbi,
-          functionName: "approve",
-          args: [cfg.deployment.curve, amount],
-        });
+        await ensureAllowance(cfg, trader, meme, cfg.deployment.curve, amount);
         await call(cfg, trader, {
           address: cfg.deployment.curve,
           abi: bondingCurveAbi,
@@ -341,12 +332,7 @@ export async function curveTrade(
   const spend = (threshold * BigInt(Math.round(deficit * (0.9 + 0.35 * rand()) * 100))) / 1_000_000n;
   const amount = spend > 0n ? spend : threshold / 200n;
   if (quote !== zeroAddress) {
-    await call(cfg, trader, {
-      address: quote,
-      abi: perkMemeTokenAbi,
-      functionName: "approve",
-      args: [cfg.deployment.curve, amount],
-    });
+    await ensureAllowance(cfg, trader, quote, cfg.deployment.curve, amount);
   }
   await call(cfg, trader, {
     address: cfg.deployment.curve,
@@ -356,6 +342,33 @@ export async function curveTrade(
     value: quote === zeroAddress ? amount : 0n,
   });
   log(`buy ${meme} ${amount} quote (progress ${current}bps, target ${targetBps})`);
+}
+
+/**
+ * Makes sure `owner` has allowed `spender` at least `amount` of `token`, approving the maximum once rather than the
+ * exact amount before every trade. Fewer transactions, and no race on a load-balanced RPC where the next call may be
+ * simulated on a node that has not yet seen a just-mined exact approval.
+ */
+export async function ensureAllowance(
+  cfg: DriverConfig,
+  owner: Account,
+  token: Address,
+  spender: Address,
+  amount: bigint,
+): Promise<void> {
+  const current = await cfg.publicClient.readContract({
+    address: token,
+    abi: perkMemeTokenAbi,
+    functionName: "allowance",
+    args: [owner.address, spender],
+  });
+  if (current >= amount) return;
+  await call(cfg, owner, {
+    address: token,
+    abi: perkMemeTokenAbi,
+    functionName: "approve",
+    args: [spender, maxUint256],
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -420,12 +433,7 @@ export async function poolSwap(
   // producing trades.
   const payingWith = buy ? (quoteIsCurrency0 ? key.currency0 : key.currency1) : meme;
   if (payingWith !== zeroAddress) {
-    await call(cfg, trader, {
-      address: payingWith as Address,
-      abi: perkMemeTokenAbi,
-      functionName: "approve",
-      args: [router, amount],
-    });
+    await ensureAllowance(cfg, trader, payingWith as Address, router, amount);
   }
   await call(cfg, trader, {
     address: router,
