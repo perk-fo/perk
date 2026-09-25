@@ -670,6 +670,30 @@ describe("quote assets", () => {
     expect(assets.find((a) => a.address === ZERO)!.isNative).toBe(true);
   });
 
+  test("test_quoteAssets_hidesDisallowedUnusedAssets", async () => {
+    const unused = "0x00000000000000000000000000000000000000d1";
+    const paired = "0x00000000000000000000000000000000000000d2";
+    await db`insert into quote_assets (chain_id, quote, symbol, name, decimals, kind, allowed) values
+      (${CHAIN}, ${unused}, 'GONE', 'Gone', 18, 1, false),
+      (${CHAIN}, ${paired}, 'OLD', 'Old', 18, 1, false)`;
+    const [meme] = await db<{ meme: string }[]>`select meme from launches where chain_id = ${CHAIN} limit 1`;
+    const [launch] = await db<{ quote: string }[]>`select quote from launches where meme = ${meme!.meme}`;
+    await db`update launches set quote = ${paired} where meme = ${meme!.meme}`;
+    try {
+      const { assets } = await ok<{ assets: QuoteAsset[] }>(call("GET", "/v1/quote-assets"));
+      const listed = assets.map((a) => a.address.toLowerCase());
+      expect(listed).not.toContain(unused);
+      // a launch paired with a disallowed asset still needs its symbol and decimals
+      expect(listed).toContain(paired);
+      expect(assets.find((a) => a.address.toLowerCase() === paired)!.enabled).toBe(false);
+      // the count on the home page is what a new launch can use
+      expect((await ok<{ quotes: number }>(call("GET", "/v1/stats"))).quotes).toBe(2);
+    } finally {
+      await db`update launches set quote = ${launch!.quote} where meme = ${meme!.meme}`;
+      await db`delete from quote_assets where chain_id = ${CHAIN} and quote in (${unused}, ${paired})`;
+    }
+  });
+
   test("test_quoteDisplay_updatesPublicView", async () => {
     const body = {
       displayName: "Wrapped OKB",

@@ -255,7 +255,10 @@ function mapQuote(r: QuoteRow, config: AppConfig): QuoteAsset {
   };
 }
 
-/** Every quote asset the registry has ever listed, with its display settings, in picker order. */
+/**
+ * The quote assets the site shows, with their display settings, in picker order: every asset the registry allows now,
+ * plus any disallowed one that a launch is paired with. A disallowed asset no launch ever used is left out.
+ */
 export async function selectQuoteAssets(db: Db, config: AppConfig): Promise<QuoteAsset[]> {
   const rows = await db<QuoteRow[]>`
     select qa.quote, qa.symbol, qa.name, qa.decimals, qa.kind, qa.allowed, qa.info,
@@ -266,6 +269,7 @@ export async function selectQuoteAssets(db: Db, config: AppConfig): Promise<Quot
     from quote_assets qa
     left join quote_asset_display d on d.chain_id = qa.chain_id and d.quote = qa.quote
     where qa.chain_id = ${config.chainId}
+      and (coalesce((qa.info->>'enabled')::boolean, qa.allowed) or exists (select 1 from launches l where l.chain_id = qa.chain_id and l.quote = qa.quote))
     order by coalesce(d.sort_order, 0) asc, (qa.quote = ${ZERO}) desc, qa.symbol asc`;
   return rows.map((r) => mapQuote(r, config));
 }

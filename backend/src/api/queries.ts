@@ -583,7 +583,8 @@ export async function selectStats(db: Db, chainId: number, now: number): Promise
     where chain_id = ${chainId} and status in (2, 3)
   `;
   const [quotes] = await db<{ n: number | bigint }[]>`
-    select count(*)::int as n from quote_assets where chain_id = ${chainId}
+    select count(*)::int as n from quote_assets
+    where chain_id = ${chainId} and coalesce((info->>'enabled')::boolean, allowed)
   `;
   const [trades] = await db<{ n: number | bigint }[]>`
     select count(*)::int as n from trades where chain_id = ${chainId} and ts >= ${cutoff}
