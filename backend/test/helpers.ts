@@ -80,7 +80,15 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     ipfsGateway: "https://ipfs.io/ipfs/",
     pinataJwt: undefined,
     publicApiUrl: "http://localhost:0",
+    catchupBlocks: 200,
+    mediaRateLimit: 20,
+    mediaRateWindowMs: 600_000,
+    mediaDailyUploadBytes: 256 * 1024 * 1024,
+    maxBodyBytes: 3 * 1024 * 1024,
+    wsMaxClientsPerIp: 20,
+    allowFileDatasetUris: false,
     ...overrides,
+    trustedProxyHops: overrides.trustedProxyHops ?? (overrides.trustProxy ? 1 : 0),
   });
 }
 
@@ -275,7 +283,8 @@ export function chainHandler(chain: MockChain, calls: string[] = []): RpcHandler
       const data = (call.data ?? "0x").toLowerCase();
       const selector = data.slice(0, 10);
       const meta = chain.erc20.get(to);
-      if (!meta) throw new Error(`eth_call: no erc20 meta for ${to}`);
+      // an address the mock knows nothing about has no code: a node answers such a call with empty data
+      if (!meta) return "0x";
       if (selector === ERC20_NAME) return encodeAbiParameters([{ type: "string" }], [meta.name]);
       if (selector === ERC20_SYMBOL) return encodeAbiParameters([{ type: "string" }], [meta.symbol]);
       if (selector === ERC20_DECIMALS) return encodeAbiParameters([{ type: "uint256" }], [BigInt(meta.decimals)]);

@@ -66,6 +66,27 @@ export interface QuoteDisplay {
 
 export type QuoteNotice = Partial<Record<"en" | "zh-CN" | "ja", string>>;
 
+/**
+ * GET /v1/prices: the US-dollar price of one quote asset. Only quotes with a configured source that has answered at
+ * least once are listed; any other quote has no USD price.
+ */
+export interface QuotePrice {
+  quote: Address;
+  symbol: string;
+  /** US dollars per whole unit of the quote (not per raw unit). */
+  usd: number;
+  /** Where it comes from: "okx:OKB-USDT", "stooq:aapl.us", "fixed:1". */
+  source: string;
+  /** Last successful refresh, unix seconds. */
+  updatedAt: number;
+  /** No successful refresh for 15 minutes: `usd` is the last good value, not a current one. */
+  stale: boolean;
+}
+
+export interface Prices {
+  prices: QuotePrice[];
+}
+
 export interface MarketStats {
   /** Last trade price in raw units: priceQuote / priceMeme. Null before the first trade. */
   lastPriceQuote: Uint | null;

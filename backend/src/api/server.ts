@@ -11,9 +11,13 @@ import { statsRoutes } from "./routes/stats";
 import { mediaRoutes } from "./routes/media";
 import { adminRoutes } from "./routes/admin";
 import { quoteAssetRoutes } from "./routes/quoteAssets";
+import { priceRoutes } from "./routes/prices";
 import type { Client } from "../chain/rpc";
 import { createMediaStore, type FetchLike, type MediaStore } from "../media/store";
 import { TokenBucketLimiter } from "../media/rateLimit";
+import { ChainRoleReader } from "../admin/roles";
+import { logError } from "../log";
+import type { PriceService } from "../prices/service";
 
 export interface ApiDeps {
   db: Db;
@@ -23,8 +27,17 @@ export interface ApiDeps {
   limiter?: TokenBucketLimiter;
   /** Admin sign-in attempts per IP. */
   authLimiter?: TokenBucketLimiter;
-  /** Chain access for admin sign-in from contract wallets (EIP-1271); plain wallets need none. */
+  /**
+   * Chain access: the on-chain admin roles are read from the contracts (owner(), publisher()) and contract-wallet
+   * sign-ins checked through EIP-1271. Without it nobody holds an on-chain role in the admin.
+   */
   client?: Client;
+  /** How long an on-chain role answer is reused (default 5 s). */
+  roleCacheMs?: number;
+  /** Upload bytes, all clients together, per day (default config.mediaDailyUploadBytes). */
+  uploadBudget?: TokenBucketLimiter;
+  /** USD prices of the quote assets, refreshed in the background. Without it GET /v1/prices lists none. */
+  prices?: PriceService;
 }
 
 export interface ResolvedApiDeps {
@@ -33,7 +46,12 @@ export interface ResolvedApiDeps {
   media: MediaStore;
   limiter: TokenBucketLimiter;
   authLimiter: TokenBucketLimiter;
+  uploadBudget: TokenBucketLimiter;
   client: Client | undefined;
+  /** null without a client. */
+  roles: ChainRoleReader | null;
+  /** null without a price service. */
+  prices: PriceService | null;
 }
 
 /** `ip` is the socket peer address, passed in by main.ts; routes prefer it over client-supplied headers. */
@@ -56,7 +74,10 @@ export function createApp(deps: ApiDeps): Hono<AppEnv> {
     media: deps.media ?? createMediaStore(deps.config, deps.fetch),
     limiter: deps.limiter ?? new TokenBucketLimiter(deps.config.mediaRateLimit, deps.config.mediaRateWindowMs),
     authLimiter: deps.authLimiter ?? new TokenBucketLimiter(30, 600_000),
+    uploadBudget: deps.uploadBudget ?? new TokenBucketLimiter(deps.config.mediaDailyUploadBytes, 86_400_000),
     client: deps.client,
+    roles: deps.client ? new ChainRoleReader(deps.client, deps.config.deployment, deps.roleCacheMs ?? 5_000) : null,
+    prices: deps.prices ?? null,
   };
   app.use(
     "*",
@@ -79,7 +100,7 @@ export function createApp(deps: ApiDeps): Hono<AppEnv> {
     if (err instanceof HttpError) {
       return c.json<ApiError>({ error: err.code, message: err.message }, err.status as 400);
     }
-    console.error("[api]", err);
+    logError("api error", err, { method: c.req.method, path: c.req.path });
     return c.json<ApiError>({ error: "internal", message: "internal error" }, 500);
   });
   app.notFound((c) => c.json<ApiError>({ error: "not_found", message: "route not found" }, 404));
@@ -91,13 +112,14 @@ export function createApp(deps: ApiDeps): Hono<AppEnv> {
   app.route("/v1/stats", statsRoutes());
   app.route("/v1/media", mediaRoutes());
   app.route("/v1/quote-assets", quoteAssetRoutes());
+  app.route("/v1/prices", priceRoutes());
   app.route("/v1/admin", adminRoutes());
   return app;
 }
 
 export class HttpError extends Error {
   constructor(
-    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429,
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 503,
     readonly code: string,
     message: string,
   ) {

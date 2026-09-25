@@ -5,6 +5,8 @@ import type { Db } from "../db/client";
 import { XLAYER_MAINNET } from "../config";
 import type { GrantAllocationProof, GrantDataset, Hex } from "../api/types";
 import { addr, hexNull, num, numNull, uint } from "../api/serialize";
+import { errorText } from "../log";
+import { FetchFailedError, fetchPublic, UrlRefusedError, type LookupFn } from "../net/fetchPublic";
 
 export const LEAF_ENCODING = ["address", "uint256", "uint256"] as const;
 const FETCH_TIMEOUT_MS = 10_000;
@@ -17,8 +19,12 @@ export interface FetchDatasetOpts {
   chainId: number;
   ipfsGateway?: string;
   fetch?: typeof globalThis.fetch;
+  /** DNS for the outbound fetch guard; tests inject one so nothing leaves the machine. */
+  lookup?: LookupFn;
   timeoutMs?: number;
   maxBytes?: number;
+  /** Read file:// URIs: local development only (config.allowFileDatasetUris), never on chain 196. */
+  allowFileUris?: boolean;
 }
 
 export interface DatasetLoaderDeps {
@@ -28,7 +34,14 @@ export interface DatasetLoaderDeps {
   sleep?: (ms: number) => Promise<void>;
   ipfsGateway?: string;
   fetch?: typeof globalThis.fetch;
+  lookup?: LookupFn;
+  allowFileUris?: boolean;
   now?: () => number;
+}
+
+/** A dataset could not be loaded, for a reason whose message is safe to publish (GrantDataset.error). */
+export class DatasetError extends Error {
+  override name = "DatasetError";
 }
 
 interface DatasetJson {
@@ -57,8 +70,9 @@ function unixNow(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+/** What GrantDataset.error shows: the message of a DatasetError, a generic text for anything else. */
+function publicDatasetError(err: unknown): string {
+  return err instanceof DatasetError ? err.message : "the dataset could not be loaded";
 }
 
 function joinGateway(gateway: string, cid: string): string {
@@ -72,48 +86,11 @@ function ipfsToHttps(uri: string, gateway: string): string {
   return joinGateway(gateway, cid);
 }
 
-async function readHttpBody(res: Response, maxBytes: number): Promise<string> {
-  const declared = res.headers.get("content-length");
-  if (declared !== null && declared !== "") {
-    const n = Number(declared);
-    if (Number.isFinite(n) && n > maxBytes) throw new Error(`dataset exceeds ${maxBytes} bytes`);
-  }
-  if (!res.body) {
-    const text = await res.text();
-    if (new TextEncoder().encode(text).length > maxBytes) throw new Error(`dataset exceeds ${maxBytes} bytes`);
-    return text;
-  }
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      try {
-        await reader.cancel();
-      } catch {
-        /* ignore */
-      }
-      throw new Error(`dataset exceeds ${maxBytes} bytes`);
-    }
-    chunks.push(value);
-  }
-  const buf = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    buf.set(c, offset);
-    offset += c.byteLength;
-  }
-  return new TextDecoder().decode(buf);
-}
-
 /**
- * Fetch a published grant dataset JSON from `https://`, `ipfs://<cid>` (via IPFS_GATEWAY,
- * default `https://ipfs.io/ipfs/`), or `file://` when chainId is not X Layer mainnet (196).
- * 10 s timeout, 5 MB cap.
+ * Fetch a published grant dataset JSON from `https://` or `ipfs://<cid>` (via IPFS_GATEWAY, default
+ * `https://ipfs.io/ipfs/`), through the outbound fetch guard (net/fetchPublic.ts: public hosts only, every redirect
+ * checked, no downgrade to http). `file://` only when `allowFileUris` (local development) and never on chain 196: the
+ * URI is whatever the grant publisher put on chain. 10 s timeout, 5 MB cap. Failures throw DatasetError.
  */
 export async function fetchDataset(uri: string, opts: FetchDatasetOpts): Promise<unknown> {
   const maxBytes = opts.maxBytes ?? FETCH_MAX_BYTES;
@@ -121,24 +98,49 @@ export async function fetchDataset(uri: string, opts: FetchDatasetOpts): Promise
   const gateway = opts.ipfsGateway ?? process.env.IPFS_GATEWAY ?? DEFAULT_IPFS_GATEWAY;
 
   if (uri.startsWith("file://")) {
-    if (opts.chainId === XLAYER_MAINNET) throw new Error("file:// URIs are not allowed on chain 196");
-    const path = fileURLToPath(uri);
-    const st = statSync(path);
-    if (st.size > maxBytes) throw new Error(`dataset exceeds ${maxBytes} bytes`);
-    return JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (opts.chainId === XLAYER_MAINNET) throw new DatasetError("file:// URIs are not allowed on chain 196");
+    if (!opts.allowFileUris) throw new DatasetError("file:// URIs are not read by this API");
+    let text: string;
+    try {
+      const path = fileURLToPath(uri);
+      if (statSync(path).size > maxBytes) throw new DatasetError(`dataset exceeds ${maxBytes} bytes`);
+      text = readFileSync(path, "utf8");
+    } catch (err) {
+      if (err instanceof DatasetError) throw err;
+      throw new DatasetError("the dataset file cannot be read", { cause: err });
+    }
+    return parseDatasetJson(text);
   }
 
   let url: string;
   if (uri.startsWith("ipfs://")) url = ipfsToHttps(uri, gateway);
   else if (uri.startsWith("https://")) url = uri;
-  else throw new Error(`unsupported dataset URI scheme: ${uri.split(":", 1)[0] || uri}`);
+  else throw new DatasetError("unsupported dataset URI scheme");
 
-  const fetchImpl = opts.fetch ?? globalThis.fetch;
-  const signal = AbortSignal.timeout(timeoutMs);
-  const res = await fetchImpl(url, { signal });
-  if (!res.ok) throw new Error(`dataset fetch failed: HTTP ${res.status}`);
-  const text = await readHttpBody(res, maxBytes);
-  return JSON.parse(text) as unknown;
+  let bytes: Uint8Array;
+  try {
+    bytes = await fetchPublic(url, { fetch: opts.fetch, lookup: opts.lookup, timeoutMs, maxBytes });
+  } catch (err) {
+    if (err instanceof UrlRefusedError || err instanceof FetchFailedError) {
+      throw new DatasetError(`dataset fetch failed: ${err.message}`, { cause: err });
+    }
+    throw new DatasetError("dataset fetch failed", { cause: err });
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (err) {
+    throw new DatasetError("the dataset is not valid UTF-8", { cause: err });
+  }
+  return parseDatasetJson(text);
+}
+
+function parseDatasetJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (err) {
+    throw new DatasetError("the dataset is not valid JSON", { cause: err });
+  }
 }
 
 function parseAllocations(json: DatasetJson): LeafValue[] | null {
@@ -295,7 +297,8 @@ interface PendingCampaign {
 
 /**
  * One loader pass: campaigns with a non-null root whose (meme, root) is not yet
- * `verified` or `mismatch`. Fetch failures become `unreachable` and are retried next round.
+ * `verified` or `mismatch`. Fetch failures become `unreachable` and are retried next round; the stored error is a
+ * DatasetError message or a generic text, and the details go to the log.
  */
 export async function loadPendingDatasets(deps: DatasetLoaderDeps): Promise<void> {
   const now = deps.now ?? unixNow;
@@ -319,13 +322,16 @@ export async function loadPendingDatasets(deps: DatasetLoaderDeps): Promise<void
         chainId: deps.chainId,
         ipfsGateway: deps.ipfsGateway,
         fetch: deps.fetch,
+        lookup: deps.lookup,
+        allowFileUris: deps.allowFileUris,
       });
       await verifyAndStore(deps.db, deps.chainId, row.meme, row.root, uri, json);
     } catch (err) {
+      deps.log?.("dataset-loader", { meme: row.meme, error: errorText(err) });
       try {
-        await markUnreachable(deps.db, deps.chainId, row.meme, row.root, uri, errMessage(err), now());
+        await markUnreachable(deps.db, deps.chainId, row.meme, row.root, uri, publicDatasetError(err), now());
       } catch (inner) {
-        deps.log?.("dataset-loader", { meme: row.meme, error: errMessage(inner) });
+        deps.log?.("dataset-loader", { meme: row.meme, error: errorText(inner) });
       }
     }
   }
@@ -346,7 +352,7 @@ export async function runDatasetLoader(
     try {
       await loadPendingDatasets(deps);
     } catch (err) {
-      log("dataset-loader", { error: errMessage(err) });
+      log("dataset-loader", { error: errorText(err) });
     }
     await sleep(everyMs);
   }

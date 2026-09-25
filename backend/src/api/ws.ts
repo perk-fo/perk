@@ -8,6 +8,9 @@ import { readSyncState } from "../sync/state";
 import { buildHealth } from "./routes/health";
 import { selectTradesInRange } from "./queries";
 import { mapTrade } from "./mappers";
+import { clientAddress } from "./clientIp";
+import { isPublicAddress, rateLimitKey } from "../net/ip";
+import { log, logError } from "../log";
 
 /**
  * WebSocket push at GET /v1/ws (protocol: WsClientMessage / WsServerMessage in ./types).
@@ -19,23 +22,38 @@ import { mapTrade } from "./mappers";
  *   (add `selectTradesInRange` to queries.ts), map with mapTrade, publish one `trades` message (newest first).
  *   A notice with memes: [] (payload overflow) or a LISTEN reconnect → do this for every subscribed meme over
  *   [lastPushedBlock + 1, cursorBlock].
- * - Health: every `healthEveryMs` while `health` has subscribers, publish buildHealth() (routes/health.ts).
+ * - Health: every `healthEveryMs` while `health` has subscribers, publish buildHealth() (routes/health.ts). A new
+ *   subscriber gets the latest health on its own, from a cache shared by everyone (one buildHealth per interval at
+ *   most, however many subscribe), and nobody else is sent anything.
  * - Connection hygiene: idleTimeout 60 s with Bun's automatic pings; frames > 4 KiB close with 1009; bad JSON or an
  *   unknown op → `error` message (connection stays open); at most `maxSubscriptions` trade topics per connection;
- *   at most `maxClients` connections (extra upgrades get HTTP 503).
+ *   each connection may send `messageBurst` messages at once and `messagesPerSecond` after that, and one that sends
+ *   more is closed with 1008; at most `maxClients` connections (extra upgrades get HTTP 503) and at most
+ *   `maxClientsPerIp` from one client address, IPv6 by /64, behind config.trustedProxyHops proxies (HTTP 429). With no
+ *   trusted proxy and a private peer address (a proxy the configuration does not know about, or local development)
+ *   the address says nothing about the client, so only the global cap applies; a warning says so once.
  * - Origin: when the request has an Origin header and config.corsOrigins does not contain it (nor "*"), refuse
- *   the upgrade with HTTP 403.
+ *   the upgrade with HTTP 403. Requests without one (scripts, bots; a browser always sends one) are accepted: they
+ *   could send any Origin they liked, so refusing them would protect nothing. The limits above apply to them too.
  */
 export interface WsData {
   id: number;
   memes: Set<string>;
   health: boolean;
+  /** Rate-limit key of the client address the connection came from. */
+  client: string;
+  /** Message budget left, refilled at messagesPerSecond up to messageBurst. */
+  tokens: number;
+  refilledAt: number;
 }
 
 export interface WsHubOptions {
   healthEveryMs?: number; // default 5000
   maxSubscriptions?: number; // default 20
   maxClients?: number; // default 2000
+  maxClientsPerIp?: number; // default config.wsMaxClientsPerIp
+  messageBurst?: number; // default 40
+  messagesPerSecond?: number; // default 10
 }
 
 export interface WsHub {
@@ -78,14 +96,39 @@ function sendError(
   send(ws, { type: "error", error, message });
 }
 
+/** A value built at most once per `maxAgeMs`, shared by every caller that asks meanwhile. */
+function sharedCache<T>(build: () => Promise<T>): (maxAgeMs: number) => Promise<T> {
+  let cached: { at: number; value: T } | null = null;
+  let inflight: Promise<T> | null = null;
+  return (maxAgeMs) => {
+    if (cached && Date.now() - cached.at < maxAgeMs) return Promise.resolve(cached.value);
+    if (!inflight) {
+      inflight = build()
+        .then((value) => {
+          cached = { at: Date.now(), value };
+          return value;
+        })
+        .finally(() => {
+          inflight = null;
+        });
+    }
+    return inflight;
+  };
+}
+
 export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
   const { db, config } = deps;
   const healthEveryMs = opts.healthEveryMs ?? 5000;
   const maxSubscriptions = opts.maxSubscriptions ?? 20;
   const maxClients = opts.maxClients ?? 2000;
+  const maxClientsPerIp = opts.maxClientsPerIp ?? config.wsMaxClientsPerIp;
+  const messageBurst = opts.messageBurst ?? 40;
+  const messagesPerSecond = opts.messagesPerSecond ?? 10;
 
   let liveServer: Server<WsData> | null = null;
   let clients = 0;
+  const clientsByIp = new Map<string, number>();
+  let warnedUnknownClients = false;
   let nextId = 1;
   const topicCounts = new Map<string, number>();
   const lastPushedBlock = new Map<string, number>();
@@ -103,10 +146,40 @@ export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
     else topicCounts.set(meme, n);
   }
 
+  const healthMessage = sharedCache(async () =>
+    JSON.stringify({ type: "health", health: await buildHealth(db, config) } satisfies WsServerMessage),
+  );
+  const cursorBlock = sharedCache(async () => {
+    const state = await readSyncState(db, config.chainId);
+    return state ? Number(state.cursorBlock) : 0;
+  });
+
+  /** The ticker: fresh health to every subscriber. */
   async function publishHealth(): Promise<void> {
     if (!liveServer || liveServer.subscriberCount(HEALTH_TOPIC) === 0) return;
-    const health = await buildHealth(db, config);
-    liveServer.publish(HEALTH_TOPIC, JSON.stringify({ type: "health", health } satisfies WsServerMessage));
+    const message = await healthMessage(Math.floor(healthEveryMs / 2));
+    liveServer.publish(HEALTH_TOPIC, message);
+  }
+
+  /** A new subscriber: the latest health, to it alone. */
+  async function sendHealthTo(ws: ServerWebSocket<WsData>): Promise<void> {
+    const message = await healthMessage(healthEveryMs);
+    if (!ws.data.health) return;
+    try {
+      ws.send(message);
+    } catch {
+      // socket already closing
+    }
+  }
+
+  function withinBudget(ws: ServerWebSocket<WsData>): boolean {
+    const now = Date.now();
+    const d = ws.data;
+    d.tokens = Math.min(messageBurst, d.tokens + ((now - d.refilledAt) / 1000) * messagesPerSecond);
+    d.refilledAt = now;
+    if (d.tokens < 1) return false;
+    d.tokens -= 1;
+    return true;
   }
 
   async function pushMeme(meme: string, fromBlock: number, toBlock: number): Promise<void> {
@@ -138,7 +211,7 @@ export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
    */
   let queue: Promise<void> = Promise.resolve();
   function enqueue(job: () => Promise<void>): Promise<void> {
-    queue = queue.then(job).catch((err) => console.error("[ws] push failed", err));
+    queue = queue.then(job).catch((err) => logError("ws push failed", err));
     return queue;
   }
 
@@ -163,23 +236,28 @@ export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
     sendPings: true,
     open: (ws) => {
       clients++;
-      void (async () => {
-        const state = await readSyncState(db, config.chainId);
-        send(ws, {
-          type: "hello",
-          chainId: config.chainId,
-          serverTime: Math.floor(Date.now() / 1000),
-          cursorBlock: state ? Number(state.cursorBlock) : 0,
-        });
-      })();
+      clientsByIp.set(ws.data.client, (clientsByIp.get(ws.data.client) ?? 0) + 1);
+      cursorBlock(1000)
+        .then((block) => {
+          const serverTime = Math.floor(Date.now() / 1000);
+          send(ws, { type: "hello", chainId: config.chainId, serverTime, cursorBlock: block });
+        })
+        .catch((err) => logError("ws hello failed", err));
     },
     close: (ws) => {
       clients = Math.max(0, clients - 1);
+      const left = (clientsByIp.get(ws.data.client) ?? 1) - 1;
+      if (left <= 0) clientsByIp.delete(ws.data.client);
+      else clientsByIp.set(ws.data.client, left);
       for (const meme of ws.data.memes) bumpTopic(meme, -1);
       ws.data.memes.clear();
       ws.data.health = false;
     },
     message: (ws, raw) => {
+      if (!withinBudget(ws)) {
+        ws.close(1008, "too many messages");
+        return;
+      }
       const text = typeof raw === "string" ? raw : raw.toString();
       let parsed: unknown;
       try {
@@ -205,7 +283,7 @@ export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
           ws.data.health = true;
         }
         send(ws, { type: "subscribed", topic: "health" });
-        void publishHealth();
+        sendHealthTo(ws).catch((err) => logError("ws health failed", err));
         return;
       }
 
@@ -263,8 +341,27 @@ export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
       if (clients >= maxClients) {
         return new Response("Service Unavailable", { status: 503 });
       }
+      const peer = server.requestIP(req)?.address;
+      const client = rateLimitKey(clientAddress(req.headers.get("x-forwarded-for"), peer, config.trustedProxyHops));
+      const identifiesClient = config.trustedProxyHops > 0 || (peer !== undefined && isPublicAddress(peer));
+      if (!identifiesClient && !warnedUnknownClients) {
+        warnedUnknownClients = true;
+        log("ws: connections come from a private address and no proxy is trusted", {
+          hint: "set TRUST_PROXY or TRUSTED_PROXY_HOPS to limit connections per client",
+        });
+      }
+      if (identifiesClient && (clientsByIp.get(client) ?? 0) >= maxClientsPerIp) {
+        return new Response("Too Many Requests", { status: 429 });
+      }
       const ok = server.upgrade(req, {
-        data: { id: nextId++, memes: new Set<string>(), health: false },
+        data: {
+          id: nextId++,
+          memes: new Set<string>(),
+          health: false,
+          client,
+          tokens: messageBurst,
+          refilledAt: Date.now(),
+        },
       });
       if (!ok) return new Response("Upgrade Required", { status: 426 });
       return true;
@@ -279,7 +376,9 @@ export function createWsHub(deps: ApiDeps, opts: WsHubOptions = {}): WsHub {
         (n) => void handleNotice(n),
         () => void enqueue(() => pushGapToCursor([...topicCounts.keys()])),
       );
-      healthTimer = setInterval(() => void publishHealth(), healthEveryMs);
+      healthTimer = setInterval(() => {
+        publishHealth().catch((err) => logError("ws health push failed", err));
+      }, healthEveryMs);
     },
     async stop() {
       started = false;

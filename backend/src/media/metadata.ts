@@ -1,4 +1,5 @@
 import type { TokenMetadataView } from "../api/types";
+import { hasControlChars } from "../db/text";
 import { ipfsToHttps, localMediaFilename } from "./store";
 
 const NAME_MAX = 64;
@@ -13,8 +14,17 @@ export interface ParsedMetadata {
   view: TokenMetadataView;
 }
 
+/**
+ * A string that may be stored and shown: no control characters (line breaks allowed in free text only) and no
+ * unpaired surrogates. Postgres rejects U+0000 in text and jsonb, and nothing else in that range belongs in a name,
+ * a symbol or an address.
+ */
+function isCleanString(v: unknown, freeText = false): v is string {
+  return typeof v === "string" && v.isWellFormed() && !hasControlChars(v, freeText);
+}
+
 function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string";
+  return isCleanString(v);
 }
 
 function sortKeys(value: unknown): unknown {
@@ -117,7 +127,7 @@ export function parseTokenMetadata(
 
   let description = "";
   if (o.description !== undefined && o.description !== null) {
-    if (!isNonEmptyString(o.description) || o.description.length > DESCRIPTION_MAX) return null;
+    if (!isCleanString(o.description, true) || o.description.length > DESCRIPTION_MAX) return null;
     description = o.description;
   }
 

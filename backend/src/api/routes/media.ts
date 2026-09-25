@@ -3,6 +3,8 @@ import type { ApiError, MediaUpload } from "../types";
 import { HttpError, type AppEnv } from "../server";
 import { MEDIA_FILE_RE, localMediaFilename } from "../../media/store";
 import { parseTokenMetadata } from "../../media/metadata";
+import { logError } from "../../log";
+import { clientKey } from "../clientIp";
 
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const IMAGE_BODY_MAX = IMAGE_MAX_BYTES + 256 * 1024;
@@ -44,21 +46,6 @@ function detectImageExt(bytes: Uint8Array): "png" | "jpg" | "webp" | "gif" | nul
   return null;
 }
 
-/**
- * Rate-limit identity. Forwarded headers are only believed when TRUST_PROXY says a reverse proxy overwrites them —
- * otherwise any client could rotate the header and give itself an unlimited number of fresh buckets.
- */
-export function clientIp(c: Context<AppEnv>, trustProxy: boolean): string {
-  if (trustProxy) {
-    const xff = c.req.header("x-forwarded-for");
-    const first = xff?.split(",")[0]?.trim();
-    if (first) return first;
-    const alt = c.req.header("cf-connecting-ip") ?? c.req.header("x-real-ip");
-    if (alt) return alt;
-  }
-  return c.env?.ip ?? "local";
-}
-
 function checkContentLength(c: Context<AppEnv>, max: number): void {
   const raw = c.req.header("content-length");
   if (raw === undefined || raw === "") return;
@@ -66,10 +53,36 @@ function checkContentLength(c: Context<AppEnv>, max: number): void {
   if (Number.isFinite(n) && n > max) throw new HttpError(413, "too_large", "body too large");
 }
 
+/**
+ * Per client (clientIp.ts: behind the configured proxies, IPv6 by /64). Forwarded headers are only believed from
+ * trusted proxy hops, so a client cannot hand itself fresh buckets by rotating them.
+ */
 function rateLimitOrThrow(c: Context<AppEnv>): void {
-  const { limiter, config } = c.get("deps");
-  if (!limiter.take(clientIp(c, config.trustProxy))) {
+  const { limiter } = c.get("deps");
+  if (!limiter.take(clientKey(c))) {
     throw new HttpError(429, "rate_limited", "rate limited");
+  }
+}
+
+/**
+ * All clients together: stored bytes per day. Uploads nothing refers to yet are only deleted after a week, so without
+ * this many addresses could fill the disk (or the Pinata account) faster than garbage collection empties it.
+ */
+function uploadBudgetOrThrow(c: Context<AppEnv>, bytes: number): void {
+  const { uploadBudget } = c.get("deps");
+  if (!uploadBudget.take("all", Date.now(), bytes)) {
+    throw new HttpError(429, "upload_capacity", "uploads are paused for now; try again later");
+  }
+}
+
+/** Store, or fail with a generic message: the storage error (a Pinata response, a file path) is logged, not returned. */
+async function store(c: Context<AppEnv>, bytes: Uint8Array, ext: string): Promise<MediaUpload> {
+  const { media } = c.get("deps");
+  try {
+    return await media.put(bytes, ext);
+  } catch (err) {
+    logError("media upload failed", err, { ext, bytes: bytes.byteLength });
+    throw new HttpError(503, "storage_unavailable", "the file could not be stored right now; try again later");
   }
 }
 
@@ -83,7 +96,6 @@ export function mediaRoutes(): Hono<AppEnv> {
   r.post("/image", async (c) => {
     checkContentLength(c, IMAGE_BODY_MAX);
     rateLimitOrThrow(c);
-    const { media } = c.get("deps");
     let file: File | undefined;
     try {
       const body = await c.req.parseBody();
@@ -98,13 +110,8 @@ export function mediaRoutes(): Hono<AppEnv> {
     if (looksLikeSvg(bytes)) throw new HttpError(400, "bad_image", "svg is not allowed");
     const ext = detectImageExt(bytes);
     if (!ext) throw new HttpError(400, "bad_image", "unrecognized image type");
-    try {
-      const uploaded = await media.put(bytes, ext);
-      return c.json<MediaUpload>(uploaded);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "upload failed";
-      throw new HttpError(400, "bad_image", message);
-    }
+    uploadBudgetOrThrow(c, bytes.byteLength);
+    return c.json<MediaUpload>(await store(c, bytes, ext));
   });
 
   r.post("/metadata", async (c) => {
@@ -127,14 +134,9 @@ export function mediaRoutes(): Hono<AppEnv> {
     if (!parsed) throw new HttpError(400, "bad_metadata", "invalid metadata");
     const localFile = localMediaFilename(String(parsed.canonical.image ?? ""), config.publicApiUrl);
     if (localFile && !media.get(localFile)) throw new HttpError(400, "bad_metadata", "image is not stored on this api");
-    try {
-      const encoded = new TextEncoder().encode(parsed.canonicalJson);
-      const uploaded = await media.put(encoded, "json");
-      return c.json<MediaUpload>(uploaded);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "upload failed";
-      throw new HttpError(400, "bad_metadata", message);
-    }
+    const encoded = new TextEncoder().encode(parsed.canonicalJson);
+    uploadBudgetOrThrow(c, encoded.byteLength);
+    return c.json<MediaUpload>(await store(c, encoded, "json"));
   });
 
   r.get("/:file", (c) => {

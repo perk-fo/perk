@@ -3,16 +3,19 @@ import { createDb } from "./db/client";
 import { migrate } from "./db/migrate";
 import { createClient } from "./chain/rpc";
 import { Indexer } from "./sync/indexer";
+import { acquireIndexerLock, type IndexerLock } from "./sync/lock";
 import { createApp } from "./api/server";
 import { createWsHub } from "./api/ws";
 import { runDatasetLoader } from "./grants/datasets";
 import { createMediaStore } from "./media/store";
 import { runMetadataResolver } from "./media/resolver";
+import { PriceService } from "./prices/service";
+import { errorText, log } from "./log";
 
 /**
  * Entry point. `bun run src/main.ts [--sync-only | --serve-only]`.
- * Boot order: load .env → config → migrate → (indexer.init + runForever) ∥ (HTTP server).
- * Logs are single-line JSON to stdout; the RPC URL is never logged.
+ * Boot order: load .env → config → migrate → (indexer lock → init → runForever) ∥ (HTTP server).
+ * Logs are single-line JSON to stdout, with the RPC URL and other secrets removed (log.ts).
  */
 async function main(): Promise<void> {
   loadDotenv();
@@ -24,15 +27,28 @@ async function main(): Promise<void> {
 
   const tasks: Promise<unknown>[] = [];
   let indexer: Indexer | null = null;
+  let lock: IndexerLock | null = null;
+  let stopping = false;
   if (!args.has("--serve-only")) {
-    indexer = new Indexer({ db, client: createClient(cfg.rpcUrl), config: cfg, log });
-    await indexer.init();
-    tasks.push(indexer.runForever());
+    // One indexer per chain: a second process waits for the lock (and keeps serving the API meanwhile) until the
+    // first one exits.
+    tasks.push(
+      (async () => {
+        lock = await acquireIndexerLock(cfg.databaseUrl, cfg.chainId, { log, shouldStop: () => stopping });
+        if (!lock || stopping) return;
+        indexer = new Indexer({ db, client: createClient(cfg.rpcUrl), config: cfg, log, lock });
+        await indexer.init();
+        await indexer.runForever();
+      })(),
+    );
   }
   let hub: ReturnType<typeof createWsHub> | null = null;
   if (!args.has("--sync-only")) {
     const media = createMediaStore(cfg);
-    const app = createApp({ db, config: cfg, media, client: createClient(cfg.rpcUrl) });
+    const client = createClient(cfg.rpcUrl);
+    // quote-asset USD prices, refreshed in the background; GET /v1/prices only reads what it kept
+    const prices = new PriceService({ db, chainId: cfg.chainId, sources: cfg.priceSources, log });
+    const app = createApp({ db, config: cfg, media, client, prices });
     hub = createWsHub({ db, config: cfg });
     const server = Bun.serve({
       port: cfg.port,
@@ -49,15 +65,26 @@ async function main(): Promise<void> {
     });
     await hub.start(server);
     log("listening", { url: `http://localhost:${server.port}` });
-    tasks.push(runDatasetLoader({ db, chainId: cfg.chainId, log }));
+    tasks.push(
+      runDatasetLoader({
+        db,
+        chainId: cfg.chainId,
+        log,
+        ipfsGateway: cfg.ipfsGateway,
+        allowFileUris: cfg.allowFileDatasetUris,
+      }),
+    );
     tasks.push(runMetadataResolver({ db, config: cfg, media, log }));
+    tasks.push(prices.run());
     tasks.push(new Promise(() => {}));
   }
 
   const shutdown = async (signal: string) => {
     log("shutdown", { signal });
+    stopping = true;
     indexer?.stop();
     await hub?.stop();
+    await lock?.release();
     await db.end({ timeout: 5 });
     process.exit(0);
   };
@@ -66,13 +93,11 @@ async function main(): Promise<void> {
   await Promise.all(tasks);
 }
 
-export function log(msg: string, fields: Record<string, unknown> = {}): void {
-  console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...fields }, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
-}
+export { log };
 
 if (import.meta.main) {
   main().catch((err) => {
-    console.error(err);
+    console.error(errorText(err));
     process.exit(1);
   });
 }

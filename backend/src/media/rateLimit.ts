@@ -15,8 +15,8 @@ export class TokenBucketLimiter {
     private readonly windowMs: number,
   ) {}
 
-  /** Consume one token. Returns false when the bucket is empty. */
-  take(key: string, now = Date.now()): boolean {
+  /** Consume `cost` tokens (default one). Returns false, consuming nothing, when the bucket holds fewer. */
+  take(key: string, now = Date.now(), cost = 1): boolean {
     const rate = this.windowMs <= 0 ? this.capacity : this.capacity / this.windowMs;
     let b = this.buckets.get(key);
     if (!b) {
@@ -28,8 +28,8 @@ export class TokenBucketLimiter {
       b.tokens = Math.min(this.capacity, b.tokens + elapsed * rate);
       b.updatedAt = now;
     }
-    if (b.tokens < 1) return false;
-    b.tokens -= 1;
+    if (b.tokens < cost) return false;
+    b.tokens -= cost;
     return true;
   }
 

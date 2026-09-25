@@ -26,6 +26,8 @@ const MEME_N = "0x0000000000000000000000000000000000000c15" as Address;
 const WRONG_ROOT = `0x${"11".repeat(32)}` as Hex;
 
 const LEAF_TYPES = [...LEAF_ENCODING];
+/** Every host resolves to one public address; no DNS query leaves the machine. */
+const PUBLIC_DNS = async () => ["93.184.215.14"];
 
 let db: Db;
 let app: ReturnType<typeof createApp>;
@@ -107,6 +109,7 @@ describe("fetchDataset", () => {
     const body = await fetchDataset("ipfs://QmTestCid/dataset.json", {
       chainId: CHAIN,
       ipfsGateway: "https://ipfs.io/ipfs/",
+      lookup: PUBLIC_DNS,
       fetch: (async (url) => {
         requested = String(url);
         return new Response(JSON.stringify(json), { status: 200 });
@@ -114,6 +117,55 @@ describe("fetchDataset", () => {
     });
     expect(requested).toBe("https://ipfs.io/ipfs/QmTestCid/dataset.json");
     expect(body).toEqual(json);
+  });
+});
+
+describe("fetchDataset guards", () => {
+  test("test_fetchDataset_fileUrisOnlyWhenLocalDevelopmentAllowsThem", async () => {
+    const uri = writeJson("dataset-file-gate.json", { ok: 1 });
+    await expect(fetchDataset(uri, { chainId: CHAIN })).rejects.toThrow("file:// URIs are not read by this API");
+    expect(await fetchDataset(uri, { chainId: CHAIN, allowFileUris: true })).toEqual({ ok: 1 });
+    await expect(fetchDataset(uri, { chainId: 196, allowFileUris: true })).rejects.toThrow(/not allowed on chain 196/);
+  });
+
+  test("test_fetchDataset_refusesPrivateHostsAndDowngrades", async () => {
+    const fetched: string[] = [];
+    const fetch = (async (url: string | URL | Request) => {
+      fetched.push(String(url));
+      return new Response(null, { status: 302, headers: { location: "http://public.example/dataset.json" } });
+    }) as typeof globalThis.fetch;
+    await expect(
+      fetchDataset("https://internal.example/dataset.json", { chainId: CHAIN, fetch, lookup: async () => ["10.0.0.1"] }),
+    ).rejects.toThrow("dataset fetch failed: the host is not a public address");
+    expect(fetched).toEqual([]);
+    await expect(fetchDataset("https://public.example/dataset.json", { chainId: CHAIN, fetch, lookup: PUBLIC_DNS })).rejects.toThrow(
+      /only https URLs are fetched/,
+    );
+    expect(fetched).toEqual(["https://public.example/dataset.json"]);
+  });
+
+  test("test_loader_storesAGenericErrorNotTheRawOne", async () => {
+    const MEME_G = "0x0000000000000000000000000000000000000c17" as Address;
+    const root = `0x${"33".repeat(32)}`;
+    await insertCampaign(MEME_G, root, "https://datasets.example/g.json");
+    const logged: string[] = [];
+    await loadPendingDatasets({
+      db,
+      chainId: CHAIN,
+      lookup: PUBLIC_DNS,
+      fetch: (async () => {
+        throw new Error("connect ECONNREFUSED 10.9.9.9:443 via https://perk:abc123secret@proxy.example:8080");
+      }) as unknown as typeof globalThis.fetch,
+      log: (_msg, fields) => logged.push(JSON.stringify(fields)),
+    });
+    const [row] = await db<{ status: string; error: string }[]>`
+      select status, error from grant_datasets where chain_id = ${CHAIN} and meme = ${MEME_G.toLowerCase()}`;
+    expect(row).toEqual({ status: "unreachable", error: "dataset fetch failed" } as never);
+    const detail = (await (await get(`/v1/grants/${MEME_G}`)).json()) as GrantDetail;
+    expect(detail.dataset.error).toBe("dataset fetch failed");
+    // the operator's log has the detail, without the credential
+    expect(logged.join("\n")).toContain("ECONNREFUSED");
+    expect(logged.join("\n")).not.toContain("abc123secret");
   });
 });
 

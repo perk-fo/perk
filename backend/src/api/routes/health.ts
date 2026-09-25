@@ -6,10 +6,14 @@ import type { AppEnv } from "../server";
 import type { Health } from "../types";
 import { selectHealth } from "../queries";
 import { iso, num, numNull } from "../serialize";
+import { publicText } from "../../log";
 
 /**
  * GET /health → Health. ok = cursor within 30 blocks of head and no error in the last 2 minutes.
  * lagSeconds uses blocks.ts of the cursor block (null before the first applied block). No caching.
+ * lastError is public: the indexer stores only an error class and short message, and it is cleaned again here (no
+ * URLs, no secrets) in case an older release stored more. While the indexer has set logs aside (quarantined_logs) and
+ * has no newer error, lastError says so, dated when the latest was set aside.
  */
 export function healthRoutes(): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
@@ -50,8 +54,18 @@ export async function buildHealth(db: Db, config: AppConfig): Promise<Health> {
   const lagBlocks = headBlock === null ? null : Math.max(0, headBlock - cursorBlock);
   const cursorTs = row.cursor_ts === null || row.cursor_ts === undefined ? null : num(row.cursor_ts);
   const lagSeconds = cursorTs === null ? null : serverTime - cursorTs;
-  const lastErrorAt = iso(row.last_error_at);
-  const recentError = hasRecentError(state.lastError, row.last_error_at, serverTime);
+  const quarantined = num(row.quarantined ?? 0);
+  let lastError = publicText(state.lastError);
+  let lastErrorAtRaw: Date | string | null = row.last_error_at;
+  if (lastError === null && quarantined > 0) {
+    lastError =
+      quarantined === 1
+        ? "1 chain log could not be applied and was set aside"
+        : `${quarantined} chain logs could not be applied and were set aside`;
+    lastErrorAtRaw = row.quarantined_at;
+  }
+  const lastErrorAt = iso(lastErrorAtRaw);
+  const recentError = hasRecentError(lastError, lastErrorAtRaw, serverTime);
   const ok = lagBlocks !== null && lagBlocks <= 30 && !recentError;
   const mode: Health["mode"] = lagBlocks === null || lagBlocks > config.catchupBlocks ? "catchup" : "live";
 
@@ -65,7 +79,7 @@ export async function buildHealth(db: Db, config: AppConfig): Promise<Health> {
     lagSeconds,
     startBlock: Number(state.startBlock),
     updatedAt: iso(row.updated_at) ?? new Date(0).toISOString(),
-    lastError: state.lastError,
+    lastError,
     lastErrorAt,
     serverTime,
     mode,

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import type { Address, Hex } from "viem";
+import { encodeAbiParameters, toFunctionSelector, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import type { Db, Tx } from "../src/db/client";
 import { createApp } from "../src/api/server";
@@ -19,7 +19,6 @@ import type {
 } from "../src/api/types";
 import { decodePerkLog, perkContracts, type PerkContract } from "../src/chain/events";
 import { applyLog, type ApplyContext } from "../src/sync/apply";
-import { rollbackTo } from "../src/sync/reorg";
 import { INDEX_VERSION, resetIndex } from "../src/sync/state";
 import { TrackedSet } from "../src/sync/tracked";
 import { Indexer } from "../src/sync/indexer";
@@ -39,10 +38,39 @@ let grant: PrivateKeyAccount;
 let operator: PrivateKeyAccount;
 let stranger: PrivateKeyAccount;
 
-/** Make `account` hold an on-chain role the way the indexer would record it. */
+/** What the contracts answer for owner() (factory) and publisher() (grant vault). */
+const onChain: { core: Address; grant: Address } = { core: ZERO, grant: ZERO };
+let rpcDown = false;
+const OWNER = toFunctionSelector("owner()");
+const PUBLISHER = toFunctionSelector("publisher()");
+
+/** The chain as the API reads it: the role getters answer from `onChain`; any other call has no code behind it. */
+const roleClient = mockClient((method, params) => {
+  if (rpcDown) throw new Error("rpc down");
+  if (method !== "eth_call") throw new Error(`unexpected ${method}`);
+  const call = (params[0] ?? {}) as { to?: string; data?: string };
+  const to = (call.to ?? "").toLowerCase();
+  const selector = (call.data ?? "").slice(0, 10);
+  if (to === D.factory.toLowerCase() && selector === OWNER) return encodeAbiParameters([{ type: "address" }], [onChain.core]);
+  if (to === D.lpGrantVault.toLowerCase() && selector === PUBLISHER) return encodeAbiParameters([{ type: "address" }], [onChain.grant]);
+  return "0x";
+});
+
+/** Make `account` hold an on-chain role: on the chain, and in the index the way the indexer would record it. */
 async function holdChainRole(role: "core" | "grant", account: Address, block: number) {
+  onChain[role] = account;
   await db`insert into chain_role_events (chain_id, role, address, block_number, log_index)
     values (${CHAIN}, ${role}, ${account.toLowerCase()}, ${block}, 0)`;
+}
+
+function adminApp(overrides: Partial<Parameters<typeof testConfig>[0]> = {}) {
+  return createApp({
+    db,
+    config: testConfig({ corsOrigins: [SITE, OTHER_SITE], ...overrides }),
+    authLimiter: new TokenBucketLimiter(10_000, 60_000),
+    client: roleClient,
+    roleCacheMs: 0,
+  });
 }
 
 function call(
@@ -85,11 +113,8 @@ async function signIn(account: PrivateKeyAccount): Promise<string> {
 beforeAll(async () => {
   db = await resetDb();
   await seed(db);
-  app = createApp({
-    db,
-    config: testConfig({ corsOrigins: [SITE, OTHER_SITE] }),
-    authLimiter: new TokenBucketLimiter(10_000, 60_000),
-  });
+  onChain.core = ADMIN;
+  app = adminApp();
   core = privateKeyToAccount(generatePrivateKey());
   grant = privateKeyToAccount(generatePrivateKey());
   operator = privateKeyToAccount(generatePrivateKey());
@@ -97,7 +122,8 @@ beforeAll(async () => {
   // ownership moved from the seeded owner to `core`; `grant` was appointed publisher
   await holdChainRole("core", core.address, START_BLOCK + 10);
   await holdChainRole("grant", grant.address, START_BLOCK + 11);
-  await db`insert into admin_operators (address, added_by) values (${operator.address.toLowerCase()}, ${core.address.toLowerCase()})`;
+  await db`insert into admin_operators (chain_id, address, added_by)
+    values (${CHAIN}, ${operator.address.toLowerCase()}, ${core.address.toLowerCase()})`;
 });
 
 afterAll(async () => {
@@ -161,11 +187,6 @@ describe("chain roles", () => {
     expect((await selectRoleHolders(db, 77)).core).toBe(B.toLowerCase());
   });
 
-  test("test_roles_reorgRestoresEarlierHolders", async () => {
-    await db.begin(async (tx) => rollbackTo(tx as unknown as Tx, 77, 15n, blockHash(15n)));
-    expect(await selectRoleHolders(db, 77)).toEqual({ core: A.toLowerCase(), grant: P.toLowerCase() });
-  });
-
   test("test_templateRegistered_takesStatusFromStruct", async () => {
     const template = {
       hookVersion: 1,
@@ -192,17 +213,25 @@ describe("chain roles", () => {
 // ---------------------------------------------------------------- rebuilding the index keeps admin decisions
 
 describe("index rebuild", () => {
-  test("test_resetIndex_keepsAdminDecisions", async () => {
+  test("test_resetIndex_keepsAdminDecisionsAndOtherChains", async () => {
     await db`insert into launch_moderation (chain_id, meme, hidden, updated_by) values (999, '0x1', true, 'x')`;
     await db`insert into chain_role_events (chain_id, role, address, block_number, log_index) values (999, 'core', '0x1', 1, 0)`;
-    const cleared = await resetIndex(db);
+    await db`insert into sync_state (chain_id, cursor_block, start_block) values (999, 5, 1)`;
+    const launchesBefore = (await db`select 1 from launches where chain_id = ${CHAIN}`).length;
+    const cleared = await resetIndex(db, 999);
     expect(cleared).toContain("launches");
     expect(cleared).toContain("chain_role_events");
+    expect(cleared).toContain("sync_state");
     expect(cleared).not.toContain("admin_operators");
     expect(cleared).not.toContain("launch_moderation");
     expect((await db`select 1 from admin_operators`).length).toBe(1);
     expect((await db`select 1 from launch_moderation where chain_id = 999`).length).toBe(1);
-    expect((await db`select 1 from chain_role_events`).length).toBe(0);
+    expect((await db`select 1 from chain_role_events where chain_id = 999`).length).toBe(0);
+    expect((await db`select 1 from sync_state where chain_id = 999`).length).toBe(0);
+    // the other chain in the same database keeps its index
+    expect((await db`select 1 from chain_role_events where chain_id = ${CHAIN}`).length).toBeGreaterThan(0);
+    expect((await db`select 1 from launches where chain_id = ${CHAIN}`).length).toBe(launchesBefore);
+    expect((await db`select 1 from sync_state where chain_id = ${CHAIN}`).length).toBe(1);
     // put the fixture back for the API tests below
     await db`delete from launch_moderation where chain_id = 999`;
     await reseed();
@@ -283,6 +312,31 @@ describe("sign-in", () => {
     expect(await errorOf(call("POST", "/v1/admin/auth/login", { body: { message, signature } }))).toEqual({ status: 401, error: "nonce_unknown" });
   });
 
+  test("test_nonce_isRandomAndCannotBeBurnedByOthers", async () => {
+    const nonceOf = (m: string) => /Nonce: (\S+)/.exec(m)![1]!;
+    const first = nonceOf(await nonceFor(stranger));
+    const message = await nonceFor(core);
+    const second = nonceOf(message);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    // no shared run between consecutive nonces (a sliding window would share all but one character)
+    expect(second.slice(0, 8)).not.toBe(first.slice(1, 9));
+    expect(second).not.toBe(first);
+
+    // someone who knows the pending nonce but not the exact message cannot use it up
+    const forged = message.replace(/Issued At: .*/, "Issued At: 2026-01-01T00:00:00.000Z");
+    expect(forged).not.toBe(message);
+    expect(await errorOf(call("POST", "/v1/admin/auth/login", { body: { message: forged, signature: await stranger.signMessage({ message: forged }) } }))).toEqual({
+      status: 401,
+      error: "bad_message",
+    });
+    const signature = await core.signMessage({ message });
+    await ok(call("POST", "/v1/admin/auth/login", { body: { message, signature } }));
+  });
+
+  test("test_login_reverts_nulInMessage", async () => {
+    expect((await errorOf(call("POST", "/v1/admin/auth/login", { body: { message: "a\u0000b", signature: "0x00" } }))).status).toBe(400);
+  });
+
   test("test_login_reverts_editedMessage", async () => {
     const message = await nonceFor(core);
     const edited = message.replace("Sign in to the Perk admin.", "Sign in to the Perk admin!");
@@ -330,7 +384,7 @@ describe("sign-in", () => {
   });
 
   test("test_nonce_reverts_rateLimited", async () => {
-    const strict = createApp({ db, config: testConfig({ corsOrigins: [SITE] }), authLimiter: new TokenBucketLimiter(2, 600_000) });
+    const strict = createApp({ db, config: testConfig({ corsOrigins: [SITE] }), authLimiter: new TokenBucketLimiter(2, 600_000), client: roleClient });
     const post = () =>
       strict.request("/v1/admin/auth/nonce", {
         method: "POST",
@@ -417,7 +471,61 @@ describe("role boundaries", () => {
     await holdChainRole("core", next.address, START_BLOCK + 50);
     expect(await errorOf(call("GET", "/v1/admin/operators", { token: coreToken }))).toEqual({ status: 403, error: "forbidden" });
     await db`delete from chain_role_events where block_number = ${START_BLOCK + 50}`;
+    onChain.core = core.address;
     await ok(call("GET", "/v1/admin/operators", { token: coreToken }));
+  });
+
+  test("test_roles_comeFromTheChainNotTheLaggingIndex", async () => {
+    // The index still names a former owner (it lags, or is being rebuilt and has replayed only old blocks); the chain
+    // has moved on. The former owner signs in as nobody and cannot appoint General Admins.
+    const former = privateKeyToAccount(generatePrivateKey());
+    await db`insert into chain_role_events (chain_id, role, address, block_number, log_index)
+      values (${CHAIN}, 'core', ${former.address.toLowerCase()}, ${START_BLOCK + 60}, 0)`;
+    try {
+      const message = await nonceFor(former);
+      const signature = await former.signMessage({ message });
+      expect(await errorOf(call("POST", "/v1/admin/auth/login", { body: { message, signature } }))).toEqual({ status: 403, error: "not_admin" });
+      // and the current owner keeps the role although the index says otherwise
+      expect((await ok<AdminMe>(call("GET", "/v1/admin/me", { token: coreToken }))).roles).toEqual(["core"]);
+    } finally {
+      await db`delete from chain_role_events where block_number = ${START_BLOCK + 60}`;
+    }
+  });
+
+  test("test_admin_reverts_rolesUnreadable", async () => {
+    // fail closed: without an answer from the chain nobody gets an on-chain role
+    rpcDown = true;
+    try {
+      expect(await errorOf(call("GET", "/v1/admin/me", { token: coreToken }))).toEqual({ status: 503, error: "roles_unavailable" });
+      const message = await nonceFor(core);
+      const signature = await core.signMessage({ message });
+      expect(await errorOf(call("POST", "/v1/admin/auth/login", { body: { message, signature } }))).toEqual({ status: 503, error: "roles_unavailable" });
+      // the public role view falls back to the index rather than failing
+      const roles = await ok<WalletRoles>(call("GET", `/v1/wallets/${core.address.toLowerCase()}/roles`));
+      expect(roles.adminRoles).toEqual(["core"]);
+    } finally {
+      rpcDown = false;
+    }
+  });
+
+  test("test_operators_belongToOneChain", async () => {
+    // the same database behind an API for another chain: this chain's General Admins and sessions mean nothing there
+    const other = adminApp({ chainId: 77 });
+    const res = await other.request("/v1/admin/me", { headers: { authorization: `Bearer ${opToken}`, origin: SITE } });
+    expect(res.status).toBe(401);
+    const message = (await ok<AdminNonce>(
+      other.request("/v1/admin/auth/nonce", { method: "POST", headers: { origin: SITE, "content-type": "application/json" }, body: JSON.stringify({ address: operator.address }) }),
+    )).message;
+    const signature = await operator.signMessage({ message });
+    const login = await other.request("/v1/admin/auth/login", {
+      method: "POST",
+      headers: { origin: SITE, "content-type": "application/json" },
+      body: JSON.stringify({ message, signature }),
+    });
+    expect(login.status).toBe(403);
+    expect((await ok<{ operators: AdminOperator[] }>(call("GET", "/v1/admin/operators", { token: coreToken }))).operators.map((o) => o.address)).toContain(
+      operator.address.toLowerCase() as Address,
+    );
   });
 });
 
@@ -489,6 +597,7 @@ describe("moderation", () => {
     expect((await errorOf(call("PUT", `/v1/admin/moderation/0x0000000000000000000000000000000000009999`, { token, body: { hidden: true, mediaHidden: true, reason: null } }))).status).toBe(404);
     expect((await errorOf(call("PUT", `/v1/admin/moderation/${MEME_CURVE}`, { token, body: { hidden: "yes", mediaHidden: true } }))).status).toBe(400);
     expect((await errorOf(call("PUT", `/v1/admin/moderation/${MEME_CURVE}`, { token, body: { hidden: true, mediaHidden: true, reason: "x".repeat(201) } }))).status).toBe(400);
+    expect((await errorOf(call("PUT", `/v1/admin/moderation/${MEME_CURVE}`, { token, body: { hidden: true, mediaHidden: true, reason: "a\u0000b" } }))).status).toBe(400);
     expect((await errorOf(call("PUT", `/v1/admin/moderation/not-an-address`, { token, body: { hidden: true, mediaHidden: true } }))).status).toBe(400);
   });
 

@@ -35,8 +35,8 @@ function servePort(server: { port: number | undefined }): number {
   return server.port;
 }
 
-function openWs(port: number, origin = ALLOWED_ORIGIN): WebSocket {
-  return new WebSocket(wsUrl(port), { headers: { Origin: origin } } as unknown as string[]);
+function openWs(port: number, origin = ALLOWED_ORIGIN, headers: Record<string, string> = {}): WebSocket {
+  return new WebSocket(wsUrl(port), { headers: { Origin: origin, ...headers } } as unknown as string[]);
 }
 
 function parseMsg(ev: MessageEvent): WsServerMessage {
@@ -336,6 +336,130 @@ describe("websocket", () => {
         expect(health.health.mode === "live" || health.health.mode === "catchup").toBe(true);
         expect(health.health.chainId).toBe(CHAIN);
       }
+    } finally {
+      ws.close();
+      await hub.stop();
+      server.stop(true);
+    }
+  });
+
+  function serveHub(config: ReturnType<typeof testConfig>, opts: Parameters<typeof createWsHub>[1] = {}) {
+    const hub = createWsHub({ db, config }, opts);
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req, srv) => {
+        const u = hub.upgrade(req, srv);
+        if (u === true) return undefined;
+        if (u) return u;
+        return new Response("no", { status: 404 });
+      },
+      websocket: hub.websocket,
+    });
+    return { hub, server };
+  }
+
+  test("test_ws_healthSubscribeAnswersOnlyTheSubscriber", async () => {
+    const config = testConfig({ corsOrigins: [ALLOWED_ORIGIN] });
+    // no ticker during the test: every health message is an answer to a subscribe
+    const { hub, server } = serveHub(config, { healthEveryMs: 60_000 });
+    await hub.start(server);
+    const bystander = openWs(servePort(server));
+    const flooder = openWs(servePort(server));
+    const seen = collect(bystander);
+    const flooderInbox = collect(flooder);
+    try {
+      await waitOpen(bystander);
+      await waitOpen(flooder);
+      bystander.send(JSON.stringify({ op: "subscribe", topic: "health" }));
+      await waitFor(seen, (m) => m.type === "health");
+      for (let i = 0; i < 30; i++) flooder.send(JSON.stringify({ op: "subscribe", topic: "health" }));
+      await waitFor(flooderInbox, (m) => m.type === "health");
+      await Bun.sleep(200);
+      // the bystander got its own answer and nothing because of the other connection
+      expect(seen.filter((m) => m.type === "health")).toHaveLength(1);
+      expect(flooderInbox.filter((m) => m.type === "health").length).toBeLessThanOrEqual(30);
+    } finally {
+      bystander.close();
+      flooder.close();
+      await hub.stop();
+      server.stop(true);
+    }
+  });
+
+  test("test_ws_floodingConnectionIsClosed", async () => {
+    const config = testConfig({ corsOrigins: [ALLOWED_ORIGIN] });
+    const { hub, server } = serveHub(config, { messageBurst: 10, messagesPerSecond: 1 });
+    await hub.start(server);
+    const ws = openWs(servePort(server));
+    try {
+      await waitOpen(ws);
+      const closed = new Promise<number>((resolve) => ws.addEventListener("close", (e) => resolve(e.code)));
+      for (let i = 0; i < 50; i++) ws.send(JSON.stringify({ op: "ping", id: i }));
+      expect(await closed).toBe(1008);
+    } finally {
+      await hub.stop();
+      server.stop(true);
+    }
+  });
+
+  test("test_ws_connectionsPerClientAreCapped", async () => {
+    // behind one trusted proxy, which names the client in X-Forwarded-For
+    const config = testConfig({ corsOrigins: [ALLOWED_ORIGIN], wsMaxClientsPerIp: 2, trustedProxyHops: 1 });
+    const { hub, server } = serveHub(config);
+    await hub.start(server);
+    const as = (ip: string) => openWs(servePort(server), ALLOWED_ORIGIN, { "X-Forwarded-For": ip });
+    const upgrade = (ip: string) =>
+      fetch(`http://127.0.0.1:${servePort(server)}/v1/ws`, {
+        headers: {
+          Origin: ALLOWED_ORIGIN,
+          "X-Forwarded-For": ip,
+          Connection: "Upgrade",
+          Upgrade: "websocket",
+          "Sec-WebSocket-Version": "13",
+          "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+    const a = as("8.8.8.8");
+    const b = as("8.8.8.8");
+    const other = as("1.1.1.1");
+    try {
+      await waitOpen(a);
+      await waitOpen(b);
+      await waitOpen(other);
+      expect((await upgrade("8.8.8.8")).status).toBe(429);
+      // a slot frees up when a connection closes
+      const closed = new Promise<void>((resolve) => a.addEventListener("close", () => resolve()));
+      a.close();
+      await closed;
+      await Bun.sleep(50);
+      const c = as("8.8.8.8");
+      await waitOpen(c);
+      c.close();
+    } finally {
+      b.close();
+      other.close();
+      await hub.stop();
+      server.stop(true);
+    }
+  });
+
+  test("test_ws_healthCarriesNoRpcUrl", async () => {
+    // an error text stored by an older release, before error texts were cleaned
+    await db`update sync_state set last_error = ${"HTTP request failed. URL: https://xlayer-testnet.g.alchemy.com/v2/OLDSECRET123456789"},
+      last_error_at = now() where chain_id = ${CHAIN}`;
+    const config = testConfig({ corsOrigins: [ALLOWED_ORIGIN] });
+    const { hub, server } = serveHub(config, { healthEveryMs: 60_000 });
+    await hub.start(server);
+    const ws = openWs(servePort(server));
+    const inbox = collect(ws);
+    try {
+      await waitOpen(ws);
+      ws.send(JSON.stringify({ op: "subscribe", topic: "health" }));
+      const msg = await waitFor(inbox, (m) => m.type === "health");
+      if (msg.type !== "health") throw new Error("unreachable");
+      expect(msg.health.lastError).toContain("HTTP request failed");
+      expect(msg.health.lastError).not.toContain("OLDSECRET");
+      expect(msg.health.lastError).not.toContain("alchemy.com");
     } finally {
       ws.close();
       await hub.stop();

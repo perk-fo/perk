@@ -6,12 +6,17 @@
  *
  * Numeric conventions: uint256 → bigint in, stored as numeric via `${value}` (postgres.js serialises bigint).
  * Addresses / hashes are lowercased before storage. Timestamps are unix seconds (bigint).
+ * Strings from contracts (names, symbols, URIs, struct fields) go through db/text.ts before they are written: anyone
+ * can put a NUL byte in a token name, and Postgres rejects it.
+ * Contract reads made while applying (token metadata, a position's pool) throw when the RPC fails, which fails the
+ * window so it is applied again later; only an answer the contract itself gives (a revert, no code) is stored.
  */
 import type { Address, Hex } from "viem";
 import type { Tx } from "../db/client";
 import type { DecodedLog, SwapArgs } from "../chain/events";
-import { getPositionPool, getErc20Meta, type Client } from "../chain/rpc";
+import { getPositionPool, getErc20Meta, isDeterministicCallError, type Client } from "../chain/rpc";
 import type { Deployment } from "../config";
+import { cleanJson, cleanText, cleanUri, NAME_MAX_CHARS, SYMBOL_MAX_CHARS } from "../db/text";
 import type { TrackedSet } from "./tracked";
 
 export interface ApplyContext {
@@ -63,17 +68,6 @@ function isZeroHex(h: string): boolean {
   return /^0x0+$/i.test(h);
 }
 
-function jsonSafe(value: unknown): unknown {
-  if (typeof value === "bigint") return value.toString();
-  if (Array.isArray(value)) return value.map(jsonSafe);
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = jsonSafe(v);
-    return out;
-  }
-  return value;
-}
-
 function bitmapHasLpGrant(bitmap: bigint): boolean {
   return (bitmap & LP_GRANT_V1) !== 0n;
 }
@@ -119,7 +113,9 @@ async function touchMarket(
 
 /**
  * Make sure quote_assets has a row for `quote` and return its decimals. Native → OKB/18 without any RPC.
- * ERC-20 → read name/symbol/decimals once (ctx.client), insert, cache in ctx.quoteDecimals.
+ * ERC-20 → read name/symbol/decimals once (ctx.client), insert, cache in ctx.quoteDecimals. An RPC failure throws (the
+ * window is retried); a token that does not implement decimals() gets ERC-20's default of 18, one without a symbol()
+ * its shortened address.
  */
 export async function ensureQuoteAsset(tx: Tx, ctx: ApplyContext, quote: Address): Promise<number> {
   const q = addr(quote);
@@ -141,21 +137,10 @@ export async function ensureQuoteAsset(tx: Tx, ctx: ApplyContext, quote: Address
     return 18;
   }
 
-  let name: string;
-  let symbol: string;
-  let decimals = 18;
-  try {
-    const meta = await getErc20Meta(ctx.client, quote);
-    name = meta.name;
-    symbol = meta.symbol;
-    decimals = meta.decimals;
-  } catch (err) {
-    const short = q.slice(0, 10);
-    name = short;
-    symbol = short;
-    decimals = 18;
-    console.warn("ensureQuoteAsset: erc20 meta failed", q, err);
-  }
+  const meta = await getErc20Meta(ctx.client, quote);
+  const name = cleanText(meta.name, NAME_MAX_CHARS);
+  const symbol = cleanText(meta.symbol, SYMBOL_MAX_CHARS) ?? q.slice(0, 10);
+  const decimals = meta.decimals ?? 18;
 
   await tx`insert into quote_assets (chain_id, quote, symbol, name, decimals)
     values (${ctx.chainId}, ${q}, ${symbol}, ${name}, ${decimals})
@@ -201,22 +186,15 @@ export async function onLaunchCreated(tx: Tx, ctx: ApplyContext, log: DecodedLog
   const templateId = hex32(a.templateId);
   const quoteDecimals = await ensureQuoteAsset(tx, ctx, quote as Address);
 
-  let name = "?";
-  let symbol = "?";
-  let decimals = 18;
-  let totalSupply: bigint | null = null;
-  let tokenUri: string | null = null;
-  try {
-    const meta = await getErc20Meta(ctx.client, a.meme);
-    name = meta.name;
-    symbol = meta.symbol;
-    decimals = meta.decimals;
-    totalSupply = meta.totalSupply;
-    const uri = meta.tokenURI.trim();
-    tokenUri = uri.length > 0 ? uri : null;
-  } catch (err) {
-    console.warn("onLaunchCreated: erc20 meta failed", meme, err);
-  }
+  // Throws when the RPC fails, and the window is applied again later: a placeholder name or decimals written now
+  // would stay forever. A factory-made token always answers; one that did not would keep nulls.
+  const meta = await getErc20Meta(ctx.client, a.meme);
+  const name = cleanText(meta.name, NAME_MAX_CHARS);
+  const symbol = cleanText(meta.symbol, SYMBOL_MAX_CHARS);
+  const decimals = meta.decimals ?? 18;
+  const totalSupply = meta.totalSupply;
+  // an unusable URI (control characters, spaces, absurd length) is stored as none; the resolver marks it invalid
+  const tokenUri = cleanUri(meta.tokenURI);
 
   let lpGrantEnabled = false;
   let moduleBitmap = 0n;
@@ -677,7 +655,7 @@ export async function onGrantRootProposed(tx: Tx, ctx: ApplyContext, log: Decode
   };
   await tx`update grant_campaigns set
       root = ${hex32(a.root)},
-      root_uri = ${a.uri},
+      root_uri = ${cleanUri(a.uri)},
       root_total_base = ${a.totalBase},
       root_total_invitee_boost = ${a.totalInviteeBoost},
       activatable_at = ${BigInt(a.activatableAt)},
@@ -894,7 +872,7 @@ export async function onOptedIn(tx: Tx, ctx: ApplyContext, log: DecodedLog): Pro
 export async function onTemplateRegistered(tx: Tx, ctx: ApplyContext, log: DecodedLog): Promise<void> {
   const a = log.args as { templateId: Hex; template: { status?: number } };
   const tid = hex32(a.templateId);
-  const body = jsonSafe(a.template);
+  const body = cleanJson(a.template);
   // registration emits no TemplateStatusUpdated: the status it starts in is the one inside the struct
   const status = Number(a.template.status ?? 0);
   await tx`insert into templates (chain_id, template_id, status, registered_block, template)
@@ -922,10 +900,10 @@ export async function onAssetUpdated(tx: Tx, ctx: ApplyContext, log: DecodedLog)
   const info = a.info;
   const decimals = Number(info.decimals);
   await tx`update quote_assets set
-      symbol = ${info.symbol},
+      symbol = coalesce(${cleanText(info.symbol, SYMBOL_MAX_CHARS)}, symbol),
       decimals = ${decimals},
       allowed = ${Boolean(info.enabled)},
-      info = ${tx.json(jsonSafe(info) as never)}
+      info = ${tx.json(cleanJson(info) as never)}
     where chain_id = ${ctx.chainId} and quote = ${addr(q)}`;
   ctx.quoteDecimals.set(addr(q), decimals);
 }
@@ -982,7 +960,9 @@ export async function onLpPositionTransfer(tx: Tx, ctx: ApplyContext, log: Decod
         select meme from launches where chain_id = ${ctx.chainId} and pool_id = ${poolId} limit 1`;
       meme = rows[0]?.meme ?? null;
     } catch (err) {
-      console.warn("onLpPositionTransfer: pool lookup failed", a.id, err);
+      // the PositionManager refused (no such token any more): keep the position without a pool. An RPC failure is
+      // not an answer, so the window is retried instead of recording the position as unmatched for good.
+      if (!isDeterministicCallError(err)) throw err;
     }
     await tx`insert into lp_positions (
         chain_id, token_id, owner, meme, pool_id, liquidity, created_block, created_at

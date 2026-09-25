@@ -12,9 +12,11 @@ import type {
   QuoteDisplayUpdate,
   QuoteNotice,
 } from "../types";
-import { clientIp } from "./media";
+import { clientKey } from "../clientIp";
 import { AuthError, createSession, endSession, endSessionsOf, issueNonce, sessionFor, verifyLogin } from "../../admin/auth";
-import { selectAdminRoles } from "../../admin/roles";
+import { authoritativeRoleHolders, selectAdminRoles, type RoleHolders } from "../../admin/roles";
+import { logError } from "../../log";
+import { hasControlChars } from "../../db/text";
 import {
   audit,
   deleteOperator,
@@ -42,6 +44,9 @@ export const MAX_FEATURED = 12;
 
 /**
  * /v1/admin. Sign-in, then every other route takes `Authorization: Bearer <token>`; roles are checked on each call.
+ * The on-chain roles (Core Admin, Grant Admin) are read from the contracts, never from the index, which lags the chain
+ * and replays former owners while it is rebuilt; when the chain cannot be read the routes answer 503. General Admins,
+ * sessions and the audit log belong to the API's chain.
  *   POST /auth/nonce {address}               → AdminNonce: a sign-in message to sign (needs an allowed Origin)
  *   POST /auth/login {message, signature}    → AdminSession (403 unless the wallet holds an admin role)
  *   POST /auth/logout
@@ -78,7 +83,7 @@ export function adminRoutes(): Hono<AppEnv> {
     const body = await jsonBody(c);
     const message = body.message;
     const signature = body.signature;
-    if (typeof message !== "string" || message.length === 0 || message.length > 2_000) {
+    if (typeof message !== "string" || message.length === 0 || message.length > 2_000 || message.includes("\u0000")) {
       throw new HttpError(400, "bad_message", "message must be the sign-in message");
     }
     if (typeof signature !== "string" || !isHex(signature) || signature.length > 20_000) {
@@ -91,10 +96,10 @@ export function adminRoutes(): Hono<AppEnv> {
       if (err instanceof AuthError) throw new HttpError(401, err.code, err.message);
       throw err;
     }
-    const roles = await selectAdminRoles(db, config.chainId, address);
+    const roles = await selectAdminRoles(db, config.chainId, address, await chainRoleHolders(c));
     if (roles.length === 0) throw new HttpError(403, "not_admin", "this wallet holds no admin role");
-    const session = await createSession(db, address);
-    await audit(db, address, "sign_in", null, { roles });
+    const session = await createSession(db, config.chainId, address);
+    await audit(db, config.chainId, address, "sign_in", null, { roles });
     return c.json<AdminSession>({
       token: session.token,
       address: address.toLowerCase() as `0x${string}`,
@@ -104,7 +109,8 @@ export function adminRoutes(): Hono<AppEnv> {
   });
 
   r.post("/auth/logout", async (c) => {
-    await endSession(c.get("deps").db, c.req.header("authorization"));
+    const { db, config } = c.get("deps");
+    await endSession(db, config.chainId, c.req.header("authorization"));
     return c.json({ ok: true });
   });
 
@@ -117,33 +123,37 @@ export function adminRoutes(): Hono<AppEnv> {
 
   r.get("/operators", async (c) => {
     await requireRole(c, CORE);
-    return c.json({ operators: await selectOperators(c.get("deps").db) });
+    const { db, config } = c.get("deps");
+    return c.json({ operators: await selectOperators(db, config.chainId) });
   });
 
   r.post("/operators", async (c) => {
     const me = await requireRole(c, CORE);
-    const { db } = c.get("deps");
+    const { db, config } = c.get("deps");
     const body = await jsonBody(c);
     const address = addressParam(typeof body.address === "string" ? body.address : undefined);
-    if (await insertOperator(db, address, me.address)) await audit(db, me.address, "operator_add", address);
-    return c.json({ operators: await selectOperators(db) });
+    if (await insertOperator(db, config.chainId, address, me.address)) {
+      await audit(db, config.chainId, me.address, "operator_add", address);
+    }
+    return c.json({ operators: await selectOperators(db, config.chainId) });
   });
 
   r.delete("/operators/:address", async (c) => {
     const me = await requireRole(c, CORE);
-    const { db } = c.get("deps");
+    const { db, config } = c.get("deps");
     const address = addressParam(c.req.param("address"));
-    if (await deleteOperator(db, address)) {
-      await endSessionsOf(db, address);
-      await audit(db, me.address, "operator_remove", address);
+    if (await deleteOperator(db, config.chainId, address)) {
+      await endSessionsOf(db, config.chainId, address);
+      await audit(db, config.chainId, me.address, "operator_remove", address);
     }
-    return c.json({ operators: await selectOperators(db) });
+    return c.json({ operators: await selectOperators(db, config.chainId) });
   });
 
   r.get("/audit", async (c) => {
     await requireRole(c, CORE);
+    const { db, config } = c.get("deps");
     const n = intParam(c.req.query("limit"), 50, 1, 200, "limit");
-    return c.json({ entries: await selectAudit(c.get("deps").db, n) });
+    return c.json({ entries: await selectAudit(db, config.chainId, n) });
   });
 
   // ---- moderation (Core Admin, General Admin)
@@ -151,7 +161,7 @@ export function adminRoutes(): Hono<AppEnv> {
   r.get("/launches", async (c) => {
     await requireRole(c, CURATORS);
     const { db, config } = c.get("deps");
-    const q = (c.req.query("q") ?? "").slice(0, 80);
+    const q = (c.req.query("q") ?? "").replace(/[\u0000-\u001f]/g, "").toWellFormed().slice(0, 80);
     const launches = await searchLaunches(db, config.chainId, q, now());
     return c.json<{ launches: AdminLaunch[] }>({ launches });
   });
@@ -169,7 +179,7 @@ export function adminRoutes(): Hono<AppEnv> {
     const update = parseModeration(await jsonBody(c));
     if (!(await selectAdminLaunch(db, config.chainId, meme, now()))) throw new HttpError(404, "not_found", "launch not found");
     await upsertModeration(db, config.chainId, meme, update, me.address);
-    await audit(db, me.address, "moderation", meme, update);
+    await audit(db, config.chainId, me.address, "moderation", meme, update);
     return c.json<AdminLaunch>((await selectAdminLaunch(db, config.chainId, meme, now()))!);
   });
 
@@ -192,7 +202,7 @@ export function adminRoutes(): Hono<AppEnv> {
     const missing = memes.find((m: string) => !known.has(m));
     if (missing) throw new HttpError(404, "not_found", `launch not found: ${missing}`);
     await replaceFeatured(db, config.chainId, memes, me.address);
-    await audit(db, me.address, "featured", null, { memes });
+    await audit(db, config.chainId, me.address, "featured", null, { memes });
     return c.json<{ launches: AdminLaunch[] }>({ launches: await featuredForAdmin(c) });
   });
 
@@ -205,7 +215,7 @@ export function adminRoutes(): Hono<AppEnv> {
     const display = parseQuoteDisplay(await jsonBody(c), config.publicApiUrl);
     if (!(await quoteAssetExists(db, config.chainId, quote))) throw new HttpError(404, "not_found", "quote asset not found");
     await upsertQuoteDisplay(db, config.chainId, quote, display, me.address);
-    await audit(db, me.address, "quote_display", quote, display);
+    await audit(db, config.chainId, me.address, "quote_display", quote, display);
     const asset = (await selectQuoteAssets(db, config)).find((a) => a.address === quote);
     return c.json(asset);
   });
@@ -224,8 +234,18 @@ function unix(d: Date): number {
 }
 
 function limit(c: Context<AppEnv>): void {
-  const { authLimiter, config } = c.get("deps");
-  if (!authLimiter.take(clientIp(c, config.trustProxy))) throw new HttpError(429, "rate_limited", "rate limited");
+  const { authLimiter } = c.get("deps");
+  if (!authLimiter.take(clientKey(c))) throw new HttpError(429, "rate_limited", "rate limited");
+}
+
+/** Who holds the on-chain roles right now, from the contracts. 503 when the chain cannot be read. */
+async function chainRoleHolders(c: Context<AppEnv>): Promise<RoleHolders> {
+  try {
+    return await authoritativeRoleHolders(c.get("deps").roles);
+  } catch (err) {
+    logError("admin roles unavailable", err);
+    throw new HttpError(503, "roles_unavailable", "the admin roles cannot be checked right now; try again shortly");
+  }
 }
 
 /** The site the request comes from; sign-in messages name it, so it must be one this API serves. */
@@ -250,9 +270,9 @@ async function jsonBody(c: Context<AppEnv>): Promise<Record<string, unknown>> {
 
 async function requireRole(c: Context<AppEnv>, allowed: AdminRole[]) {
   const { db, config } = c.get("deps");
-  const session = await sessionFor(db, c.req.header("authorization"));
+  const session = await sessionFor(db, config.chainId, c.req.header("authorization"));
   if (!session) throw new HttpError(401, "unauthorized", "sign in first");
-  const roles = await selectAdminRoles(db, config.chainId, session.address);
+  const roles = await selectAdminRoles(db, config.chainId, session.address, await chainRoleHolders(c));
   if (!roles.some((role) => allowed.includes(role))) throw new HttpError(403, "forbidden", "your admin role does not allow this");
   return { address: session.address.toLowerCase() as `0x${string}`, roles, expiresAt: session.expiresAt };
 }
@@ -271,6 +291,9 @@ async function featuredForAdmin(c: Context<AppEnv>): Promise<AdminLaunch[]> {
 function text(v: unknown, max: number, name: string): string | null {
   if (v === null || v === undefined) return null;
   if (typeof v !== "string") throw new HttpError(400, "bad_param", `${name} must be text`);
+  if (!v.isWellFormed() || hasControlChars(v, true)) {
+    throw new HttpError(400, "bad_param", `${name} contains control characters`);
+  }
   const s = v.trim();
   if (s.length > max) throw new HttpError(400, "bad_param", `${name} is longer than ${max} characters`);
   return s === "" ? null : s;

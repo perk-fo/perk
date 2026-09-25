@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Address } from "viem";
 import deploymentsJson from "./generated/deployments.json";
+import { registerSecret } from "./log";
+import { parsePriceSources, type PriceSourceConfig } from "./prices/sources";
 
 export const XLAYER_MAINNET = 196;
 export const XLAYER_TESTNET = 1952;
@@ -55,13 +57,38 @@ export interface AppConfig {
   pinataJwt: string | undefined;
   /** Gateway prefix for rewriting ipfs:// → https, including trailing slash. */
   ipfsGateway: string;
-  /** Shared POST /v1/media/* token-bucket capacity per IP. */
+  /** Shared POST /v1/media/* token-bucket capacity per client (IPv6 clients by /64). */
   mediaRateLimit: number;
   mediaRateWindowMs: number;
-  /** Honour X-Forwarded-For / X-Real-IP when rate limiting. Only enable behind a proxy that overwrites them. */
+  /**
+   * Bytes all clients together may upload per day (MEDIA_DAILY_UPLOAD_BYTES, default 256 MiB). Uploads nothing refers
+   * to yet are only removed after a week, so this bounds how much unreferenced media can pile up, from however many
+   * addresses it comes.
+   */
+  mediaDailyUploadBytes: number;
+  /** trustedProxyHops > 0. Kept for callers that only ask whether a proxy is trusted. */
   trustProxy: boolean;
+  /**
+   * Reverse proxies in front of the API that append to X-Forwarded-For (TRUSTED_PROXY_HOPS; TRUST_PROXY=true alone
+   * means 1, which is what DigitalOcean App Platform needs). The client address is the entry that many places from the
+   * right. 0 (the default): the socket peer is the client and forwarded headers are ignored.
+   */
+  trustedProxyHops: number;
   /** Largest request body the server will read at all (media uploads are the only POSTs). */
   maxBodyBytes: number;
+  /** WebSocket connections one client address may hold at once (WS_MAX_CLIENTS_PER_IP, default 20). */
+  wsMaxClientsPerIp: number;
+  /**
+   * Grant datasets may be read from file:// URIs (ALLOW_FILE_DATASET_URIS=true). For local development with the demo
+   * driver only: it lets whoever publishes a grant root make the API read local files. Never on chain 196.
+   */
+  allowFileDatasetUris: boolean;
+  /**
+   * Where each quote asset's US-dollar price comes from (PRICE_SOURCES, a JSON object from `native`, a quote address
+   * or a quote symbol to a source string, merged over the defaults: native OKB from OKX's OKB-USDT ticker, tAAPL and
+   * other "t" + US ticker stocks from CNBC's quote for the ticker). See src/prices/sources.ts.
+   */
+  priceSources: PriceSourceConfig;
 }
 
 const deployments = deploymentsJson as unknown as Record<string, Deployment | null>;
@@ -76,8 +103,24 @@ function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) throw new Error(`${name} must be a non-negative number, got "${raw}"`);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`${name} must be a non-negative integer, got "${raw}"`);
   return n;
+}
+
+function boolEnv(name: string): boolean | undefined {
+  const raw = (process.env[name] ?? "").trim().toLowerCase();
+  if (raw === "") return undefined;
+  if (raw === "true" || raw === "1") return true;
+  if (raw === "false" || raw === "0") return false;
+  throw new Error(`${name} must be true or false, got "${process.env[name]}"`);
+}
+
+/** Every number the process runs on is checked once, whatever its source: LOG_PAGE=0 would loop forever. */
+function checkInt(name: string, value: number, min: number, max = Number.MAX_SAFE_INTEGER): number {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer in [${min}, ${max}], got ${value}`);
+  }
+  return value;
 }
 
 function listEnv(name: string): string[] {
@@ -108,16 +151,40 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     throw new Error("PINATA_JWT is required when MEDIA_DRIVER=pinata");
   }
   const ipfsGatewayRaw = overrides.ipfsGateway ?? process.env.IPFS_GATEWAY ?? "https://ipfs.io/ipfs/";
-  const publicApiUrlRaw = overrides.publicApiUrl ?? process.env.PUBLIC_API_URL ?? `http://localhost:${port}`;
+  const publicApiUrlSet = overrides.publicApiUrl ?? (process.env.PUBLIC_API_URL?.trim() || undefined);
+  // With the local media driver PUBLIC_API_URL is baked into every token's on-chain tokenURI: a deployment that
+  // forgot it would publish http://localhost links forever. Development may default it; production may not.
+  const productionLike = process.env.NODE_ENV === "production" || chainId === XLAYER_MAINNET;
+  if (mediaDriverRaw === "local" && productionLike && publicApiUrlSet === undefined) {
+    throw new Error(
+      "PUBLIC_API_URL is required with MEDIA_DRIVER=local in production (it is written into on-chain tokenURIs)",
+    );
+  }
+  const publicApiUrlRaw = publicApiUrlSet ?? `http://localhost:${port}`;
+  if (!/^https?:\/\/[^\s/]+/.test(publicApiUrlRaw)) {
+    throw new Error(`PUBLIC_API_URL must be an http(s) origin, got "${publicApiUrlRaw}"`);
+  }
+  const trustProxyFlag = overrides.trustProxy ?? boolEnv("TRUST_PROXY") ?? false;
+  const trustedProxyHops = checkInt(
+    "TRUSTED_PROXY_HOPS",
+    overrides.trustedProxyHops ?? intEnv("TRUSTED_PROXY_HOPS", trustProxyFlag ? 1 : 0),
+    0,
+    10,
+  );
+  const allowFileDatasetUris = overrides.allowFileDatasetUris ?? boolEnv("ALLOW_FILE_DATASET_URIS") ?? false;
+  if (allowFileDatasetUris && chainId === XLAYER_MAINNET) {
+    throw new Error("ALLOW_FILE_DATASET_URIS is for local development and cannot be used on chain 196");
+  }
+  for (const secret of [rpcUrl, databaseUrl, pinataJwt]) registerSecret(secret);
   return {
-    chainId,
+    chainId: checkInt("CHAIN_ID", chainId, 1),
     rpcUrl,
     databaseUrl,
-    confirmations: overrides.confirmations ?? intEnv("CONFIRMATIONS", 2),
-    pollMs: overrides.pollMs ?? intEnv("POLL_MS", 1500),
-    catchupBlocks: overrides.catchupBlocks ?? intEnv("CATCHUP_BLOCKS", 200),
-    logPage: overrides.logPage ?? intEnv("LOG_PAGE", 1000),
-    port,
+    confirmations: checkInt("CONFIRMATIONS", overrides.confirmations ?? intEnv("CONFIRMATIONS", 2), 0, 10_000),
+    pollMs: checkInt("POLL_MS", overrides.pollMs ?? intEnv("POLL_MS", 1500), 0, 3_600_000),
+    catchupBlocks: checkInt("CATCHUP_BLOCKS", overrides.catchupBlocks ?? intEnv("CATCHUP_BLOCKS", 200), 0),
+    logPage: checkInt("LOG_PAGE", overrides.logPage ?? intEnv("LOG_PAGE", 1000), 1, 1_000_000),
+    port: checkInt("PORT", port, 0, 65_535),
     corsOrigins: overrides.corsOrigins ?? (listEnv("CORS_ORIGINS").length ? listEnv("CORS_ORIGINS") : ["http://localhost:3000"]),
     deployment,
     mediaDriver: mediaDriverRaw,
@@ -125,10 +192,31 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     publicApiUrl: publicApiUrlRaw.replace(/\/+$/, ""),
     pinataJwt,
     ipfsGateway: ipfsGatewayRaw.endsWith("/") ? ipfsGatewayRaw : `${ipfsGatewayRaw}/`,
-    mediaRateLimit: overrides.mediaRateLimit ?? intEnv("MEDIA_RATE_LIMIT", 20),
-    mediaRateWindowMs: overrides.mediaRateWindowMs ?? intEnv("MEDIA_RATE_WINDOW_MS", 600_000),
-    trustProxy: overrides.trustProxy ?? (process.env.TRUST_PROXY ?? "").toLowerCase() === "true",
-    maxBodyBytes: overrides.maxBodyBytes ?? intEnv("MAX_BODY_BYTES", 3 * 1024 * 1024),
+    mediaRateLimit: checkInt("MEDIA_RATE_LIMIT", overrides.mediaRateLimit ?? intEnv("MEDIA_RATE_LIMIT", 20), 1),
+    mediaRateWindowMs: checkInt(
+      "MEDIA_RATE_WINDOW_MS",
+      overrides.mediaRateWindowMs ?? intEnv("MEDIA_RATE_WINDOW_MS", 600_000),
+      1_000,
+    ),
+    mediaDailyUploadBytes: checkInt(
+      "MEDIA_DAILY_UPLOAD_BYTES",
+      overrides.mediaDailyUploadBytes ?? intEnv("MEDIA_DAILY_UPLOAD_BYTES", 256 * 1024 * 1024),
+      1024 * 1024,
+    ),
+    trustProxy: trustedProxyHops > 0,
+    trustedProxyHops,
+    maxBodyBytes: checkInt(
+      "MAX_BODY_BYTES",
+      overrides.maxBodyBytes ?? intEnv("MAX_BODY_BYTES", 3 * 1024 * 1024),
+      64 * 1024,
+    ),
+    wsMaxClientsPerIp: checkInt(
+      "WS_MAX_CLIENTS_PER_IP",
+      overrides.wsMaxClientsPerIp ?? intEnv("WS_MAX_CLIENTS_PER_IP", 20),
+      1,
+    ),
+    allowFileDatasetUris,
+    priceSources: overrides.priceSources ?? parsePriceSources(process.env.PRICE_SOURCES),
   };
 }
 

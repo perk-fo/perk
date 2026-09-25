@@ -1,7 +1,11 @@
 import {
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
   createPublicClient,
   encodeAbiParameters,
   erc20Abi,
+  ExecutionRevertedError,
   http,
   keccak256,
   type Address,
@@ -95,12 +99,13 @@ export { TRANSFER_EVENT, POOL_SWAP_EVENT };
 export interface BlockHeader {
   number: bigint;
   hash: Hex;
+  parentHash: Hex;
   timestamp: bigint;
 }
 
 export async function getHeader(client: Client, blockNumber: bigint): Promise<BlockHeader> {
   const b = await client.getBlock({ blockNumber, includeTransactions: false });
-  return { number: b.number, hash: b.hash, timestamp: b.timestamp };
+  return { number: b.number, hash: b.hash, parentHash: b.parentHash, timestamp: b.timestamp };
 }
 
 /** Fetch headers for distinct block numbers, `concurrency` at a time. */
@@ -137,25 +142,56 @@ const TOKEN_URI_ABI = [
   },
 ] as const;
 
+/**
+ * Whether a failed contract read is the contract's own answer (it reverted, has no code, or returned data that does
+ * not decode), which asking again will not change, as opposed to the RPC being unavailable or slow.
+ */
+export function isDeterministicCallError(err: unknown): boolean {
+  if (!(err instanceof BaseError)) return false;
+  return (
+    err.walk(
+      (e) =>
+        e instanceof ContractFunctionRevertedError ||
+        e instanceof ContractFunctionZeroDataError ||
+        e instanceof ExecutionRevertedError ||
+        (e instanceof BaseError &&
+          /^(AbiDecoding|PositionOutOfBounds|SliceOffsetOutOfBounds|InvalidBytesBoolean|InvalidAddress)/.test(e.name)),
+    ) !== null
+  );
+}
+
+/** Settle a contract read: null when the contract refused it, the RPC's error (thrown) when the RPC failed. */
+async function answerOrNull<T>(read: Promise<T>): Promise<T | null> {
+  try {
+    return await read;
+  } catch (err) {
+    if (isDeterministicCallError(err)) return null;
+    throw err;
+  }
+}
+
 export interface Erc20Meta {
-  name: string;
-  symbol: string;
-  decimals: number;
-  totalSupply: bigint;
+  name: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  totalSupply: bigint | null;
+  /** "" when the token has no tokenURI(). */
   tokenURI: string;
 }
 
+/**
+ * ERC-20 metadata plus the Perk meme token's tokenURI(). A field the contract does not answer comes back null (or ""
+ * for the URI). An RPC failure throws, so the caller tries again later instead of storing a guess as fact.
+ */
 export async function getErc20Meta(client: Client, token: Address): Promise<Erc20Meta> {
   const [name, symbol, decimals, totalSupply, tokenURI] = await Promise.all([
-    client.readContract({ address: token, abi: erc20Abi, functionName: "name" }),
-    client.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }),
-    client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }),
-    client.readContract({ address: token, abi: erc20Abi, functionName: "totalSupply" }),
-    client
-      .readContract({ address: token, abi: TOKEN_URI_ABI, functionName: "tokenURI" })
-      .then((s) => s, () => ""),
+    answerOrNull(client.readContract({ address: token, abi: erc20Abi, functionName: "name" })),
+    answerOrNull(client.readContract({ address: token, abi: erc20Abi, functionName: "symbol" })),
+    answerOrNull(client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" })),
+    answerOrNull(client.readContract({ address: token, abi: erc20Abi, functionName: "totalSupply" })),
+    answerOrNull(client.readContract({ address: token, abi: TOKEN_URI_ABI, functionName: "tokenURI" })),
   ]);
-  return { name, symbol, decimals: Number(decimals), totalSupply, tokenURI };
+  return { name, symbol, decimals: decimals === null ? null : Number(decimals), totalSupply, tokenURI: tokenURI ?? "" };
 }
 
 const POSITION_MANAGER_ABI = [
@@ -190,7 +226,8 @@ const POSITION_MANAGER_ABI = [
 
 /**
  * The pool a PositionManager token belongs to, as a pool id matching `launches.pool_id`. v4 derives the id by
- * hashing the encoded PoolKey, which is what `PoolId.toId()` does on chain.
+ * hashing the encoded PoolKey, which is what `PoolId.toId()` does on chain. Throws when either read fails; callers
+ * tell a refused read from an unavailable RPC with `isDeterministicCallError`.
  */
 export async function getPositionPool(
   client: Client,
@@ -204,14 +241,14 @@ export async function getPositionPool(
       functionName: "getPoolAndPositionInfo",
       args: [tokenId],
     }),
-    client
-      .readContract({
+    answerOrNull(
+      client.readContract({
         address: positionManager,
         abi: POSITION_MANAGER_ABI,
         functionName: "getPositionLiquidity",
         args: [tokenId],
-      })
-      .then((l) => l as bigint, () => 0n),
+      }),
+    ).then((l) => (l as bigint | null) ?? 0n),
   ]);
   const k = (key as readonly unknown[])[0] as {
     currency0: Address;

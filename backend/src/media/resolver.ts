@@ -1,6 +1,8 @@
 import type { Db } from "../db/client";
 import type { AppConfig } from "../config";
 import type { TokenMetadataView } from "../api/types";
+import { errorText } from "../log";
+import { fetchPublic, UrlRefusedError, type LookupFn } from "../net/fetchPublic";
 import { ipfsToHttps, localMediaFilename, type FetchLike, type MediaStore } from "./store";
 import { parseTokenMetadata } from "./metadata";
 
@@ -17,6 +19,8 @@ export interface MetadataResolverDeps {
   log?: (msg: string, fields?: Record<string, unknown>) => void;
   sleep?: (ms: number) => Promise<void>;
   fetch?: FetchLike;
+  /** DNS for the outbound fetch guard; tests inject one so nothing leaves the machine. */
+  lookup?: LookupFn;
   now?: () => number;
 }
 
@@ -34,44 +38,6 @@ function unixNow(): number {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-async function readHttpBody(res: Response, maxBytes: number): Promise<Uint8Array> {
-  const declared = res.headers.get("content-length");
-  if (declared !== null && declared !== "") {
-    const n = Number(declared);
-    if (Number.isFinite(n) && n > maxBytes) throw new Error(`body exceeds ${maxBytes} bytes`);
-  }
-  if (!res.body) {
-    const buf = new Uint8Array(await res.arrayBuffer());
-    if (buf.byteLength > maxBytes) throw new Error(`body exceeds ${maxBytes} bytes`);
-    return buf;
-  }
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      try {
-        await reader.cancel();
-      } catch {
-        /* ignore */
-      }
-      throw new Error(`body exceeds ${maxBytes} bytes`);
-    }
-    chunks.push(value);
-  }
-  const buf = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    buf.set(c, offset);
-    offset += c.byteLength;
-  }
-  return buf;
 }
 
 async function loadMetadataBytes(
@@ -94,13 +60,17 @@ async function loadMetadataBytes(
     return { kind: "invalid" };
   }
 
-  const fetchImpl = deps.fetch ?? globalThis.fetch;
   try {
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) return { kind: "unreachable", error: `HTTP ${res.status}` };
-    const bytes = await readHttpBody(res, FETCH_MAX_BYTES);
+    const bytes = await fetchPublic(url, {
+      fetch: deps.fetch,
+      lookup: deps.lookup,
+      timeoutMs: FETCH_TIMEOUT_MS,
+      maxBytes: FETCH_MAX_BYTES,
+    });
     return { kind: "ok", bytes };
   } catch (err) {
+    // an address this server will not fetch (private host, http, credentials) does not become valid later
+    if (err instanceof UrlRefusedError) return { kind: "invalid" };
     return { kind: "unreachable", error: errMessage(err) };
   }
 }
@@ -133,6 +103,8 @@ async function mark(
 
 /**
  * One resolver pass: launches in `pending`, plus `unreachable` whose last check is at least 10 minutes ago.
+ * Each launch is resolved on its own: whatever goes wrong with one (its JSON refused by the database, say) marks that
+ * launch `invalid` and the pass moves on, so no single launch can hold back the ones after it.
  */
 export async function resolvePendingMetadata(deps: MetadataResolverDeps): Promise<void> {
   const now = (deps.now ?? unixNow)();
@@ -147,38 +119,52 @@ export async function resolvePendingMetadata(deps: MetadataResolverDeps): Promis
   `;
 
   for (const row of rows) {
-    const uri = row.token_uri?.trim() ?? "";
-    if (!uri) {
-      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
-      continue;
-    }
-    const loaded = await loadMetadataBytes(uri, deps);
-    if (loaded.kind === "unreachable") {
-      await mark(deps.db, row.chain_id, row.meme, "unreachable", null, now);
-      continue;
-    }
-    if (loaded.kind === "invalid") {
-      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
-      continue;
-    }
-    let parsedJson: unknown;
     try {
-      parsedJson = JSON.parse(new TextDecoder().decode(loaded.bytes)) as unknown;
-    } catch {
-      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
-      continue;
+      await resolveOne(deps, row, now);
+    } catch (err) {
+      (deps.log ?? (() => {}))("metadata-resolver", { meme: row.meme, error: errorText(err) });
+      try {
+        await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+      } catch {
+        // the database is unavailable; the launch stays as it was and is tried again next pass
+      }
     }
-    const parsed = parseTokenMetadata(parsedJson, {
-      imageRule: "resolved",
-      publicApiUrl: deps.config.publicApiUrl,
-      ipfsGateway: deps.config.ipfsGateway,
-    });
-    if (!parsed) {
-      await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
-      continue;
-    }
-    await mark(deps.db, row.chain_id, row.meme, "ok", parsed.view, now);
   }
+}
+
+async function resolveOne(deps: MetadataResolverDeps, row: PendingLaunch, now: number): Promise<void> {
+  const uri = row.token_uri?.trim() ?? "";
+  if (!uri) {
+    await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+    return;
+  }
+  const loaded = await loadMetadataBytes(uri, deps);
+  if (loaded.kind === "unreachable") {
+    await mark(deps.db, row.chain_id, row.meme, "unreachable", null, now);
+    return;
+  }
+  if (loaded.kind === "invalid") {
+    await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+    return;
+  }
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(loaded.bytes)) as unknown;
+  } catch {
+    await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+    return;
+  }
+  // parseTokenMetadata refuses control characters and unpaired surrogates, which jsonb could not hold anyway
+  const parsed = parseTokenMetadata(parsedJson, {
+    imageRule: "resolved",
+    publicApiUrl: deps.config.publicApiUrl,
+    ipfsGateway: deps.config.ipfsGateway,
+  });
+  if (!parsed) {
+    await mark(deps.db, row.chain_id, row.meme, "invalid", null, now);
+    return;
+  }
+  await mark(deps.db, row.chain_id, row.meme, "ok", parsed.view, now);
 }
 
 function referencedFilenames(
@@ -227,14 +213,14 @@ export async function runMetadataResolver(
     try {
       await resolvePendingMetadata(deps);
     } catch (err) {
-      log("metadata-resolver", { error: errMessage(err) });
+      log("metadata-resolver", { error: errorText(err) });
     }
     const t = Date.now();
     if (t - lastGc >= GC_INTERVAL_MS) {
       try {
         await gcLocalMedia(deps, t);
       } catch (err) {
-        log("metadata-gc", { error: errMessage(err) });
+        log("metadata-gc", { error: errorText(err) });
       }
       lastGc = t;
     }

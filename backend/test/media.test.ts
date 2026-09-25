@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "../src/db/client";
@@ -26,6 +26,8 @@ const WEBP = (() => {
 })();
 const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
 const TEXT_GIF = new TextEncoder().encode("PNG renamed .gif-with-text");
+/** Every host resolves to one public address; no DNS query leaves the machine. */
+const PUBLIC_DNS = async () => ["93.184.215.14"];
 
 let db: Db;
 let mediaDir: string;
@@ -391,16 +393,189 @@ describe("metadata resolver", () => {
       throw new Error("network down");
     };
     let now = 1_700_000_000;
-    await resolvePendingMetadata({ db, config, media, fetch: fetchMock, now: () => now });
+    await resolvePendingMetadata({ db, config, media, fetch: fetchMock, lookup: PUBLIC_DNS, now: () => now });
     expect(calls).toBe(1);
     const first = await db<{ metadata_status: string; metadata_checked_at: bigint | number | string }[]>`
       select metadata_status, metadata_checked_at from launches where chain_id = ${CHAIN} and meme = ${meme}`;
     expect(first[0]?.metadata_status).toBe("unreachable");
 
-    await resolvePendingMetadata({ db, config, media, fetch: fetchMock, now: () => now + 60 });
+    await resolvePendingMetadata({ db, config, media, fetch: fetchMock, lookup: PUBLIC_DNS, now: () => now + 60 });
     expect(calls).toBe(1);
 
-    await resolvePendingMetadata({ db, config, media, fetch: fetchMock, now: () => now + 10 * 60 });
+    await resolvePendingMetadata({ db, config, media, fetch: fetchMock, lookup: PUBLIC_DNS, now: () => now + 10 * 60 });
     expect(calls).toBe(2);
+  });
+});
+
+describe("metadata resolver robustness", () => {
+  const fetchJson =
+    (bodies: Record<string, string>): FetchLike =>
+    async (input) => {
+      const url = String(input);
+      const hit = Object.entries(bodies).find(([k]) => url.includes(k));
+      return hit ? new Response(hit[1], { status: 200 }) : new Response("missing", { status: 404 });
+    };
+
+  test("test_resolver_oneLaunchesBadJsonDoesNotHoldBackTheNext", async () => {
+    await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
+    const poisoned = "0x0000000000000000000000000000000000000bc1";
+    const honest = "0x0000000000000000000000000000000000000bc2";
+    await insertLaunch(poisoned, "https://attacker.example/poison.json", 11);
+    await insertLaunch(honest, "https://honest.example/meta.json", 12);
+    const fetch = fetchJson({
+      poison: '{"name":"a","symbol":"b","image":"https://x.example/i.png","description":"\\u0000"}',
+      meta: '{"name":"Honest","symbol":"HON","image":"https://x.example/i.png","description":"line one\\nline two"}',
+    });
+    await resolvePendingMetadata({ db, config, media, fetch, lookup: PUBLIC_DNS });
+    const rows = await db<{ meme: string; metadata_status: string }[]>`
+      select meme, metadata_status from launches where meme in (${poisoned}, ${honest}) order by created_block`;
+    expect(rows.map((r) => r.metadata_status)).toEqual(["invalid", "ok"]);
+    const detail = (await (await app.request(`/v1/launches/${honest}`)).json()) as LaunchDetail;
+    expect(detail.metadata?.description).toBe("line one\nline two");
+  });
+
+  test("test_resolver_aLaunchTheDatabaseRefusesIsMarkedInvalidAndThePassGoesOn", async () => {
+    await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
+    const refused = "0x0000000000000000000000000000000000000be1";
+    const next = "0x0000000000000000000000000000000000000be2";
+    await insertLaunch(refused, "https://a.example/meta.json", 31);
+    await insertLaunch(next, "https://b.example/meta.json", 32);
+    // whatever the reason, storing this launch's resolved metadata fails
+    await db.unsafe(`
+      create function refuse_metadata() returns trigger language plpgsql as $$
+      begin
+        if new.meme = '${refused}' and new.metadata_status = 'ok' then
+          raise exception 'refused by test' using errcode = '22P05';
+        end if;
+        return new;
+      end $$;
+      create trigger refuse_metadata before update on launches for each row execute function refuse_metadata();`);
+    try {
+      const body = '{"name":"Fine","symbol":"FINE","image":"https://x.example/i.png"}';
+      const logged: string[] = [];
+      await resolvePendingMetadata({
+        db,
+        config,
+        media,
+        fetch: fetchJson({ "a.example": body, "b.example": body }),
+        lookup: PUBLIC_DNS,
+        log: (msg) => logged.push(msg),
+      });
+      const rows = await db<{ metadata_status: string }[]>`
+        select metadata_status from launches where meme in (${refused}, ${next}) order by created_block`;
+      expect(rows.map((r) => r.metadata_status)).toEqual(["invalid", "ok"]);
+      expect(logged).toContain("metadata-resolver");
+    } finally {
+      await db.unsafe("drop trigger refuse_metadata on launches; drop function refuse_metadata();");
+    }
+  });
+
+  test("test_resolver_refusesPrivateHostsAndDowngrades", async () => {
+    await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
+    const internal = "0x0000000000000000000000000000000000000bd1";
+    const downgrade = "0x0000000000000000000000000000000000000bd2";
+    await insertLaunch(internal, "https://metadata.internal/latest/meta-data", 21);
+    await insertLaunch(downgrade, "https://redirector.example/meta.json", 22);
+    const fetched: string[] = [];
+    const fetch: FetchLike = async (input) => {
+      fetched.push(String(input));
+      return new Response(null, { status: 302, headers: { location: "http://10.0.0.7/admin" } });
+    };
+    const lookup = async (host: string) => (host === "metadata.internal" ? ["169.254.169.254"] : ["93.184.215.14"]);
+    await resolvePendingMetadata({ db, config, media, fetch, lookup });
+    const rows = await db<{ metadata_status: string }[]>`
+      select metadata_status from launches where meme in (${internal}, ${downgrade}) order by created_block`;
+    expect(rows.map((r) => r.metadata_status)).toEqual(["invalid", "invalid"]);
+    // the private host was never contacted, and the redirect to plain http was not followed
+    expect(fetched).toEqual(["https://redirector.example/meta.json"]);
+  });
+});
+
+describe("media input hygiene", () => {
+  let imageUri: string;
+  /** The same store as `app`, with room for this block's uploads whatever the earlier tests used up. */
+  let roomy: ReturnType<typeof createApp>;
+  beforeAll(async () => {
+    roomy = createApp({ db, config: testConfig({ mediaDir, publicApiUrl, mediaRateLimit: 10_000 }), media });
+    imageUri = ((await (await postFile(PNG, "logo.png", "image/png", roomy)).json()) as MediaUpload).uri;
+  });
+
+  test("test_metadata_reverts_controlCharacters", async () => {
+    for (const bad of [
+      { name: "Pe\u0000rk", symbol: "PRK", image: imageUri },
+      { name: "Perk", symbol: "P\u0007RK", image: imageUri },
+      { name: "Perk", symbol: "PRK", image: imageUri, description: "a\u0000b" },
+      { name: "Perk", symbol: "PRK", image: imageUri, description: "a\ud800b" },
+      { name: "Perk", symbol: "PRK", image: imageUri, links: { website: "https://perk.example/\u0000" } },
+    ]) {
+      const res = await postMeta(bad, roomy);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as ApiError).error).toBe("bad_metadata");
+    }
+    // line breaks in the description are fine
+    expect((await postMeta({ name: "Perk", symbol: "PRK", image: imageUri, description: "one\ntwo" }, roomy)).status).toBe(200);
+  });
+
+  test("test_upload_storageFailureReturnsAGenericMessage", async () => {
+    const failing = createApp({
+      db,
+      config: testConfig({ mediaDriver: "pinata", pinataJwt: "jwt-secret-value" }),
+      fetch: async () => new Response('{"error":"invalid key jwt-secret-value for account 1234"}', { status: 401 }),
+    });
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const res = await postFile(PNG, "x.png", "image/png", failing);
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as ApiError;
+      expect(body.error).toBe("storage_unavailable");
+      expect(body.message).not.toContain("pinata");
+      expect(body.message).not.toContain("401");
+      // the details are logged for operators, without the JWT
+      const logged = spy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(logged).toContain("media upload failed");
+      expect(logged).not.toContain("jwt-secret-value");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("test_upload_globalDailyBudget", async () => {
+    const dir = mkdtempSync(join(import.meta.dir, "../data/media-"));
+    const limited = createApp({ db, config: testConfig({ mediaDir: dir, mediaDailyUploadBytes: 1024 * 1024 }) });
+    const big = new Uint8Array(600 * 1024);
+    big.set(PNG.subarray(0, 8));
+    // many addresses, one budget
+    expect((await postFileAs("10.0.0.1", limited, big)).status).toBe(200);
+    const second = await postFileAs("10.0.0.2", limited, big);
+    expect(second.status).toBe(429);
+    expect(((await second.json()) as ApiError).error).toBe("upload_capacity");
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("rate-limit keys", () => {
+  test("test_rateLimit_onlyTheTrustedProxysEntryCounts", async () => {
+    const dir = mkdtempSync(join(import.meta.dir, "../data/media-"));
+    const limited = createApp({
+      db,
+      config: testConfig({ mediaDir: dir, mediaRateLimit: 1, mediaRateWindowMs: 600_000, trustedProxyHops: 1 }),
+    });
+    // the client rotates what it prepends; the proxy's own entry (rightmost) is the same client each time
+    expect((await postFileAs("1.1.1.1, 5.5.5.5", limited)).status).toBe(200);
+    expect((await postFileAs("2.2.2.2, 5.5.5.5", limited)).status).toBe(429);
+    expect((await postFileAs("5.5.5.6", limited)).status).toBe(200);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("test_rateLimit_ipv6ClientsShareTheirSlash64", async () => {
+    const dir = mkdtempSync(join(import.meta.dir, "../data/media-"));
+    const limited = createApp({
+      db,
+      config: testConfig({ mediaDir: dir, mediaRateLimit: 1, mediaRateWindowMs: 600_000, trustedProxyHops: 1 }),
+    });
+    expect((await postFileAs("2001:db8:1:2::1", limited)).status).toBe(200);
+    expect((await postFileAs("2001:db8:1:2:ffff::9", limited)).status).toBe(429);
+    expect((await postFileAs("2001:db8:1:3::1", limited)).status).toBe(200);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -40,7 +40,8 @@ function crashingDb(inner: Db, trip: { crash: boolean }): Db {
             const out = await cb(tx as unknown as Tx);
             if (trip.crash) {
               trip.crash = false;
-              throw new Error("simulated crash");
+              // what a crash at commit looks like to the indexer: the connection is gone
+              throw Object.assign(new Error("simulated crash"), { code: "CONNECTION_CLOSED" });
             }
             return out;
           });

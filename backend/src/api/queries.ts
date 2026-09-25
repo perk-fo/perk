@@ -15,6 +15,20 @@ import { asBigInt } from "./serialize";
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+/**
+ * Caps on lists that routes return whole (no paging parameters): no single response grows without bound however much
+ * the chain holds. Newest or largest first, so what is cut is the tail.
+ */
+export const LIST_CAP = {
+  grantCampaigns: 500,
+  grantPositions: 500,
+  grantAllocations: 1000,
+  walletPositions: 200,
+  walletClaims: 200,
+  walletLaunches: 200,
+  walletMemes: 200,
+} as const;
+
 export const LAUNCH_24H_SELECT = `
   coalesce(vol.volume_24h, 0) as volume_24h,
   coalesce(vol.n_24h, 0) as n_24h,
@@ -412,6 +426,7 @@ export async function selectGrantCampaigns(
             )`
       }
     order by initialized_block desc, initialized_at desc
+    limit ${LIST_CAP.grantCampaigns}
   `;
 }
 
@@ -442,6 +457,7 @@ export async function selectGrantPositions(
     where chain_id = ${chainId} and meme = ${meme}
       ${beneficiary ? db`and beneficiary = ${beneficiary}` : db``}
     order by activated_block desc, position_id desc
+    limit ${LIST_CAP.grantPositions}
   `;
 }
 
@@ -454,6 +470,7 @@ export async function selectPositionsForWallet(db: Db, chainId: number, benefici
     from grant_positions
     where chain_id = ${chainId} and beneficiary = ${beneficiary}
     order by activated_block desc, position_id desc
+    limit ${LIST_CAP.walletPositions}
   `;
 }
 
@@ -463,6 +480,7 @@ export async function selectGrantAllocations(db: Db, chainId: number, meme: stri
     from grant_allocations
     where chain_id = ${chainId} and meme = ${meme}
     order by base_allocation desc
+    limit ${LIST_CAP.grantAllocations}
   `;
 }
 
@@ -486,13 +504,16 @@ export async function selectWalletRoleBits(db: Db, chainId: number, address: str
   const created = await db<{ meme: string }[]>`
     select meme from launches where chain_id = ${chainId} and creator = ${address}
     order by created_block desc, created_log_index desc
+    limit ${LIST_CAP.walletLaunches}
   `;
   const lp = await db<{ meme: string }[]>`
     select distinct meme from grant_positions where chain_id = ${chainId} and beneficiary = ${address}
+    limit ${LIST_CAP.walletMemes}
   `;
   const alloc = await db<{ meme: string }[]>`
     select meme from grant_allocations where chain_id = ${chainId} and account = ${address}
     order by registered_at desc
+    limit ${LIST_CAP.walletMemes}
   `;
   const ref = await db<{ inviter: string }[]>`
     select inviter from referrals where chain_id = ${chainId} and invitee = ${address}
@@ -535,6 +556,7 @@ export async function selectWalletClaims(db: Db, chainId: number, account: strin
     from reward_claims
     where chain_id = ${chainId} and account = ${account}
     order by block_number desc, log_index desc
+    limit ${LIST_CAP.walletClaims}
   `;
 }
 
@@ -594,6 +616,9 @@ export interface HealthRow {
   last_error: string | null;
   last_error_at: Date | string | null;
   cursor_ts: number | string | bigint | null;
+  /** Logs the indexer set aside (quarantined_logs) and when the latest was. */
+  quarantined: number | string | bigint;
+  quarantined_at: Date | string | null;
 }
 
 export async function selectHealth(db: Db, chainId: number): Promise<HealthRow | null> {
@@ -605,7 +630,9 @@ export async function selectHealth(db: Db, chainId: number): Promise<HealthRow |
       s.updated_at,
       s.last_error,
       s.last_error_at,
-      b.ts as cursor_ts
+      b.ts as cursor_ts,
+      (select count(*)::int from quarantined_logs q where q.chain_id = s.chain_id) as quarantined,
+      (select max(q.quarantined_at) from quarantined_logs q where q.chain_id = s.chain_id) as quarantined_at
     from sync_state s
     left join blocks b on b.chain_id = s.chain_id and b.number = s.cursor_block
     where s.chain_id = ${chainId}

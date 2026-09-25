@@ -1,4 +1,5 @@
 import type { Db, Tx } from "../db/client";
+import type { RawLog } from "../chain/events";
 
 /**
  * Version of what the indexer derives from logs. Bump it when a release adds or changes a handler for events that
@@ -61,22 +62,32 @@ export async function initSyncState(db: Db, chainId: number, startBlock: bigint)
 }
 
 /**
- * Empty everything the indexer has written. The index is derived from one deployment's logs, so when the
- * contracts are redeployed none of it describes the chain any more: old launches, cursors and balances would sit
- * next to the new ones. Every table goes except PRESERVED_TABLES (the migration ledger and what admins decided);
- * the caller re-creates sync_state.
+ * Delete everything the indexer has written for one chain. The index is derived from one deployment's logs, so when
+ * the contracts are redeployed (or the chain reorganised under the cursor) none of it can be trusted any more. Every
+ * table except PRESERVED_TABLES (the migration ledger and what admins decided) loses its rows for `chainId`; other
+ * chains sharing the database are untouched. The caller re-creates sync_state. Run it inside a transaction when the
+ * caller needs the reset and the new sync_state to appear together.
+ *
+ * Every derived table carries chain_id; one without it would make this throw rather than be emptied for every chain.
  */
-export async function resetIndex(db: Db): Promise<string[]> {
-  const rows = await db<{ table_name: string }[]>`
-    select table_name from information_schema.tables
-    where table_schema = current_schema() and table_type = 'BASE TABLE'
-    order by table_name`;
+export async function resetIndex(db: Db, chainId: number): Promise<string[]> {
+  const rows = await db<{ table_name: string; has_chain: boolean }[]>`
+    select t.table_name,
+      exists (
+        select 1 from information_schema.columns c
+        where c.table_schema = t.table_schema and c.table_name = t.table_name and c.column_name = 'chain_id'
+      ) as has_chain
+    from information_schema.tables t
+    where t.table_schema = current_schema() and t.table_type = 'BASE TABLE'
+    order by t.table_name`;
   const keep = new Set<string>(PRESERVED_TABLES);
-  const tables = rows.map((r) => r.table_name).filter((t) => !keep.has(t));
-  if (tables.length === 0) return tables;
-  const list = tables.map((t) => `"${t.replace(/"/g, '""')}"`).join(", ");
-  await db.unsafe(`truncate table ${list} restart identity cascade`);
-  return tables;
+  const derived = rows.filter((r) => !keep.has(r.table_name));
+  const unscoped = derived.filter((r) => !r.has_chain).map((r) => r.table_name);
+  if (unscoped.length > 0) throw new Error(`cannot reset one chain: tables without chain_id: ${unscoped.join(", ")}`);
+  for (const { table_name } of derived) {
+    await db.unsafe(`delete from "${table_name.replace(/"/g, '""')}" where chain_id = $1`, [chainId]);
+  }
+  return derived.map((r) => r.table_name);
 }
 
 /** Advance the cursor inside the same transaction that applied the range's logs. */
@@ -91,7 +102,32 @@ export async function recordHead(db: Db, chainId: number, head: bigint, headTime
     where chain_id = ${chainId}`;
 }
 
+/** `message` is served by GET /health: pass `publicErrorText(err)`, never a raw error message. */
 export async function recordError(db: Db, chainId: number, message: string): Promise<void> {
-  await db`update sync_state set last_error = ${message.slice(0, 2000)}, last_error_at = now(), updated_at = now()
+  await db`update sync_state set last_error = ${message.slice(0, 300)}, last_error_at = now(), updated_at = now()
     where chain_id = ${chainId}`;
+}
+
+/**
+ * Set a log aside: its window is applied without it. Kept with its raw topics and data so an operator can see what it
+ * was; GET /health reports how many there are. A rebuild of the index (a new INDEX_VERSION, say, after the handler
+ * is fixed) clears the table and applies every log again.
+ */
+export async function quarantineLog(
+  tx: Tx,
+  chainId: number,
+  log: RawLog & { eventName?: string; contract?: string },
+  error: string,
+  attempts: number,
+): Promise<void> {
+  const event = log.contract && log.eventName ? `${log.contract}.${log.eventName}` : "unknown";
+  await tx`insert into quarantined_logs (
+      chain_id, tx_hash, log_index, block_number, block_hash, address, event_name, topics, data, error, attempts
+    ) values (
+      ${chainId}, ${log.transactionHash.toLowerCase()}, ${log.logIndex}, ${log.blockNumber},
+      ${log.blockHash.toLowerCase()}, ${log.address.toLowerCase()}, ${event}, ${tx.json(log.topics as never)},
+      ${log.data}, ${error.slice(0, 300)}, ${attempts}
+    )
+    on conflict (chain_id, tx_hash, log_index) do update set
+      error = excluded.error, attempts = excluded.attempts, quarantined_at = now()`;
 }

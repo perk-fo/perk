@@ -23,14 +23,23 @@ function unix(v: Date | string | null | undefined): number | null {
 
 // ---------------------------------------------------------------- audit
 
-export async function audit(db: Db, address: string, action: string, target: string | null, detail?: unknown): Promise<void> {
-  await db`insert into admin_audit (address, action, target, detail)
-    values (${address.toLowerCase()}, ${action}, ${target}, ${detail === undefined ? null : db.json(detail as never)})`;
+export async function audit(
+  db: Db,
+  chainId: number,
+  address: string,
+  action: string,
+  target: string | null,
+  detail?: unknown,
+): Promise<void> {
+  const json = detail === undefined ? null : db.json(detail as never);
+  await db`insert into admin_audit (chain_id, address, action, target, detail)
+    values (${chainId}, ${address.toLowerCase()}, ${action}, ${target}, ${json})`;
 }
 
-export async function selectAudit(db: Db, limit: number): Promise<AdminAuditEntry[]> {
+export async function selectAudit(db: Db, chainId: number, limit: number): Promise<AdminAuditEntry[]> {
   const rows = await db<{ id: string | bigint; at: Date; address: string; action: string; target: string | null; detail: unknown }[]>`
-    select id, at, address, action, target, detail from admin_audit order by id desc limit ${limit}`;
+    select id, at, address, action, target, detail from admin_audit
+    where chain_id = ${chainId} order by id desc limit ${limit}`;
   return rows.map((r) => ({
     id: Number(r.id),
     at: unix(r.at) ?? 0,
@@ -41,24 +50,26 @@ export async function selectAudit(db: Db, limit: number): Promise<AdminAuditEntr
   }));
 }
 
-// ---------------------------------------------------------------- General Admins
+// ---------------------------------------------------------------- General Admins (one list per chain)
 
-export async function selectOperators(db: Db): Promise<AdminOperator[]> {
+export async function selectOperators(db: Db, chainId: number): Promise<AdminOperator[]> {
   const rows = await db<{ address: string; added_by: string; added_at: Date }[]>`
-    select address, added_by, added_at from admin_operators order by added_at asc`;
+    select address, added_by, added_at from admin_operators where chain_id = ${chainId} order by added_at asc`;
   return rows.map((r) => ({ address: addr(r.address), addedBy: addr(r.added_by), addedAt: unix(r.added_at) ?? 0 }));
 }
 
-/** true when the address was not a General Admin before. */
-export async function insertOperator(db: Db, address: string, addedBy: string): Promise<boolean> {
-  const rows = await db`insert into admin_operators (address, added_by) values (${address}, ${addedBy.toLowerCase()})
-    on conflict (address) do nothing returning address`;
+/** true when the address was not a General Admin of this chain before. */
+export async function insertOperator(db: Db, chainId: number, address: string, addedBy: string): Promise<boolean> {
+  const rows = await db`insert into admin_operators (chain_id, address, added_by)
+    values (${chainId}, ${address}, ${addedBy.toLowerCase()})
+    on conflict (chain_id, address) do nothing returning address`;
   return rows.length > 0;
 }
 
-/** true when the address was a General Admin. */
-export async function deleteOperator(db: Db, address: string): Promise<boolean> {
-  const rows = await db`delete from admin_operators where address = ${address} returning address`;
+/** true when the address was a General Admin of this chain. */
+export async function deleteOperator(db: Db, chainId: number, address: string): Promise<boolean> {
+  const rows = await db`delete from admin_operators
+    where chain_id = ${chainId} and address = ${address} returning address`;
   return rows.length > 0;
 }
 
@@ -108,15 +119,16 @@ export async function searchLaunches(db: Db, chainId: number, q: string, now: nu
   return rows.map(mapAdminLaunch);
 }
 
-/** Launches with any moderation in force, most recently changed first. */
-export async function selectModerated(db: Db, chainId: number, now: number): Promise<AdminLaunch[]> {
+/** Launches with any moderation in force, most recently changed first (at most `limit`). */
+export async function selectModerated(db: Db, chainId: number, now: number, limit = 500): Promise<AdminLaunch[]> {
   const cutoff = now - 86_400;
   const rows = await db.unsafe<AdminLaunchRow[]>(
     `select ${LAUNCH_COLUMNS}, ${LAUNCH_24H_SELECT}, ${ADMIN_EXTRA}
      ${launchFrom(cutoff)}
      where l.chain_id = $1 and (lm.hidden or lm.media_hidden)
-     order by lm.updated_at desc`,
-    [chainId],
+     order by lm.updated_at desc
+     limit $2`,
+    [chainId, limit],
   );
   return rows.map(mapAdminLaunch);
 }

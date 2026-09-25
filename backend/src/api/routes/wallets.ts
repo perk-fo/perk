@@ -5,7 +5,7 @@ import type { WalletRoles,
 import { mapGrantPosition, mapLaunchSummary, mapTrade, mapWalletRoles,
   mapLpPosition, mapWalletTrade } from "../mappers";
 import { addr, num, uint } from "../serialize";
-import { selectAdminRoles } from "../../admin/roles";
+import { displayRoleHolders, selectAdminRoles } from "../../admin/roles";
 import {
   parseTradeCursor,
   selectLaunchesByMemes,
@@ -19,9 +19,11 @@ import {
 
 /**
  * GET /v1/wallets/:address/roles → WalletRoles — max-age 5.
- *   adminRoles: "core" / "grant" from the indexed contract owner and grant publisher, "operator" from the General
- *   Admins the Core Admin appointed; isAdmin = any of them. creatorOf from launches.creator; lpOf from grant_positions;
- *   allocatedIn from grant_allocations; inviter/optInBlock from referrals/opt_ins.
+ *   adminRoles: "core" / "grant" from the contracts' owner and grant publisher (read from the chain, or from the index
+ *   while the chain cannot be read), "operator" from the General Admins the Core Admin appointed; isAdmin = any of them.
+ *   What it shows only decides what the web app displays: every admin action checks the roles again on the chain.
+ *   creatorOf from launches.creator; lpOf from grant_positions; allocatedIn from grant_allocations;
+ *   inviter/optInBlock from referrals/opt_ins.
  * GET /v1/wallets/:address → WalletSummary (roles + launches + positions + last 20 trades + claims + holdings) — max-age 5.
  * GET /v1/wallets/:address/trades?limit=50&before=<block>:<logIndex> → WalletTradesPage: the wallet's trades across
  *   every meme, newest first, with the launch of each meme traded on the page — max-age 5.
@@ -29,11 +31,11 @@ import {
 export function walletRoutes(): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   r.get("/:address/roles", async (c) => {
-    const { db, config } = c.get("deps");
+    const { db, config, roles: reader } = c.get("deps");
     const address = addressParam(c.req.param("address"));
     const [bits, adminRoles] = await Promise.all([
       selectWalletRoleBits(db, config.chainId, address),
-      selectAdminRoles(db, config.chainId, address),
+      displayRoleHolders(db, config.chainId, reader).then((h) => selectAdminRoles(db, config.chainId, address, h)),
     ]);
     c.header("Cache-Control", "public, max-age=5");
     return c.json<WalletRoles>(
@@ -70,12 +72,12 @@ export function walletRoutes(): Hono<AppEnv> {
   });
 
   r.get("/:address", async (c) => {
-    const { db, config } = c.get("deps");
+    const { db, config, roles: reader } = c.get("deps");
     const address = addressParam(c.req.param("address"));
     const now = Math.floor(Date.now() / 1000);
     const [bits, adminRoles] = await Promise.all([
       selectWalletRoleBits(db, config.chainId, address),
-      selectAdminRoles(db, config.chainId, address),
+      displayRoleHolders(db, config.chainId, reader).then((h) => selectAdminRoles(db, config.chainId, address, h)),
     ]);
     const roles = mapWalletRoles(
       address,

@@ -48,7 +48,8 @@ function crashingDb(inner: Db, trip: { crash: boolean }): Db {
             const out = await cb(tx as unknown as Tx);
             if (trip.crash) {
               trip.crash = false;
-              throw new Error("simulated crash");
+              // what a crash at commit looks like to the indexer: the connection is gone
+              throw Object.assign(new Error("simulated crash"), { code: "CONNECTION_CLOSED" });
             }
             return out;
           });
@@ -312,7 +313,7 @@ describe("indexer", () => {
     expect(trades[0].router).toBe(ROUTER);
   });
 
-  test("reorg: cursor hash change rolls back and re-applies with no duplicate trades", async () => {
+  test("reorg: cursor hash change rebuilds the index and re-applies with no duplicate trades", async () => {
     const head = 1001n;
     const chain = emptyChain(head);
     chain.erc20.set(MEME.toLowerCase(), { name: "Meme", symbol: "MEME", decimals: 18, totalSupply: 1_000_000n });
