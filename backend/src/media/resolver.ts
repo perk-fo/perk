@@ -3,7 +3,8 @@ import type { AppConfig } from "../config";
 import type { TokenMetadataView } from "../api/types";
 import { errorText } from "../log";
 import { fetchPublic, UrlRefusedError, type LookupFn } from "../net/fetchPublic";
-import { ipfsToHttps, localMediaFilename, type FetchLike, type MediaStore } from "./store";
+import { ipfsToHttps, localMediaFilename, withTrailingSlash, type FetchLike, type MediaStore } from "./store";
+import { FALLBACK_GATEWAYS } from "./ipfsImages";
 import { parseTokenMetadata } from "./metadata";
 
 const FETCH_TIMEOUT_MS = 5_000;
@@ -51,23 +52,25 @@ async function loadMetadataBytes(
     return { kind: "ok", bytes: hit.bytes };
   }
 
-  let url: string;
+  const fetchOpts = { fetch: deps.fetch, lookup: deps.lookup, timeoutMs: FETCH_TIMEOUT_MS, maxBytes: FETCH_MAX_BYTES };
   if (uri.startsWith("ipfs://")) {
-    url = ipfsToHttps(uri, deps.config.ipfsGateway);
-  } else if (uri.startsWith("https://")) {
-    url = uri;
-  } else {
-    return { kind: "invalid" };
+    // The same content is on every gateway, and public gateways rate-limit, so one refusing is no reason to wait for
+    // the next pass: the configured gateway first, then the public ones the image route also falls back to.
+    const gateways = [...new Set([deps.config.ipfsGateway, ...FALLBACK_GATEWAYS].map(withTrailingSlash))];
+    let lastError = "no gateway";
+    for (const gateway of gateways) {
+      try {
+        return { kind: "ok", bytes: await fetchPublic(ipfsToHttps(uri, gateway), fetchOpts) };
+      } catch (err) {
+        lastError = errMessage(err);
+      }
+    }
+    return { kind: "unreachable", error: lastError };
   }
+  if (!uri.startsWith("https://")) return { kind: "invalid" };
 
   try {
-    const bytes = await fetchPublic(url, {
-      fetch: deps.fetch,
-      lookup: deps.lookup,
-      timeoutMs: FETCH_TIMEOUT_MS,
-      maxBytes: FETCH_MAX_BYTES,
-    });
-    return { kind: "ok", bytes };
+    return { kind: "ok", bytes: await fetchPublic(uri, fetchOpts) };
   } catch (err) {
     // an address this server will not fetch (private host, http, credentials) does not become valid later
     if (err instanceof UrlRefusedError) return { kind: "invalid" };

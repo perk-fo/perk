@@ -470,6 +470,43 @@ describe("metadata resolver robustness", () => {
     }
   });
 
+  test("test_resolver_ipfsFallsBackToAnotherGateway", async () => {
+    await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
+    const meme = "0x0000000000000000000000000000000000000bf1";
+    const cid = "bafkreiaraowk5rh2eupjzfqaqiqlkx46cwxbkmt7klovwdipaosh6znuxq";
+    await insertLaunch(meme, `ipfs://${cid}`, 41);
+    const asked: string[] = [];
+    // the configured gateway is rate-limiting; the next one has the file
+    const fetch: FetchLike = async (input) => {
+      const url = String(input);
+      asked.push(new URL(url).host);
+      if (url.startsWith(config.ipfsGateway)) return new Response("slow down", { status: 429 });
+      return new Response('{"name":"Mole","symbol":"MOLE","image":"https://x.example/i.png"}', { status: 200 });
+    };
+    await resolvePendingMetadata({ db, config, media, fetch, lookup: PUBLIC_DNS });
+    const row = await db<{ metadata_status: string }[]>`
+      select metadata_status from launches where chain_id = ${CHAIN} and meme = ${meme}`;
+    expect(row[0]?.metadata_status).toBe("ok");
+    expect(asked[0]).toBe(new URL(config.ipfsGateway).host);
+    expect(asked.length).toBe(2);
+  });
+
+  test("test_resolver_ipfsEveryGatewayFailingIsUnreachable", async () => {
+    await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
+    const meme = "0x0000000000000000000000000000000000000bf2";
+    await insertLaunch(meme, "ipfs://bafkreiaraowk5rh2eupjzfqaqiqlkx46cwxbkmt7klovwdipaosh6znuxq", 42);
+    let calls = 0;
+    const fetch: FetchLike = async () => {
+      calls++;
+      return new Response("slow down", { status: 429 });
+    };
+    await resolvePendingMetadata({ db, config, media, fetch, lookup: PUBLIC_DNS });
+    const row = await db<{ metadata_status: string }[]>`
+      select metadata_status from launches where chain_id = ${CHAIN} and meme = ${meme}`;
+    expect(row[0]?.metadata_status).toBe("unreachable");
+    expect(calls).toBe(3); // ipfs.io is both the configured gateway and a fallback, and is asked once
+  });
+
   test("test_resolver_refusesPrivateHostsAndDowngrades", async () => {
     await db`update launches set metadata_status = 'ok' where metadata_status in ('pending', 'unreachable')`;
     const internal = "0x0000000000000000000000000000000000000bd1";
