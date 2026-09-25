@@ -2,12 +2,26 @@ import { getAddress, type Address, type Hex } from "viem";
 import type { Allocation } from "./allocations";
 import { buildTree, type LeafTuple } from "./merkle";
 
-export const TOOL_VERSION = "0.1.0";
+export const TOOL_VERSION = "0.2.0";
+
+/** How the native sample blocks were drawn; enough for anyone to recompute them (see twabNative.samplePlan). */
+export interface SamplingRecord {
+  method: string;
+  /** keccak256 of the concatenated hashes of blocks seedFromBlock..seedToBlock. */
+  seed: Hex;
+  seedFromBlock: string;
+  seedToBlock: string;
+  /** Number of strata (= balance samples per account). */
+  strata: number;
+}
 
 /**
  * The public snapshot dataset (PRD 6.2: the dataset is published so anyone can recompute it).
- * All bigints are serialized as decimal strings. Anyone can recompute the root with
+ * All bigints are serialized as decimal strings. Anyone can check it with
  * `bun run src/cli/verify.ts <dataset.json>`.
+ *
+ * Fields added after toolVersion 0.1.0 are optional so older files still parse: `inputs.replayFromBlock`,
+ * `inputs.eligibleTwab`, `inputs.headBlock`, `inputs.sampling`; `excluded` is now filled in.
  */
 export interface SnapshotDataset {
   chainId: number;
@@ -15,7 +29,9 @@ export interface SnapshotDataset {
   quote: Address;
   cutoffBlock: string;
   windowBlocks: string;
+  /** Native quotes: stratum length in blocks (one balance sample per stratum). */
   step: string;
+  /** Accounts that can never receive an allocation (system contracts, the meme and quote, zero, 0xdead). */
   excluded: Address[];
   inputs: {
     basePool: string;
@@ -23,8 +39,17 @@ export interface SnapshotDataset {
     minAllocation: string;
     boostScaled: boolean;
     eligibleAccounts: number;
+    /** First block of the registry scans (opt-ins, referral bindings). */
     fromBlock: string;
     avgBlockTimeMs?: string;
+    /** ERC-20 quotes: first block of the Transfer replay, at or before the quote token's creation block. */
+    replayFromBlock?: string;
+    /** Sum of TWAB over every eligible account, including those later dropped by minAllocation. */
+    eligibleTwab?: string;
+    /** Chain head the snapshot read the campaign at (at least cutoff + the required confirmations). */
+    headBlock?: string;
+    /** Native quotes: the sampling seed and scheme. */
+    sampling?: SamplingRecord;
   };
   allocations: { account: Address; twab: string; base: string; boost: string }[];
   totals: { base: string; boost: string; twab: string; accounts: number };
@@ -47,6 +72,11 @@ export interface BuildDatasetParams {
   eligibleAccounts: number;
   fromBlock: bigint;
   avgBlockTimeMs?: bigint;
+  excluded?: readonly Address[];
+  replayFromBlock?: bigint;
+  eligibleTwab?: bigint;
+  headBlock?: bigint;
+  sampling?: SamplingRecord;
   allocations: readonly Allocation[];
   root: Hex;
   generatedAt?: Date;
@@ -68,7 +98,7 @@ export function buildDataset(p: BuildDatasetParams): SnapshotDataset {
     cutoffBlock: p.cutoffBlock.toString(),
     windowBlocks: p.windowBlocks.toString(),
     step: p.step.toString(),
-    excluded: [],
+    excluded: (p.excluded ?? []).map((a) => getAddress(a)),
     inputs: {
       basePool: p.basePool.toString(),
       referralBudget: p.referralBudget.toString(),
@@ -77,6 +107,10 @@ export function buildDataset(p: BuildDatasetParams): SnapshotDataset {
       eligibleAccounts: p.eligibleAccounts,
       fromBlock: p.fromBlock.toString(),
       ...(p.avgBlockTimeMs !== undefined ? { avgBlockTimeMs: p.avgBlockTimeMs.toString() } : {}),
+      ...(p.replayFromBlock !== undefined ? { replayFromBlock: p.replayFromBlock.toString() } : {}),
+      ...(p.eligibleTwab !== undefined ? { eligibleTwab: p.eligibleTwab.toString() } : {}),
+      ...(p.headBlock !== undefined ? { headBlock: p.headBlock.toString() } : {}),
+      ...(p.sampling !== undefined ? { sampling: p.sampling } : {}),
     },
     allocations: p.allocations.map((a) => ({
       account: getAddress(a.account),
@@ -123,8 +157,10 @@ export function recomputeRoot(dataset: SnapshotDataset): { root: Hex; matches: b
 
 export function parseDataset(json: string): SnapshotDataset {
   const d = JSON.parse(json) as SnapshotDataset;
+  if (!d || typeof d !== "object") throw new Error("dataset is not a JSON object");
   for (const key of ["chainId", "meme", "quote", "cutoffBlock", "allocations", "totals", "root"] as const) {
     if (d[key] === undefined) throw new Error(`dataset is missing "${key}"`);
   }
+  if (d.excluded !== undefined && !Array.isArray(d.excluded)) throw new Error(`dataset "excluded" is not a list`);
   return d;
 }

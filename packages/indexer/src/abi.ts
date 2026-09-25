@@ -12,10 +12,10 @@ export const INVITER_BOUND_EVENT = parseAbiItem(
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 /**
- * LPGrantVault.campaign(meme) returns the full Campaign struct
- * (contracts/src/interfaces/IPerkLPGrantVault.sol `struct Campaign`).
- * The indexer only consumes status / quote / graduatedAtBlock / basePool / referralBudget,
- * but the ABI must describe the whole tuple to decode the response.
+ * LPGrantVault.campaign(meme) returns the Campaign struct (contracts/src/interfaces/IPerkLPGrantVault.sol
+ * `struct Campaign`). This describes its leading fields, through rootTotalInviteeBoost: the ABI decoder reads fields
+ * by position and ignores what follows, and the fields after these (the incentive accounting) differ between vault
+ * versions, so decoding only the prefix works against every deployed version.
  */
 export const CAMPAIGN_ABI = [
   {
@@ -62,9 +62,6 @@ export const CAMPAIGN_ABI = [
           { name: "rootProposedAt", type: "uint64" },
           { name: "rootTotalBase", type: "uint256" },
           { name: "rootTotalInviteeBoost", type: "uint256" },
-          { name: "incentiveBalance", type: "uint256" },
-          { name: "activeLiquidity", type: "uint256" },
-          { name: "accIncentivePerLiquidity", type: "uint256" },
         ],
       },
     ],

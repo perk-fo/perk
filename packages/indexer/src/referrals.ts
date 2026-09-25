@@ -1,6 +1,6 @@
 import { getAddress, toEventSelector, type Address } from "viem";
 import { INVITER_BOUND_EVENT } from "./abi";
-import { fetchLogsPaged, LOG_PAGE_SIZE, type LogFetcher, type RawLog } from "./optin";
+import { fetchLogsPaged, LOG_PAGE_SIZE, type LogFetcher, type PagingOptions, type RawLog } from "./optin";
 
 export const INVITER_BOUND_TOPIC = toEventSelector(INVITER_BOUND_EVENT);
 
@@ -30,8 +30,9 @@ export async function collectReferrals(
   cutoff: bigint,
   fromBlock: bigint = 0n,
   pageSize: bigint = LOG_PAGE_SIZE,
+  paging: PagingOptions = {},
 ): Promise<Map<Address, ReferralBinding>> {
-  const logs = await fetchLogsPaged(fetchRange, fromBlock, cutoff, pageSize);
+  const logs = await fetchLogsPaged(fetchRange, fromBlock, cutoff, pageSize, paging);
   const map = new Map<Address, ReferralBinding>();
   for (const log of logs) {
     if (log.topics[0] !== INVITER_BOUND_TOPIC) continue;
