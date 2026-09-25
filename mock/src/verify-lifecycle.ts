@@ -7,7 +7,7 @@
  */
 import { buildConfig } from "./config";
 import { curveTrade, graduate, launchToken, progressBps, proposeRoot, templateThreshold } from "./actions";
-import { buildSnapshot, readDataset } from "./grants";
+import { publishDataset, readDataset, snapshotJob } from "./grants";
 import { rng } from "./plan";
 
 const log = (msg: string, fields: Record<string, unknown> = {}) =>
@@ -24,6 +24,7 @@ async function main(): Promise<void> {
     quote: "native",
     launchAt: 0,
     tradeAt: [],
+    goalBps: 10_000,
     salt: `0x${(0xc4ec0 + (Date.now() % 100000)).toString(16).padStart(64, "0")}`,
   };
 
@@ -44,7 +45,11 @@ async function main(): Promise<void> {
   await graduate(cfg, meme, (m) => log(m));
   log("graduated", { meme });
 
-  const path = await buildSnapshot(cfg, meme, (m) => log(m));
+  let path: string | null = null;
+  while (!path) {
+    path = snapshotJob(cfg, meme, (m) => log(m));
+    if (!path) await Bun.sleep(5_000);
+  }
   const dataset = readDataset(path);
   log("snapshot", { root: dataset.root, accounts: dataset.totals.accounts, base: dataset.totals.base });
   if (BigInt(dataset.totals.base) === 0n) throw new Error("snapshot produced no eligible allocations");
@@ -53,7 +58,7 @@ async function main(): Promise<void> {
     cfg,
     meme,
     dataset.root,
-    `file://${path}`,
+    await publishDataset(path, meme, (m) => log(m)),
     BigInt(dataset.totals.base),
     BigInt(dataset.totals.boost),
   );

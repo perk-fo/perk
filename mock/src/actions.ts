@@ -21,7 +21,7 @@ import {
   perkMemeTokenAbi,
   poolSwapTestAbi,
   referralRegistryAbi,
-} from "../../../backend/src/generated/abis";
+} from "../../backend/src/generated/abis";
 import type { DriverConfig } from "./config";
 import type { TokenSpec } from "./plan";
 
@@ -298,13 +298,15 @@ export async function curveTrade(
   targetBps: number,
   rand: () => number,
   log: (m: string) => void,
+  /** hold mode: never buy past the target (a holding launch must not drift into graduation); sell when ahead */
+  hold = false,
 ): Promise<void> {
   const quote = quoteAddress(cfg, quoteKey);
   const current = await progressBps(cfg, meme);
   const threshold = await curveThresholdQuote(cfg, meme);
   const behind = targetBps - current;
 
-  if (behind <= 0 && rand() < 0.55) {
+  if (behind <= 0 && (hold || rand() < 0.55)) {
     // ahead of schedule: take a little back off the table so the chart is not a straight line up
     const balance = await cfg.publicClient.readContract({
       address: meme,
@@ -331,6 +333,7 @@ export async function curveTrade(
         return;
       }
     }
+    if (hold) return; // ahead of the goal and nothing to sell: leave it
   }
 
   // buy enough to reach the target, with a little noise and headroom for the curve fee

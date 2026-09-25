@@ -54,7 +54,7 @@ start_one() {
     api)    ( cd "$ROOT/backend"  && exec bun run src/main.ts ) >>"$(logfile api)" 2>&1 & ;;
     # next dev reads PORT too, so give the web app its own and point it at the API
     web)    ( cd "$ROOT/frontend" && PORT="${WEB_PORT:-3000}" NEXT_PUBLIC_API_URL="$PUBLIC_API_URL" exec bun run dev ) >>"$(logfile web)" 2>&1 & ;;
-    driver) ( cd "$ROOT/packages/demo-driver" && exec bun run src/main.ts ) >>"$(logfile driver)" 2>&1 & ;;
+    driver) ( cd "$ROOT/mock" && exec bun run src/main.ts ) >>"$(logfile driver)" 2>&1 & ;;
     *) echo "unknown service: $svc" >&2; return 1 ;;
   esac
   echo $! > "$(pidfile "$svc")"

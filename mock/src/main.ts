@@ -30,7 +30,7 @@ import {
   activateRoot,
   quoteAddress,
 } from "./actions";
-import { buildSnapshot, exitFirstPosition, readDataset, registerAndActivate } from "./grants";
+import { datasetPathFor, exitFirstPosition, publishDataset, readDataset, registerAndActivate, snapshotJob } from "./grants";
 import { uploadTokenMetadata } from "./media";
 
 const TICK_MS = Number(process.env.DRIVER_TICK_MS ?? 15_000);
@@ -74,14 +74,18 @@ function initState(cfg: DriverConfig): DriverState {
   return state;
 }
 
-/** Where a token should be on its way to graduation at time `t`, in basis points. */
+/** Where a token should be at time `t` on its way to its goal (TokenSpec.goalBps), in basis points. */
 function targetProgress(spec: TokenSpec, t: number): number {
+  const goal = spec.goalBps ?? 10_000;
   const start = spec.tradeAt[0] ?? spec.launchAt;
   const end = spec.tradeAt[spec.tradeAt.length - 1] ?? start + DEFAULTS.tradeWindowSeconds;
   if (t <= start) return 0;
-  if (t >= end) return 10_000;
-  return Math.round((10_000 * (t - start)) / (end - start));
+  if (t >= end) return goal;
+  return Math.round((goal * (t - start)) / (end - start));
 }
+
+/** A launch that settled below its threshold trades on the curve about this often, around its goal. */
+const HOLD_TRADE_INTERVAL_S = 25 * 60;
 
 async function stepToken(
   cfg: DriverConfig,
@@ -148,6 +152,13 @@ async function stepToken(
       return true;
     }
     const windowOver = t > (spec.tradeAt[spec.tradeAt.length - 1] ?? 0);
+    if (windowOver && (spec.goalBps ?? 10_000) < 10_000) {
+      // this one was never meant to graduate: from here on it trades around its goal
+      ts.stage = "holding";
+      ts.lastHoldTradeAt = t;
+      log("holding on the curve", { symbol: spec.symbol, meme, goalBps: spec.goalBps });
+      return true;
+    }
     if (windowOver) {
       // the window closed without crossing the threshold: push it over with one more buy
       const trader = cfg.traders[spec.index % cfg.traders.length]!;
@@ -155,6 +166,23 @@ async function stepToken(
       return true;
     }
     return false;
+  }
+
+  // --- holding below the threshold: a two-sided market around the goal ------
+  if (ts.stage === "holding") {
+    const interval = HOLD_TRADE_INTERVAL_S * (0.6 + 0.8 * rand());
+    if ((ts.lastHoldTradeAt ?? 0) + interval > t) return false;
+    const goal = spec.goalBps ?? 10_000;
+    // wander a few percent either side of the goal, never close enough to the threshold to graduate by accident
+    const target = Math.min(9_500, Math.max(500, goal + Math.round((rand() - 0.5) * 800)));
+    const trader = cfg.traders[Math.floor(rand() * cfg.traders.length)]!;
+    try {
+      await curveTrade(cfg, meme, spec.quote, trader, target, rand, (m) => log(m), true);
+    } catch (err) {
+      log("curve trade failed", { meme, error: String(err).slice(0, 200) });
+    }
+    ts.lastHoldTradeAt = now();
+    return true;
   }
 
   // --- post-graduation: keep the pool chart alive ---------------------------
@@ -183,19 +211,40 @@ async function stepToken(
   const status = Number(c.status);
   if (status === 0) return false; // this launch has no campaign (standard template)
 
+  // After a restart that lost the last saved step, follow the chain rather than the file.
+  if (ts.stage === "graduated" && (status === 2 || status === 3)) {
+    ts.stage = status === 2 ? "root_proposed" : "root_active";
+    ts.datasetPath ??= datasetPathFor(cfg, meme);
+    log("stage reconciled from chain", { meme, stage: ts.stage });
+    return true;
+  }
+  if (ts.stage === "root_proposed" && status === 3) {
+    ts.stage = "root_active";
+    return true;
+  }
+
   if (ts.stage === "graduated" && status === 1 /* AWAITING_ROOT */) {
-    const path = await buildSnapshot(cfg, meme, (m) => log(m));
+    let path: string | null;
+    try {
+      path = snapshotJob(cfg, meme, (m) => log(m));
+    } catch (err) {
+      ts.error = String(err).slice(0, 200);
+      log("grant parked: its snapshot keeps failing", { meme, error: ts.error });
+      return true;
+    }
+    if (!path) return false;
     const dataset = readDataset(path);
     if (BigInt(dataset.totals.base) === 0n) {
       ts.error = "no eligible accounts in the snapshot";
       log("grant skipped: empty snapshot", { meme });
       return true;
     }
+    ts.datasetUri ??= await publishDataset(path, meme, (m) => log(m));
     await proposeRoot(
       cfg,
       meme,
       dataset.root,
-      `file://${path}`,
+      ts.datasetUri,
       BigInt(dataset.totals.base),
       BigInt(dataset.totals.boost),
     );
@@ -281,7 +330,7 @@ async function stepToken(
 let cachedVaultConfig: { rootDelaySeconds: bigint; rootDeadlineSeconds: bigint } | null = null;
 async function vaultConfig(cfg: DriverConfig) {
   if (cachedVaultConfig) return cachedVaultConfig;
-  const { lpGrantVaultAbi } = await import("../../../backend/src/generated/abis");
+  const { lpGrantVaultAbi } = await import("../../backend/src/generated/abis");
   const c = await cfg.publicClient.readContract({
     address: cfg.deployment.lpGrantVault,
     abi: lpGrantVaultAbi,

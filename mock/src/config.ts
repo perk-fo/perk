@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** How many trader wallets take the other side of the curve. */
 export const TRADER_COUNT = 4;
@@ -60,7 +60,8 @@ export function buildConfig() {
   const rpcUrl = requireEnv("RPC_URL");
   const chain = { ...xlayerTestnet, id: chainId };
 
-  const transport = http(rpcUrl, { batch: true });
+  // the public X Layer RPC refuses JSON-RPC batches of more than 10 calls
+  const transport = http(rpcUrl, { batch: { batchSize: 10, wait: 10 }, retryCount: 5 });
   const publicClient = createPublicClient({ chain, transport });
 
   // The deployer funds everyone else. Grant roots are published by the separate publisher key below.

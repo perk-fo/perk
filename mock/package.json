@@ -1,8 +1,8 @@
 {
-  "name": "@perk/demo-driver",
+  "name": "@perk/mock",
   "version": "0.1.0",
   "private": true,
-  "description": "Testnet content driver: launches tokens on a schedule, trades them to graduation, then walks each campaign through the grant cadence",
+  "description": "MOCK DATA: simulated testnet activity. Launches tokens on a schedule, trades them, graduates some and runs their LP Grant campaigns, so the app always has a living market to explore.",
   "type": "module",
   "scripts": {
     "start": "bun run src/main.ts",

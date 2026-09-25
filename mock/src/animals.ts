@@ -61,7 +61,7 @@ class Canvas {
   }
 }
 
-type Ears = "round" | "pointy" | "long" | "none" | "antennae" | "tuft" | "horns";
+type Ears = "round" | "pointy" | "long" | "none" | "antennae" | "tuft" | "horns" | "bunny" | "floppy";
 interface Face {
   bg: string;
   head: string;
@@ -76,6 +76,12 @@ interface Face {
   face?: string;
   /** frog-style eyes on top of the head */
   bulgeEyes?: boolean;
+  /** ears in their own colour (panda, puppy) */
+  earColor?: string;
+  /** dark patches around the eyes (panda) */
+  patches?: string;
+  /** a mane behind the head (lion) */
+  mane?: string;
 }
 
 const INK = "#1C1C1C";
@@ -102,6 +108,26 @@ const FACES: Record<string, Face> = {
   quail: { bg: "#FFF1C9", head: "#B98B5E", ears: "tuft", beak: "#3A2A1C" },
   bison: { bg: "#FFE3D6", head: "#6E4B32", ears: "horns", inner: "#EDE3D0", muzzle: "#9C7358", nose: "#2A1C12" },
   puffin: { bg: "#E0F2FF", head: "#2E3140", ears: "none", face: "#F7F6F2", beak: "#FF822D" },
+  panda: { bg: "#E6F7D9", head: "#FAFAF6", ears: "round", earColor: "#2E2E2E", patches: "#2E2E2E", muzzle: "#FFFFFF", nose: INK },
+  fox: { bg: "#FFF1C9", head: "#FF8A3D", ears: "pointy", inner: "#FFF1E6", muzzle: "#FFF7EC", nose: INK },
+  bunny: { bg: "#FFE9EF", head: "#F2EDE8", ears: "bunny", inner: "#F6C9C9", muzzle: "#FFFFFF", nose: "#E0708C" },
+  bear: { bg: "#FFF5E6", head: "#9C6B45", ears: "round", inner: "#C99A73", muzzle: "#E8D2BC", nose: "#3B2A1C" },
+  duck: { bg: "#E0F2FF", head: "#FCD53F", ears: "tuft", beak: "#FF822D" },
+  seal: { bg: "#E0F2FF", head: "#9FA8B5", ears: "none", muzzle: "#D5DAE2", nose: INK },
+  koala: { bg: "#E8F1FF", head: "#A7A9B4", ears: "round", inner: "#F2F2F5", muzzle: "#C7C9D1", nose: "#3A3D4A" },
+  hamster: { bg: "#FFF1C9", head: "#E8B27A", ears: "round", inner: "#F6C9C9", muzzle: "#FFF7EC", nose: "#E0708C" },
+  kitten: { bg: "#EFE8FF", head: "#B7B7C2", ears: "pointy", inner: "#F6C9C9", muzzle: "#F2F2F5", nose: "#E0708C" },
+  pig: { bg: "#FFE9EF", head: "#FFB0C8", ears: "pointy", inner: "#FF8FB0", muzzle: "#FF8FB0", nose: "#E0708C" },
+  pup: { bg: "#FFF5E6", head: "#D9A066", ears: "floppy", earColor: "#8A5A34", muzzle: "#FFF1E0", nose: INK },
+  owl: { bg: "#EFE8FF", head: "#9C7352", ears: "pointy", inner: "#C7A383", face: "#F2E3CF", beak: "#FCD53F" },
+  penguin: { bg: "#E0F2FF", head: "#2E3140", ears: "none", face: "#F7F6F2", beak: "#FF9A3D" },
+  hedgehog: { bg: "#FFF5E6", head: "#8E6E52", ears: "round", inner: "#E7C9A8", muzzle: "#F2DCC2", nose: INK },
+  tiger: { bg: "#FFF1C9", head: "#FF9A3D", ears: "round", inner: "#FFF1E6", stripe: "#2E2E2E", muzzle: "#FFF7EC", nose: "#E0708C" },
+  lion: { bg: "#FFF1C9", head: "#F2C27A", mane: "#C9782E", ears: "round", inner: "#FBEBD5", muzzle: "#FBEBD5", nose: "#6B3F1F" },
+  monkey: { bg: "#E6F7D9", head: "#8C5E3C", ears: "round", inner: "#E8C9A0", face: "#E8C9A0", nose: "#5A3A24" },
+  turtle: { bg: "#E6F7D9", head: "#8FD17A", ears: "none", muzzle: "#BDE8AE" },
+  squirrel: { bg: "#FFF5E6", head: "#C9783A", ears: "pointy", inner: "#F6D9B4", muzzle: "#FBEBD5", nose: INK },
+  deer: { bg: "#FFF1C9", head: "#C99A63", ears: "horns", inner: "#8A5A34", muzzle: "#F4E1C6", nose: INK },
   chick: { bg: "#FFF1C9", head: "#FCD53F", ears: "tuft", beak: "#FF822D" },
 };
 
@@ -120,10 +146,19 @@ export function drawAnimal(name: string, size = 192): Uint8Array {
   const head = hex(f.head);
 
   c.fill(circle(S(128), S(128), S(112)), [255, 255, 255], 0.35);
+  if (f.mane) c.fill(circle(S(128), S(136), S(116)), hex(f.mane));
+  const ear = f.earColor ? hex(f.earColor) : head;
   // ears behind the head
-  if (f.ears === "round") {
+  if (f.ears === "bunny") {
+    c.fill(ellipse(S(96), S(52), S(19), S(54), -0.16), ear);
+    c.fill(ellipse(S(160), S(52), S(19), S(54), 0.16), ear);
+    if (f.inner) {
+      c.fill(ellipse(S(96), S(56), S(9), S(40), -0.16), hex(f.inner));
+      c.fill(ellipse(S(160), S(56), S(9), S(40), 0.16), hex(f.inner));
+    }
+  } else if (f.ears === "round") {
     for (const x of [68, 188]) {
-      c.fill(circle(S(x), S(70), S(34)), head);
+      c.fill(circle(S(x), S(70), S(34)), ear);
       if (f.inner) c.fill(circle(S(x), S(72), S(19)), hex(f.inner));
     }
   } else if (f.ears === "pointy" || f.ears === "long") {
@@ -152,6 +187,15 @@ export function drawAnimal(name: string, size = 192): Uint8Array {
   if (f.face) c.fill(ellipse(S(128), S(150), S(66), S(58)), hex(f.face));
   if (f.stripe) c.fill(ellipse(S(128), S(98), S(15), S(60)), hex(f.stripe));
   if (f.mask) c.fill(ellipse(S(128), S(130), S(80), S(24)), hex(f.mask));
+  if (f.patches) {
+    c.fill(ellipse(S(90), S(130), S(24), S(30), 0.5), hex(f.patches));
+    c.fill(ellipse(S(166), S(130), S(24), S(30), -0.5), hex(f.patches));
+  }
+  // floppy ears hang over the sides of the head
+  if (f.ears === "floppy") {
+    c.fill(ellipse(S(50), S(132), S(24), S(50), 0.3), ear);
+    c.fill(ellipse(S(206), S(132), S(24), S(50), -0.3), ear);
+  }
 
   // eyes
   const eyeY = f.bulgeEyes ? 78 : 128;

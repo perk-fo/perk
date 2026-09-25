@@ -10,6 +10,8 @@ export type Stage =
   | "planned"
   | "launched"
   | "trading"
+  /** settled below the threshold (TokenSpec.goalBps < 10_000); keeps trading on the curve around its goal */
+  | "holding"
   | "graduated"
   | "root_proposed"
   | "root_active"
@@ -26,10 +28,14 @@ export interface TokenState {
   tradesDone: number[];
   /** post-graduation pool swaps, unix seconds of the last one */
   lastPoolSwapAt?: number;
+  /** curve trades while holding, unix seconds of the last one */
+  lastHoldTradeAt?: number;
   rootProposedAt?: number;
   rootActivatedAt?: number;
   grantEndsAt?: number;
   datasetPath?: string;
+  /** where the dataset was published (ipfs://…), proposed with the root */
+  datasetUri?: string;
   participantsActivated?: string[];
   exitsDone?: string[];
   /** set when an action failed hard enough to stop retrying this token */
