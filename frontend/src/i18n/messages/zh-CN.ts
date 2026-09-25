@@ -75,6 +75,7 @@ const messages: Record<string, string> = {
   "errors.name.SlippageExceeded": "价格变动超过滑点设置，请调高滑点或重试",
   "errors.name.PriceUnstable": "池子价格刚刚剧烈波动。新的 Grant 仓位要等价格稳定后才能开仓，请几分钟后再试。退出从不受限。",
   "errors.name.InsufficientInventory": "本活动的共享额度库存只剩 {remaining} 枚代币。请调低数量后重试。",
+  "errors.name.ConfigHashMismatch": "发行预览已与当前设置不一致。请稍等预览刷新后再发行。",
   "errors.name.WindowClosed": "窗口期已结束",
   "errors.name.ZeroAmount": "数量不能为 0",
   "errors.name.ERC20InsufficientBalance": "余额不足",

@@ -73,6 +73,7 @@ const messages: Record<string, string> = {
   "errors.name.SlippageExceeded": "Price moved beyond your slippage; raise it or retry",
   "errors.name.PriceUnstable": "The pool price just moved sharply. New grant positions open only once the price has settled; try again in a few minutes. Exits are never blocked.",
   "errors.name.InsufficientInventory": "Only {remaining} tokens are left in this campaign's shared inventory. Lower the amount and try again.",
+  "errors.name.ConfigHashMismatch": "The launch preview no longer matches. Wait a moment for the preview to refresh, then launch again.",
   "errors.name.WindowClosed": "The window has closed",
   "errors.name.ZeroAmount": "Amount must be greater than zero",
   "errors.name.ERC20InsufficientBalance": "Insufficient balance",

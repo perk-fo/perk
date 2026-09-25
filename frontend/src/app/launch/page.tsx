@@ -148,8 +148,11 @@ export default function CreatePage() {
     abi: launchFactoryAbi,
     functionName: "previewLaunch",
     args: params ? [params] : undefined,
+    // The factory previews for msg.sender: the config hash commits to the creator, so the read must come from the
+    // wallet that will send createLaunch, or the launch reverts ConfigHashMismatch.
+    account: address,
     query: {
-      enabled: !!deployment && !!params && isConnected && !!name.trim() && !!symbol.trim(),
+      enabled: !!deployment && !!params && isConnected && !!address && !!name.trim() && !!symbol.trim(),
       retry: false,
     },
   });

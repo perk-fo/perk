@@ -73,6 +73,7 @@ const messages: Record<string, string> = {
   "errors.name.SlippageExceeded": "価格がスリッページ設定を超えて動きました",
   "errors.name.PriceUnstable": "プール価格が急変した直後です。新しい Grant ポジションは価格が落ち着いてから開始できます。数分後にもう一度お試しください。退出が妨げられることはありません。",
   "errors.name.InsufficientInventory": "このキャンペーンの共有在庫は残り {remaining} 枚です。量を減らしてもう一度お試しください。",
+  "errors.name.ConfigHashMismatch": "ローンチのプレビューが現在の設定と一致しません。プレビューが更新されるのを少し待ってから、もう一度ローンチしてください。",
   "errors.name.WindowClosed": "期間が終了しています",
   "errors.name.ZeroAmount": "数量は 0 より大きくしてください",
   "errors.name.ERC20InsufficientBalance": "残高不足です",
