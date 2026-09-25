@@ -141,6 +141,8 @@ contract TemplateRegistry is IPerkTemplateRegistry, Ownable2Step {
         ) {
             revert InvalidTemplate("ticks");
         }
+        // GraduationManager only implements BURN; a template it cannot graduate must never be registered.
+        if (t.pool.leftoverPolicy != PerkTypes.LeftoverPolicy.BURN) revert InvalidTemplate("leftover policy");
         if (t.minEligibleBalance == 0) revert InvalidTemplate("min eligible");
         if (t.hookVersion == 0) revert InvalidTemplate("hook version");
     }

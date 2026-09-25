@@ -99,12 +99,19 @@ contract LaunchFactory is IPerkLaunchFactory, Ownable2Step, ReentrancyGuard {
     /// @inheritdoc IPerkLaunchFactory
     uint256 public override pausedFlags;
 
+    /// @inheritdoc IPerkLaunchFactory
+    uint64 public override graduationResumedAt;
+
     /// @notice Accepts native quote refunded by the curve on a graduating dev buy.
     receive() external payable {}
 
     /// @inheritdoc IPerkLaunchFactory
     function setPaused(uint256 flags) external override onlyOwner {
         if (flags & ~PerkConstants.PAUSE_ALL != 0) revert UnknownPauseArea(flags);
+        if (pausedFlags & PerkConstants.PAUSE_GRADUATION != 0 && flags & PerkConstants.PAUSE_GRADUATION == 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            graduationResumedAt = uint64(block.timestamp);
+        }
         pausedFlags = flags;
         emit PauseUpdated(flags);
     }

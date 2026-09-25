@@ -175,6 +175,9 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         if (c.status != CampaignStatus.AWAITING_ROOT && c.status != CampaignStatus.ROOT_PROPOSED) {
             revert InvalidStatus(c.status);
         }
+        // Measured from graduation, so re-proposing restarts the review of the new root but never the deadline.
+        uint64 deadline = _rootDeadline(c);
+        if (block.timestamp > deadline) revert RootDeadlinePassed(deadline);
         if (totalBase > c.basePool || totalInviteeBoost > c.referralBudget) revert RootBudgetExceeded();
         c.status = CampaignStatus.ROOT_PROPOSED;
         c.root = root;
@@ -217,19 +220,46 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     }
 
     /// @inheritdoc IPerkLPGrantVault
+    /// @dev A pending root blocks this: it was proposed before the deadline and becomes activatable after its delay,
+    ///      so activation and cancellation never compete for the same moment.
     function cancelCampaign(address meme) external nonReentrant {
         Campaign storage c = _campaigns[meme];
-        if (c.status != CampaignStatus.AWAITING_ROOT && c.status != CampaignStatus.ROOT_PROPOSED) {
-            revert InvalidStatus(c.status);
-        }
-        uint64 deadline = c.graduatedAt + _config.rootDeadlineSeconds;
+        if (c.status != CampaignStatus.AWAITING_ROOT) revert InvalidStatus(c.status);
+        uint64 deadline = _rootDeadline(c);
         if (block.timestamp <= deadline) revert RootDeadlineNotReached(deadline);
+        _burnReserve(meme, c, "CANCELLED");
+    }
+
+    /// @inheritdoc IPerkLPGrantVault
+    /// @dev A rescued launch never reaches `initCampaign`, so without this its reserve would sit here for good. The
+    ///      burn changes no holder's refund: GraduationManager already leaves this vault's balance out of the supply
+    ///      that shares the refund, and burning it lowers that balance and the total supply alike.
+    function burnRefundedReserve(address meme) external nonReentrant returns (uint256 burned) {
+        if (IPerkLaunchFactory(factory).getLaunch(meme).status != PerkTypes.LaunchStatus.REFUNDING) {
+            revert LaunchNotRefunding();
+        }
+        Campaign storage c = _campaigns[meme];
+        if (c.status != CampaignStatus.NONE) revert InvalidStatus(c.status);
+        burned = _burnReserve(meme, c, "REFUNDED");
+    }
+
+    /// @dev Cancels the campaign and burns everything the vault holds of `meme`, which is that launch's reserve.
+    function _burnReserve(address meme, Campaign storage c, bytes32 reason) private returns (uint256 amount) {
         c.status = CampaignStatus.CANCELLED;
-        uint256 amount = IERC20(meme).balanceOf(address(this));
+        amount = _burnHeld(meme, c, reason);
+        emit CampaignCancelled(meme, amount);
+    }
+
+    /// @dev Burns the vault's whole balance of `meme`: reserve meme that never became a position.
+    function _burnHeld(address meme, Campaign storage c, bytes32 reason) private returns (uint256 amount) {
+        amount = IERC20(meme).balanceOf(address(this));
         c.burned += amount;
         if (amount > 0) IPerkMemeToken(meme).burn(amount);
-        emit GrantMemeBurned(meme, amount, "CANCELLED");
-        emit CampaignCancelled(meme, amount);
+        emit GrantMemeBurned(meme, amount, reason);
+    }
+
+    function _rootDeadline(Campaign storage c) private view returns (uint64) {
+        return c.graduatedAt + _config.rootDeadlineSeconds;
     }
 
     /// @inheritdoc IPerkLPGrantVault
@@ -238,10 +268,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         if (c.status != CampaignStatus.ACTIVE) revert InvalidStatus(c.status);
         if (block.timestamp < c.endTime) revert WindowClosed();
         c.status = CampaignStatus.EXPIRED;
-        unactivatedMemeBurned = IERC20(meme).balanceOf(address(this));
-        c.burned += unactivatedMemeBurned;
-        if (unactivatedMemeBurned > 0) IPerkMemeToken(meme).burn(unactivatedMemeBurned);
-        emit GrantMemeBurned(meme, unactivatedMemeBurned, "EXPIRED");
+        unactivatedMemeBurned = _burnHeld(meme, c, "EXPIRED");
         emit GrantFinalized(meme, unactivatedMemeBurned);
     }
 
@@ -263,12 +290,17 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     /// @inheritdoc IPerkLPGrantVault
     function registerAllocation(address meme, GrantLeaf calldata leaf, bytes32[] calldata proof) external {
         Campaign storage c = _campaigns[meme];
-        if (c.status != CampaignStatus.ROOT_PROPOSED && c.status != CampaignStatus.ACTIVE) {
-            revert InvalidStatus(c.status);
-        }
+        // Only the active root: it can no longer be cancelled or replaced, so a registration can never outlive it.
+        if (c.status != CampaignStatus.ACTIVE) revert InvalidStatus(c.status);
         Allocation storage a = _allocations[meme][leaf.account];
         if (a.registered) revert AlreadyRegistered();
         if (!MerkleProof.verifyCalldata(proof, c.root, leafHash(leaf))) revert InvalidProof();
+        // A tree whose leaves add up to more than it declared cannot hand out more than it declared.
+        uint256 registeredBase = c.registeredBase + leaf.baseAllocation;
+        uint256 registeredBoost = c.registeredInviteeBoost + leaf.inviteeBoost;
+        if (registeredBase > c.rootTotalBase || registeredBoost > c.rootTotalInviteeBoost) revert RootBudgetExceeded();
+        c.registeredBase = registeredBase;
+        c.registeredInviteeBoost = registeredBoost;
         a.registered = true;
         a.baseAllocation = leaf.baseAllocation;
         a.inviteeBoost = leaf.inviteeBoost;
@@ -329,7 +361,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         // of the quote and then sells it to the attacker on the way back up.
         _requireStablePrice(c);
 
-        _consumeAllocation(meme, c, baseAmount, boostAmount, creditAmount);
+        _consumeAllocation(meme, baseAmount, boostAmount, creditAmount);
 
         (uint256 quoteNeeded, uint128 liquidity) = quoteRequired(meme, total);
         if (liquidity == 0 || liquidity < minLiquidity) revert InsufficientLiquidity();
@@ -341,6 +373,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         if (quoteMax > quoteUsed) c.quote.transfer(msg.sender, quoteMax - quoteUsed);
 
         c.activeLiquidity += liquidity;
+        c.activeLiquidityTime += uint256(liquidity) * (block.timestamp - c.startTime);
         c.totalActivated += memeUsed;
 
         positionId = _positions.length;
@@ -362,8 +395,8 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
                 // forge-lint: disable-next-line(unsafe-typecast)
                 activatedAt: uint64(block.timestamp),
                 entrySqrtPriceX96: _sqrtPrice(c),
-                incentiveDebt: Math.mulDiv(liquidity, c.accIncentivePerLiquidity, PRECISION),
-                incentiveSettled: 0,
+                incentiveCheckpoint: c.accIncentivePerLiquiditySecond,
+                incentiveTimeCheckpoint: c.accIncentiveTimePerLiquiditySecond,
                 exited: false
             })
         );
@@ -395,13 +428,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         }
     }
 
-    function _consumeAllocation(
-        address meme,
-        Campaign storage c,
-        uint256 baseAmount,
-        uint256 boostAmount,
-        uint256 creditAmount
-    ) private {
+    function _consumeAllocation(address meme, uint256 baseAmount, uint256 boostAmount, uint256 creditAmount) private {
         Allocation storage a = _allocations[meme][msg.sender];
         if (baseAmount > 0 || boostAmount > 0) {
             if (!a.registered) revert NotRegistered();
@@ -421,7 +448,6 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
             if (creditAmount > a.inviterCreditEarned - a.inviterCreditActivated) revert ExceedsClaimable();
             a.inviterCreditActivated += creditAmount;
         }
-        c; // silence unused warning in case of future use
     }
 
     /// @dev PRD 6.4: only actually activated base allocation of a bound invitee earns the inviter a credit.
@@ -457,7 +483,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         GrantPosition storage p = _positions[positionId];
         if (p.exited) revert AlreadyExited();
         (quoteFeesPaid, memeFeesPaid) = _collect(p);
-        incentivePaid = _payIncentive(p);
+        incentivePaid = _payIncentive(_campaigns[p.meme], p);
         emit GrantFeesCollected(positionId, quoteFeesPaid, memeFeesPaid, incentivePaid);
     }
 
@@ -470,22 +496,21 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         GrantPosition storage p = _positions[positionId];
         if (msg.sender != p.beneficiary) revert NotBeneficiary();
         if (p.exited) revert AlreadyExited();
-        uint64 exitableAt = p.activatedAt + _campaigns[p.meme].minLpSeconds;
+        Campaign storage c = _campaigns[p.meme];
+        uint64 exitableAt = p.activatedAt + c.minLpSeconds;
         if (block.timestamp < exitableAt) revert MinLpNotElapsed(exitableAt);
 
-        // The settlement below is indifferent to the exit price, but the excess it routes to the incentive pool is
-        // not: a price pumped for the occasion turns the attacker's own swaps into "excess" that a second position
-        // of theirs collects.
-        _requireStablePrice(_campaigns[p.meme]);
+        // Never refused on price. The settlement below is indifferent to the exit price; the excess it recycles to
+        // the incentive pool is not, so _routeExcess measures that at the hook's reference price instead.
 
         // fees first so principal and fees are accounted separately (PRD 6.8); both sides go to the beneficiary
         (uint256 quoteFees, uint256 memeFees) = _collect(p);
         emit GrantFeesCollected(positionId, quoteFees, memeFees, 0);
 
-        Campaign storage c = _campaigns[p.meme];
         (uint256 memeOut, uint256 quoteOut) = _burnPosition(p);
         p.exited = true;
         c.activeLiquidity -= p.liquidity;
+        c.activeLiquidityTime -= uint256(p.liquidity) * (p.activatedAt - c.startTime);
 
         // ADR-008 §5: the beneficiary is owed their quote deposit. Quote pays it first; grant meme covers whatever
         // the position's quote side no longer can, converted at the geometric mean of the entry and exit prices.
@@ -512,8 +537,8 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         if (memeBurned > 0) IPerkMemeToken(p.meme).burn(memeBurned);
         emit GrantMemeBurned(p.meme, memeBurned, "EXIT");
 
-        uint256 incentivePaid = _payIncentive(p);
-        _routeExcess(p.meme, c, excessQuote);
+        uint256 incentivePaid = _payIncentive(c, p);
+        _routeExcess(c, p, excessQuote);
         if (quoteToUser > 0) p.quote.transfer(p.beneficiary, quoteToUser);
         if (memeToUser > 0) IERC20(p.meme).safeTransfer(p.beneficiary, memeToUser);
 
@@ -521,7 +546,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
     }
 
     /// @dev Reverts while the pool price is away from the hook's rate-limited reference, i.e. while it is a price
-    ///      that has not yet held long enough to be believed.
+    ///      that has not yet held long enough to be believed. Guards activation only: exits never wait on it.
     function _requireStablePrice(Campaign storage c) private view {
         (int24 spotTick, int24 referenceTick) = IPerkComposableHook(address(c.key.hooks)).referencePrice(c.poolId);
         int256 gap = int256(spotTick) - int256(referenceTick);
@@ -549,40 +574,78 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         return Math.mulDiv(Math.mulDiv(quoteAmount, sqrtEntry, Q96), sqrtExit, Q96);
     }
 
-    /// @dev ADR-008: exit excess is recycled to grant liquidity that is still working; the rest (or all of it once
-    ///      nobody is left) goes to the Community Treasury.
-    function _routeExcess(address meme, Campaign storage c, uint256 excess) private {
+    /// @dev ADR-008: exit excess is recycled to the grant liquidity still working, shared by the liquidity-seconds
+    ///      each remaining position has accrued since its activation; the rest (all of it when no liquidity-seconds
+    ///      remain) goes to the Community Treasury.
+    ///
+    ///      Only excess the position would also hold at the hook's reference price is recycled. The excess at spot is
+    ///      the exiting LP's to inflate: pumping the price before exiting turns their own swaps into "excess" that a
+    ///      second position of theirs would collect. Once the price has moved off the reference, the part of the
+    ///      excess the move created goes to the treasury, where it pays nobody.
+    ///
+    ///      Per exit, position i earns toPool * L_i * (t - a_i) / W with W = sum_j L_j * (t - a_j), times measured
+    ///      from startTime. That is L_i * (t * r) - L_i * a_i * r with r = toPool / W, so two accumulators (the sums
+    ///      of r and of t * r) settle every position without iterating over them.
+    function _routeExcess(Campaign storage c, GrantPosition storage p, uint256 excess) private {
         if (excess == 0) return;
-        uint256 toPool = (excess * _config.excessToIncentiveBps) / PerkConstants.BPS;
-        if (c.activeLiquidity == 0) toPool = 0;
-        uint256 toTreasury = excess - toPool;
-        if (toPool > 0) {
-            c.incentiveBalance += toPool;
-            c.accIncentivePerLiquidity += Math.mulDiv(toPool, PRECISION, c.activeLiquidity);
+        uint256 toPool = 0;
+        uint256 elapsed = block.timestamp - c.startTime;
+        uint256 liquiditySeconds = c.activeLiquidity * elapsed - c.activeLiquidityTime;
+        if (liquiditySeconds != 0) {
+            (int24 spotTick, int24 referenceTick) = IPerkComposableHook(address(c.key.hooks)).referencePrice(c.poolId);
+            uint256 eligible = spotTick == referenceTick ? excess : _excessAtTick(c, p, referenceTick);
+            if (eligible > excess) eligible = excess;
+            toPool = (eligible * _config.excessToIncentiveBps) / PerkConstants.BPS;
+            if (toPool != 0) {
+                c.incentiveBalance += toPool;
+                c.accIncentivePerLiquiditySecond += Math.mulDiv(toPool, PRECISION, liquiditySeconds);
+                c.accIncentiveTimePerLiquiditySecond += Math.mulDiv(toPool, elapsed * PRECISION, liquiditySeconds);
+            }
         }
-        if (toTreasury > 0) _depositTreasury(meme, c.quote, toTreasury);
-        emit ExcessQuoteRouted(meme, toPool, toTreasury);
+        uint256 toTreasury = excess - toPool;
+        if (toTreasury > 0) _depositTreasury(p.meme, c.quote, toTreasury);
+        emit ExcessQuoteRouted(p.meme, toPool, toTreasury);
     }
 
-    function _payIncentive(GrantPosition storage p) private returns (uint256 paid) {
-        Campaign storage c = _campaigns[p.meme];
-        uint256 accrued = Math.mulDiv(p.liquidity, c.accIncentivePerLiquidity, PRECISION);
-        uint256 pending = p.incentiveSettled + (accrued > p.incentiveDebt ? accrued - p.incentiveDebt : 0);
-        p.incentiveDebt = accrued;
-        p.incentiveSettled = 0;
-        if (pending == 0) return 0;
-        if (pending > c.incentiveBalance) pending = c.incentiveBalance; // rounding guard
-        c.incentiveBalance -= pending;
-        p.quote.transfer(p.beneficiary, pending);
-        return pending;
+    /// @dev Quote the position's liquidity would hold anywhere inside `tick`, at the least (the tick's lower edge when
+    ///      quote is currency1, its upper edge when quote is currency0), above the position's deposit.
+    function _excessAtTick(Campaign storage c, GrantPosition storage p, int24 tick) private view returns (uint256) {
+        if (!c.memeIsCurrency0) ++tick; // tick < MAX_TICK: it is a pool tick
+        if (tick < c.tickLower) tick = c.tickLower;
+        else if (tick > c.tickUpper) tick = c.tickUpper;
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(c.tickLower);
+        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(c.tickUpper);
+        uint160 sqrtP = TickMath.getSqrtPriceAtTick(tick);
+        uint256 quoteAt = c.memeIsCurrency0
+            ? SqrtPriceMath.getAmount1Delta(sqrtLower, sqrtP, p.liquidity, false)
+            : SqrtPriceMath.getAmount0Delta(sqrtP, sqrtUpper, p.liquidity, false);
+        return quoteAt > p.quoteDeposited ? quoteAt - p.quoteDeposited : 0;
+    }
+
+    /// @dev Incentive accrued since the position's checkpoint. Every exit counted here came no earlier than the
+    ///      position's activation a, and each term of the time-weighted sum is rounded down from t * r >= a * r, so
+    ///      the subtraction cannot underflow.
+    function _pendingIncentive(Campaign storage c, GrantPosition storage p) private view returns (uint256) {
+        uint256 perSecond = c.accIncentivePerLiquiditySecond - p.incentiveCheckpoint;
+        uint256 timeWeighted = c.accIncentiveTimePerLiquiditySecond - p.incentiveTimeCheckpoint;
+        return Math.mulDiv(p.liquidity, timeWeighted - uint256(p.activatedAt - c.startTime) * perSecond, PRECISION);
+    }
+
+    function _payIncentive(Campaign storage c, GrantPosition storage p) private returns (uint256 paid) {
+        paid = _pendingIncentive(c, p);
+        p.incentiveCheckpoint = c.accIncentivePerLiquiditySecond;
+        p.incentiveTimeCheckpoint = c.accIncentiveTimePerLiquiditySecond;
+        if (paid == 0) return 0;
+        if (paid > c.incentiveBalance) paid = c.incentiveBalance; // rounding guard
+        c.incentiveBalance -= paid;
+        p.quote.transfer(p.beneficiary, paid);
     }
 
     /// @inheritdoc IPerkLPGrantVault
     function pendingIncentive(uint256 positionId) external view returns (uint256) {
         GrantPosition storage p = _positions[positionId];
-        Campaign storage c = _campaigns[p.meme];
-        uint256 accrued = Math.mulDiv(p.liquidity, c.accIncentivePerLiquidity, PRECISION);
-        return p.incentiveSettled + (accrued > p.incentiveDebt ? accrued - p.incentiveDebt : 0);
+        if (p.exited) return 0;
+        return _pendingIncentive(_campaigns[p.meme], p);
     }
 
     // ---------------------------------------------------------------------
@@ -630,7 +693,7 @@ contract LPGrantVault is IPerkLPGrantVault, Ownable2Step, ReentrancyGuard, IERC7
         quoteUsed = quoteBefore - c.quote.balanceOfSelf();
     }
 
-    /// @dev Collects accrued fees only (decrease by 0). Quote fees go to the beneficiary, meme fees are burned.
+    /// @dev Collects accrued fees only (decrease by 0). Both sides, quote and meme, go to the beneficiary.
     function _collect(GrantPosition storage p) private returns (uint256 quoteFees, uint256 memeFees) {
         Campaign storage c = _campaigns[p.meme];
         bytes memory actions = abi.encodePacked(_actionByte(Actions.DECREASE_LIQUIDITY), _actionByte(Actions.TAKE_PAIR));

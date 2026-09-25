@@ -39,7 +39,9 @@ library PerkConstants {
     // claims, refunds, pool swaps) can be paused: a pause may stop new money coming in, never lock anyone in.
     uint256 internal constant PAUSE_LAUNCH = 1 << 0; // LaunchFactory.createLaunch
     uint256 internal constant PAUSE_BUY = 1 << 1; // BondingCurve.buy
-    uint256 internal constant PAUSE_GRADUATION = 1 << 2; // GraduationManager.graduate
+    // GraduationManager.graduate, and executeRescue with it: a pause holds a pending launch where it is, it can never
+    // push one into refunds (see IPerkGraduationManager).
+    uint256 internal constant PAUSE_GRADUATION = 1 << 2;
     uint256 internal constant PAUSE_GRANT_JOIN = 1 << 3; // LPGrantVault.activateGrant
     uint256 internal constant PAUSE_ALL = PAUSE_LAUNCH | PAUSE_BUY | PAUSE_GRADUATION | PAUSE_GRANT_JOIN;
 }

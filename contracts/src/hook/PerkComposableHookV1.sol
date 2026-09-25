@@ -173,7 +173,12 @@ contract PerkComposableHookV1 is IPerkComposableHook {
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IHooks
-    /// @dev Takes the hook fee when the quote is the *specified* currency: exact-in buy, exact-out sell.
+    /// @dev Takes the hook fee when the quote is the *specified* currency: exact-in buy, exact-out sell. The fee is
+    ///      `|amountSpecified| * hookFeeBps / BPS`, fixed here before the swap runs, so a `sqrtPriceLimitX96` that
+    ///      stops the swap early still pays the fee on the whole specified amount, including the part that was never
+    ///      filled. Routers should size an exact-input buy to the quote they mean to spend rather than rely on a
+    ///      binding price limit. The fee is also `take`n from the PoolManager before the swapper settles, so such a
+    ///      swap reverts when the fee exceeds the PoolManager's current balance of the quote.
     function beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         external
         onlyPoolManager

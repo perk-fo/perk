@@ -15,11 +15,13 @@ import {SwapParams} from "v4-core/src/types/PoolOperation.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {Deployers} from "v4-core/test/utils/Deployers.sol";
 import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
+import {SlippageCheck} from "v4-periphery/src/libraries/SlippageCheck.sol";
 
 import {InitialLpLocker} from "../../src/graduation/InitialLpLocker.sol";
 import {IPerkGraduationManager} from "../../src/interfaces/IPerkGraduationManager.sol";
 import {IPerkComposableHook} from "../../src/interfaces/IPerkComposableHook.sol";
 import {IPerkBondingCurve} from "../../src/interfaces/IPerkBondingCurve.sol";
+import {IPerkLPGrantVault} from "../../src/interfaces/IPerkLPGrantVault.sol";
 import {PerkMemeToken} from "../../src/token/PerkMemeToken.sol";
 import {PerkConstants} from "../../src/libraries/PerkConstants.sol";
 import {PerkTypes} from "../../src/libraries/PerkTypes.sol";
@@ -120,47 +122,210 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
         _assertHappyPath(meme, PerkConstants.TEMPLATE_PERK_GRANT_V1, t.nativeQuote, "graduate_perk_native");
     }
 
-    function test_graduate_resumable_liquidityAddedFails() public {
+    /// @dev Graduation is atomic: a failure while seeding the pool reverts the whole call, the curve keeps its funds
+    ///      and no pool exists. Once the failure clears, the launch graduates in full.
+    function test_graduate_revertsAsAWhole_whenSeedingFails_thenGraduatesInFull() public {
         address meme = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.erc20Quote, keccak256("resume-a"));
+        uint256 curveQuote = t.erc20Quote.balanceOf(address(t.curve));
 
         vm.mockCallRevert(
             address(t.positionManager),
             abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector),
             "LIQUIDITY_ADDED"
         );
-        // Liquidity stage reverts inside a self-call; FUNDED + POOL_INITIALIZED stay committed.
+        vm.expectRevert(bytes("LIQUIDITY_ADDED"));
         t.graduation.graduate(meme);
-
-        IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
-        assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.POOL_INITIALIZED));
-        assertGt(g.memeReceived, 0);
-        assertGt(IERC20(meme).balanceOf(t.graduationManager), 0);
-        assertGt(t.erc20Quote.balanceOf(t.graduationManager), 0);
+        _assertUntouched(meme, t.erc20Quote);
+        assertEq(t.erc20Quote.balanceOf(address(t.curve)), curveQuote, "the curve still holds the raise");
 
         vm.clearMockedCalls();
         t.graduation.graduate(meme);
-        g = t.graduation.graduationOf(meme);
-        assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.DONE));
         _assertGraduated(meme, t.erc20Quote);
     }
 
-    /// @dev `graduate` succeeds even when a stage reverted, so the failure has to be visible on chain some other way.
-    function test_graduate_emitsStageFailed_withTheRevertData() public {
+    /// @dev Nothing is swallowed: the caller sees the failing call's own revert data, whichever step it came from.
+    function test_graduate_reverts_withTheFailingCallsReason() public {
         address meme = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.erc20Quote, keccak256("failed-event"));
-        vm.mockCallRevert(
-            address(t.positionManager), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "STALL"
+        vm.mockCallRevert(address(manager), abi.encodeWithSelector(IPoolManager.initialize.selector), "INIT");
+        vm.expectRevert(bytes("INIT"));
+        t.graduation.graduate(meme);
+        vm.clearMockedCalls();
+
+        vm.mockCallRevert(address(t.vault), abi.encodeWithSelector(IPerkLPGrantVault.initCampaign.selector), "CAMPAIGN");
+        vm.expectRevert(bytes("CAMPAIGN"));
+        t.graduation.graduate(meme);
+        _assertUntouched(meme, t.erc20Quote);
+    }
+
+    /// @dev Security: a graduation split by a gas-limited call. With stages committed one by one, a caller who gave
+    ///      `graduate` just too little gas stopped it after the pool was initialised and before it was seeded; the
+    ///      empty official pool could then be moved to any price for free, and the resumed mint seeded it there,
+    ///      selling the leftover meme meant for the burn at a fraction of the curve's price. Every gas limit across
+    ///      the whole range now either graduates the launch in full or leaves it exactly as it was, with no pool.
+    function test_graduate_underEveryGasLimit_isAllOrNothing_standardErc20() public {
+        _assertAllOrNothingUnderGasLimits(PerkConstants.TEMPLATE_STANDARD_CURVE_V1, t.erc20Quote, 7919);
+    }
+
+    function test_graduate_underEveryGasLimit_isAllOrNothing_perkNative() public {
+        _assertAllOrNothingUnderGasLimits(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.nativeQuote, 24_989);
+    }
+
+    function _assertAllOrNothingUnderGasLimits(bytes32 templateId, Currency quote, uint256 step) internal {
+        address meme = _createAndFill(templateId, quote, keccak256(abi.encode("gas-sweep", templateId)));
+
+        uint256 snap = vm.snapshotState();
+        t.graduation.graduate(meme);
+        IPerkGraduationManager.Graduation memory honest = t.graduation.graduationOf(meme);
+        uint256 honestSupply = IERC20(meme).totalSupply();
+        vm.revertToState(snap);
+
+        uint256 successes;
+        uint256 failures;
+        for (uint256 gasLimit = 60_000; gasLimit < 3_200_000; gasLimit += step) {
+            snap = vm.snapshotState();
+            (bool ok,) =
+                address(t.graduation).call{gas: gasLimit}(abi.encodeCall(IPerkGraduationManager.graduate, (meme)));
+            if (ok) {
+                ++successes;
+                _assertGraduated(meme, quote);
+                IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
+                assertEq(g.liquidity, honest.liquidity, "seeded exactly as an honest graduation");
+                assertEq(IERC20(meme).totalSupply(), honestSupply, "the whole leftover was burned");
+            } else {
+                ++failures;
+                _assertUntouched(meme, quote);
+                // and nothing is there to be priced: the official pool was never initialised
+                (uint160 sqrtP,,,) = manager.getSlot0(honest.poolId);
+                assertEq(sqrtP, 0);
+            }
+            vm.revertToState(snap);
+        }
+        assertGt(successes, 0);
+        assertGt(failures, 0);
+    }
+
+    /// @dev The empty-pool attack itself: a 1-wei swap cannot reach the official pool before graduation, because it
+    ///      does not exist until the same call that seeds it; after graduation it holds the full seed at the planned
+    ///      price, so there is nothing cheap to buy back.
+    function test_graduate_leavesNoEmptyOfficialPoolToPrice() public {
+        address meme = _createAndFill(PerkConstants.TEMPLATE_STANDARD_CURVE_V1, t.erc20Quote, keccak256("empty"));
+        uint256 snap = vm.snapshotState();
+        t.graduation.graduate(meme);
+        IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
+        vm.revertToState(snap);
+        bool quoteIs0 = g.key.currency0 == t.erc20Quote;
+
+        vm.prank(buyer);
+        IERC20(meme).transfer(swapper, 1);
+        vm.startPrank(swapper);
+        IERC20(meme).approve(address(swapRouter), type(uint256).max);
+        vm.expectRevert(); // PoolNotInitialized: there is no pool to move
+        swapRouter.swap(
+            g.key,
+            SwapParams({
+                zeroForOne: !quoteIs0,
+                amountSpecified: -1,
+                sqrtPriceLimitX96: quoteIs0
+                    ? uint160(Math.mulDiv(g.sqrtPriceX96, 17_500, 10_000))
+                    : uint160(Math.mulDiv(g.sqrtPriceX96, 10_000, 17_500))
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
         );
-        vm.expectEmit(true, false, false, true, address(t.graduation));
-        emit IPerkGraduationManager.GraduationStageFailed(
-            meme, IPerkGraduationManager.Stage.POOL_INITIALIZED, bytes("STALL")
+        vm.stopPrank();
+
+        t.graduation.graduate(meme);
+        (uint160 sqrtP,,,) = manager.getSlot0(g.poolId);
+        assertEq(sqrtP, g.sqrtPriceX96, "the pool opens at the curve's final price");
+        assertGt(manager.getLiquidity(g.poolId), 0, "and opens seeded");
+    }
+
+    /// @dev The seeding step refuses a pool that is not at the planned price, rather than minting into it.
+    function test_graduate_reverts_whenThePoolIsNotAtThePlannedPrice() public {
+        address meme = _createAndFill(PerkConstants.TEMPLATE_STANDARD_CURVE_V1, t.erc20Quote, keccak256("mismatch"));
+        IPerkGraduationManager.Graduation memory plan = _plan(meme);
+        uint160 other = plan.sqrtPriceX96 / 2;
+        vm.mockCall(
+            address(manager),
+            abi.encodeWithSignature("extsload(bytes32)", _poolStateSlot(plan.poolId)),
+            abi.encode(bytes32(uint256(other)))
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(IPerkGraduationManager.PoolPriceMismatch.selector, other, plan.sqrtPriceX96)
         );
         t.graduation.graduate(meme);
     }
 
-    /// @dev Security: the manager holds the funds of every launch that is between stages, in one balance per quote
-    ///      currency. A launch that finishes must take only what is its own. It used to sweep the manager's whole
-    ///      quote balance to the treasury as "dust", which emptied every other launch parked at FUNDED or
-    ///      POOL_INITIALIZED and left it unable to ever add liquidity.
+    /// @dev Defence in depth: even with the pool at another price and the price check blinded to it, the mint cannot
+    ///      take more of either token than the plan. At a meme price three times too cheap, seeding the planned
+    ///      liquidity would need far more meme than planned (the leftover meant for the burn); the cap refuses it.
+    function test_graduate_seedMint_isCappedAtThePlannedAmounts() public {
+        address meme = _createAndFill(PerkConstants.TEMPLATE_STANDARD_CURVE_V1, t.erc20Quote, keccak256("capped"));
+        IPerkGraduationManager.Graduation memory plan = _plan(meme);
+        PerkTypes.LaunchRecord memory rec = t.factory.getLaunch(meme);
+        bool quoteIs0 = plan.key.currency0 == t.erc20Quote;
+        uint160 cheap = quoteIs0
+            ? uint160(Math.mulDiv(plan.sqrtPriceX96, 17_500, 10_000))
+            : uint160(Math.mulDiv(plan.sqrtPriceX96, 10_000, 17_500));
+
+        // the official pool, forced into existence at the cheap price (only the manager could do this for real)
+        vm.startPrank(t.graduationManager);
+        t.hook.registerPool(plan.key, rec.launchId, meme, rec.configHash, rec.moduleBitmap, 85);
+        manager.initialize(plan.key, cheap);
+        vm.stopPrank();
+        // the manager's own register/initialise calls pass through, and its price check reads the planned price
+        vm.mockCall(address(t.hook), abi.encodeWithSelector(IPerkComposableHook.registerPool.selector), "");
+        vm.mockCall(address(manager), abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
+        vm.mockCall(
+            address(manager),
+            abi.encodeWithSignature("extsload(bytes32)", _poolStateSlot(plan.poolId)),
+            abi.encode(bytes32(uint256(plan.sqrtPriceX96)))
+        );
+        vm.expectPartialRevert(SlippageCheck.MaximumAmountExceeded.selector);
+        t.graduation.graduate(meme);
+    }
+
+    /// @dev Security: the final stage must never be the one that strands a launch. Here a launch is recorded at
+    ///      LIQUIDITY_ADDED with a leftover larger than the meme the manager holds (what the split graduation used to
+    ///      produce) and quote still held for it. `graduate` completes it: it burns what there is, marks the launch
+    ///      GRADUATED and sweeps the quote, instead of reverting on the burn forever.
+    function test_graduate_completesALaunchAtLiquidityAdded_andDoneCannotFailOnTheBurn() public {
+        address meme = _createAndFill(PerkConstants.TEMPLATE_STANDARD_CURVE_V1, t.erc20Quote, keccak256("done"));
+        t.graduation.graduate(meme);
+        IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
+
+        // rewind to LIQUIDITY_ADDED: launch pending again, leftover larger than the balance, quote stranded
+        bytes32 base = keccak256(abi.encode(meme, uint256(3))); // GraduationManager._graduations
+        vm.store(t.graduationManager, base, bytes32(uint256(uint8(IPerkGraduationManager.Stage.LIQUIDITY_ADDED))));
+        vm.store(t.graduationManager, bytes32(uint256(base) + 10), bytes32(g.memeLeftover * 2)); // memeLeftover
+        vm.store(t.graduationManager, bytes32(uint256(base) + 15), bytes32(uint256(7 ether))); // quoteHeld
+        t.quoteToken.mint(t.graduationManager, 7 ether);
+        uint256 memeHeld = 1000 ether;
+        vm.prank(buyer);
+        IERC20(meme).transfer(t.graduationManager, memeHeld);
+        _setLaunchStatus(meme, PerkTypes.LaunchStatus.GRADUATION_PENDING);
+        IPerkGraduationManager.Graduation memory stuck = t.graduation.graduationOf(meme);
+        assertEq(uint256(stuck.stage), uint256(IPerkGraduationManager.Stage.LIQUIDITY_ADDED));
+        assertEq(stuck.memeLeftover, g.memeLeftover * 2);
+        assertEq(stuck.quoteHeld, 7 ether);
+        assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATION_PENDING));
+
+        uint256 treasuryBefore = t.erc20Quote.balanceOf(address(t.treasury));
+        uint256 supplyBefore = IERC20(meme).totalSupply();
+        vm.expectEmit(true, false, false, true, t.graduationManager);
+        emit LeftoverHandled(meme, memeHeld, g.quoteLeftover);
+        vm.prank(stranger); // permissionless
+        t.graduation.graduate(meme);
+
+        _assertGraduated(meme, t.erc20Quote);
+        assertEq(supplyBefore - IERC20(meme).totalSupply(), memeHeld, "burned what was there, no more");
+        assertEq(t.erc20Quote.balanceOf(address(t.treasury)) - treasuryBefore, 7 ether, "stranded quote swept");
+        assertEq(t.graduation.graduationOf(meme).quoteHeld, 0);
+    }
+
+    /// @dev Security: the manager holds the funds of every launch it is refunding, in one balance per quote currency.
+    ///      A launch that graduates must take only what is its own. It used to sweep the manager's whole quote
+    ///      balance to the treasury as "dust", which emptied every other launch's funds.
     function test_graduate_doesNotTouchAnotherLaunchsParkedFunds_erc20() public {
         _assertParkedFundsSurvive(t.erc20Quote);
     }
@@ -173,28 +338,30 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
         address parked = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, quote, keccak256("parked"));
         address other = _createAndFill(PerkConstants.TEMPLATE_PERK_GRANT_V1, quote, keccak256("other"));
 
-        // `parked` gets as far as POOL_INITIALIZED and stalls with its meme and quote sitting in the manager
-        vm.mockCallRevert(
-            address(t.positionManager), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "STALL"
-        );
-        t.graduation.graduate(parked);
-        vm.clearMockedCalls();
+        // `parked` is rescued: its quote now sits in the manager for its holders to redeem
+        t.graduation.proposeRescue(parked);
+        vm.warp(vm.getBlockTimestamp() + RESCUE_DELAY);
+        t.graduation.executeRescue(parked);
         IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(parked);
-        assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.POOL_INITIALIZED));
-        uint256 parkedQuote = g.quoteReceived;
-        assertGe(quote.balanceOf(t.graduationManager), parkedQuote);
+        assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.REFUNDING));
+        uint256 parkedQuote = g.quoteHeld;
+        assertGt(parkedQuote, 0);
+        assertEq(quote.balanceOf(t.graduationManager), parkedQuote);
 
         // another launch on the same quote graduates start to finish in the meantime
         t.graduation.graduate(other);
-        assertEq(uint256(t.graduation.graduationOf(other).stage), uint256(IPerkGraduationManager.Stage.DONE));
+        _assertGraduated(other, quote, parkedQuote);
         assertEq(t.graduation.graduationOf(other).quoteHeld, 0);
-        assertGe(quote.balanceOf(t.graduationManager), parkedQuote, "the parked launch's quote was swept");
+        assertEq(quote.balanceOf(t.graduationManager), parkedQuote, "the parked launch's quote was swept");
 
-        // and the parked launch can still finish, with everything it was owed
-        t.graduation.graduate(parked);
-        _assertGraduated(parked, quote);
-        g = t.graduation.graduationOf(parked);
-        assertGt(g.liquidity, 0);
+        // and the parked launch's holder still redeems everything it was owed
+        uint256 bal = IERC20(parked).balanceOf(buyer);
+        uint256 before = quote.balanceOf(buyer);
+        vm.startPrank(buyer);
+        IERC20(parked).approve(t.graduationManager, bal);
+        t.graduation.redeem(parked, bal);
+        vm.stopPrank();
+        assertEq(quote.balanceOf(buyer) - before, parkedQuote);
         assertEq(quote.balanceOf(t.graduationManager), 0); // nothing of anyone's is left behind either
     }
 
@@ -299,13 +466,49 @@ contract GraduationManagerTest is PerkDeployer, Deployers {
     }
 
     function _assertGraduated(address meme, Currency quote) internal view {
+        _assertGraduated(meme, quote, 0);
+    }
+
+    /// @dev `othersQuote`: quote the manager holds for other launches, which must still be there.
+    function _assertGraduated(address meme, Currency quote, uint256 othersQuote) internal view {
         IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
         assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.DONE));
         assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATED));
         assertTrue(t.hook.poolInfo(g.poolId).initialized);
         assertEq(IERC20(meme).balanceOf(t.graduationManager), 0);
-        assertEq(quote.balanceOf(t.graduationManager), 0);
+        assertEq(quote.balanceOf(t.graduationManager), othersQuote);
         assertEq(IERC721(address(t.positionManager)).ownerOf(g.positionTokenId), address(t.locker));
+    }
+
+    /// @dev Pending, at stage NONE, nothing moved: the curve still holds everything and there is no pool.
+    function _assertUntouched(address meme, Currency quote) internal view {
+        IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
+        assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.NONE));
+        assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATION_PENDING));
+        assertEq(IERC20(meme).balanceOf(t.graduationManager), 0);
+        assertEq(quote.balanceOf(t.graduationManager), 0);
+        assertEq(PoolId.unwrap(t.hook.poolIdOf(meme)), bytes32(0), "no official pool registered");
+        assertFalse(t.curve.curveState(meme).finalized);
+    }
+
+    /// @dev What an honest graduation of `meme` would record, without graduating it.
+    function _plan(address meme) internal returns (IPerkGraduationManager.Graduation memory plan) {
+        uint256 snap = vm.snapshotState();
+        t.graduation.graduate(meme);
+        plan = t.graduation.graduationOf(meme);
+        vm.revertToState(snap);
+    }
+
+    function _poolStateSlot(PoolId poolId) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(PoolId.unwrap(poolId), bytes32(uint256(6)))); // StateLibrary.POOLS_SLOT
+    }
+
+    /// @dev LaunchFactory._launches[meme].status: slot 10 mapping, record word 9, byte offset 21.
+    function _setLaunchStatus(address meme, PerkTypes.LaunchStatus status) internal {
+        bytes32 slot = bytes32(uint256(keccak256(abi.encode(meme, uint256(10)))) + 9);
+        uint256 word = uint256(vm.load(address(t.factory), slot));
+        word = (word & ~(uint256(0xff) << 168)) | (uint256(uint8(status)) << 168);
+        vm.store(address(t.factory), slot, bytes32(word));
     }
 
     function _expectedMemeLeftover(address meme) internal view returns (uint256) {

@@ -151,7 +151,7 @@ contract LPGrantVaultTest is PerkDeployer, Deployers {
         t.vault.exitGrantPosition(alicePos, 0, 0);
 
         // bob exits (his min LP time elapsed long ago): principal capped, excess recycled to alice's active liquidity
-        vm.warp(block.timestamp + 1 hours); // positions close only once the price has held; see PriceUnstable
+        vm.warp(block.timestamp + 1 hours); // the reference catches up, so the whole excess counts as genuine
         supplyBefore = IERC20(meme).totalSupply();
         bobQuoteBefore = t.quoteToken.balanceOf(bob);
         vm.prank(bob);

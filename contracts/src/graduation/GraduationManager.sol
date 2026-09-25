@@ -10,6 +10,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
@@ -31,11 +32,12 @@ import {PerkConstants} from "../libraries/PerkConstants.sol";
 import {PerkTypes} from "../libraries/PerkTypes.sol";
 
 /// @title GraduationManager
-/// @notice Two-phase, resumable graduation: seed a v4 pool at the curve's final price and lock the LP NFT.
+/// @notice Atomic graduation: seed a v4 pool at the curve's final price and lock the LP NFT, all in one transaction.
 contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     /// @inheritdoc IPerkGraduationManager
     address public immutable override factory;
@@ -127,6 +129,9 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
     }
 
     /// @inheritdoc IPerkGraduationManager
+    /// @dev Atomic: every stage runs inline, without a self-call or a try/catch, so any revert (an out-of-gas
+    ///      included) undoes the whole call and the launch stays at the stage it started from. A caller who supplies
+    ///      too little gas gets a failed transaction, never a launch parked between stages.
     function graduate(address meme) external nonReentrant {
         if (IPerkLaunchFactory(factory).isPaused(PerkConstants.PAUSE_GRADUATION)) {
             revert IPerkLaunchFactory.Paused(PerkConstants.PAUSE_GRADUATION);
@@ -136,39 +141,15 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
 
         Graduation storage g = _graduations[meme];
         if (g.stage == Stage.DONE) revert AlreadyDone();
-
-        // Each stage is an external self-call so a revert in stage N keeps stages < N
-        // committed in this transaction (the catch does not rethrow). Happy path still
-        // finishes every remaining stage in one `graduate` call.
-        while (g.stage != Stage.DONE) {
-            // forge-lint: disable-next-line(calls-loop)
-            (bool ok, bytes memory reason) = address(this).call(abi.encodeCall(this.executeStage, (meme)));
-            if (!ok) {
-                // Swallowed so the earlier stages stay committed, but never silently: the transaction succeeds, and
-                // without this nothing on chain says that it stopped short or why.
-                // forge-lint: disable-next-line(reentrancy-events)
-                emit GraduationStageFailed(meme, g.stage, reason);
-                break;
-            }
-        }
-        if (g.stage != Stage.DONE && g.stage == Stage.NONE) {
-            // Stage NONE failed: nothing committed; bubble a revert so callers see it.
-            this.executeStage(meme);
-        }
-    }
-
-    /// @notice Executes the next graduation stage. Only callable by this contract via `graduate`.
-    /// @param meme Launch token.
-    function executeStage(address meme) external {
-        if (msg.sender != address(this)) revert InvalidStage(_graduations[meme].stage);
-        PerkTypes.LaunchRecord memory rec = IPerkLaunchFactory(factory).getLaunch(meme);
         PerkTypes.Template memory tmpl = IPerkTemplateRegistry(templateRegistry).getTemplate(rec.templateId);
-        Graduation storage g = _graduations[meme];
+        // V1 burns leftover meme and nothing else; refused before any funds move or any pool exists.
+        if (tmpl.pool.leftoverPolicy != PerkTypes.LeftoverPolicy.BURN) revert LeftoverPolicyNotImplemented();
+
         if (g.stage == Stage.NONE) _stageFunded(meme, g);
-        else if (g.stage == Stage.FUNDED) _stagePoolInitialized(meme, rec, tmpl, g);
-        else if (g.stage == Stage.POOL_INITIALIZED) _stageLiquidityAdded(meme, rec, tmpl, g);
-        else if (g.stage == Stage.LIQUIDITY_ADDED) _stageDone(meme, rec, tmpl, g);
-        else revert InvalidStage(g.stage);
+        if (g.stage == Stage.FUNDED) _stageLiquidityAdded(meme, rec, tmpl, g);
+        // Only LIQUIDITY_ADDED can be left here: POOL_INITIALIZED is never recorded outside the stage above.
+        if (g.stage != Stage.LIQUIDITY_ADDED) revert InvalidStage(g.stage);
+        _stageDone(meme, rec, tmpl, g);
     }
 
     /// @inheritdoc IPerkGraduationManager
@@ -201,24 +182,6 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         emit GraduationStageAdvanced(meme, Stage.FUNDED);
     }
 
-    function _stagePoolInitialized(
-        address meme,
-        PerkTypes.LaunchRecord memory rec,
-        PerkTypes.Template memory tmpl,
-        Graduation storage g
-    ) private {
-        PoolKey memory key = _poolKey(meme, rec.quote, tmpl);
-        IPerkBondingCurve.CurveState memory cs = IPerkBondingCurve(curve).curveState(meme);
-        uint160 sqrtPriceX96 = _sqrtPriceX96(cs.virtualQuote, cs.virtualMeme, rec.quote == key.currency0);
-        _registerAndInit(key, rec, meme, sqrtPriceX96, tmpl.totalFeeBps, tmpl.feeSplit.lpBps);
-        g.key = key;
-        g.poolId = key.toId();
-        g.sqrtPriceX96 = sqrtPriceX96;
-        g.stage = Stage.POOL_INITIALIZED;
-        // forge-lint: disable-next-line(reentrancy-events)
-        emit GraduationStageAdvanced(meme, Stage.POOL_INITIALIZED);
-    }
-
     function _poolKey(address meme, Currency quote, PerkTypes.Template memory tmpl)
         private
         view
@@ -243,34 +206,44 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         // totalFeeBps is uint24 and the bps split is <= BPS, so the product fits uint24.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint24 hookFeeBps = uint24(Math.mulDiv(totalFeeBps, PerkConstants.BPS - lpBps, PerkConstants.BPS));
-        IPerkComposableHook hook_ = IPerkComposableHook(hook);
-        PoolId id = key.toId();
-        if (!hook_.poolInfo(id).registered) {
-            hook_.registerPool(key, rec.launchId, meme, rec.configHash, rec.moduleBitmap, hookFeeBps);
-        }
-        if (!hook_.poolInfo(id).initialized) {
-            // forge-lint: disable-next-line(unused-return)
-            IPoolManager(poolManager).initialize(key, sqrtPriceX96);
-        }
+        IPerkComposableHook(hook).registerPool(key, rec.launchId, meme, rec.configHash, rec.moduleBitmap, hookFeeBps);
+        // forge-lint: disable-next-line(unused-return)
+        IPoolManager(poolManager).initialize(key, sqrtPriceX96);
     }
 
+    /// @dev Creates the official pool and seeds it, as one step. The pool never exists without its seed liquidity
+    ///      outside this call, so nobody can trade an empty pool to an arbitrary price before it is seeded. The
+    ///      price is still checked before the mint, and each amount is capped at what was planned (plus one wei of
+    ///      rounding), so the mint can never take more of either token than the plan says.
     function _stageLiquidityAdded(
         address meme,
         PerkTypes.LaunchRecord memory rec,
         PerkTypes.Template memory tmpl,
         Graduation storage g
     ) private {
-        _approvePosm(g.key.currency0);
-        _approvePosm(g.key.currency1);
+        bool quoteIs0 = rec.quote < Currency.wrap(meme);
+        PoolKey memory key = _poolKey(meme, rec.quote, tmpl);
+        IPerkBondingCurve.CurveState memory cs = IPerkBondingCurve(curve).curveState(meme);
+        uint160 sqrtPriceX96 = _sqrtPriceX96(cs.virtualQuote, cs.virtualMeme, quoteIs0);
+        g.key = key;
+        g.poolId = key.toId();
+        g.sqrtPriceX96 = sqrtPriceX96;
+        _registerAndInit(key, rec, meme, sqrtPriceX96, tmpl.totalFeeBps, tmpl.feeSplit.lpBps);
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit GraduationStageAdvanced(meme, Stage.POOL_INITIALIZED);
+
+        (uint160 poolPrice,,,) = IPoolManager(poolManager).getSlot0(g.poolId);
+        if (poolPrice != sqrtPriceX96) revert PoolPriceMismatch(poolPrice, sqrtPriceX96);
+
+        _approvePosm(key.currency0);
+        _approvePosm(key.currency1);
 
         uint256 nextId = IPositionManager(positionManager).nextTokenId();
-        uint128 liquidity = _mainLiquidity(g, tmpl, rec.quote == g.key.currency0);
-        bool mintQuoteOnly;
-        // Only this launch's own quote goes in. The manager's balance also holds whatever other launches have
-        // parked between stages, and none of that is this launch's to spend or to be refunded.
+        uint128 liquidity = _mainLiquidity(g, tmpl, quoteIs0);
+        (bool mintQuoteOnly, bytes memory payload) = _buildMintPayload(g, tmpl, liquidity, quoteIs0);
+        // Only this launch's own quote goes in. The manager's balance also holds other launches' funds (a launch
+        // being refunded, say), and none of that is this launch's to spend.
         uint256 nativeValue = rec.quote.isAddressZero() ? g.quoteHeld : 0;
-        bytes memory payload = _buildMintPayload(g, tmpl, rec.quote == g.key.currency0);
-        mintQuoteOnly = g.quoteLeftover > 0 && _quoteOnlyLiq(g, tmpl, rec.quote == g.key.currency0) > 0;
 
         uint256 quoteBefore = rec.quote.balanceOfSelf();
         // Deadline is the current block; the modifier is `>` so equality is valid.
@@ -303,40 +276,51 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         );
     }
 
-    function _quoteOnlyLiq(Graduation storage g, PerkTypes.Template memory tmpl, bool quoteIs0)
+    /// @dev The main position, plus a quote-only range for leftover quote when there is enough of it. Every
+    ///      `amountMax` is the planned amount plus one wei: liquidity is rounded down from the planned amounts, so an
+    ///      honest mint never needs more, and a mint at any other price reverts instead of taking more.
+    function _buildMintPayload(Graduation storage g, PerkTypes.Template memory tmpl, uint128 liquidity, bool quoteIs0)
         private
         view
-        returns (uint128)
+        returns (bool mintQuoteOnly, bytes memory payload)
     {
-        (bool mint,,, uint128 liq) = _quoteOnlyRange(g, tmpl, quoteIs0);
-        return mint ? liq : 0;
+        bytes memory mintMain = _mintParams(
+            g.key, tmpl.pool.tickLower, tmpl.pool.tickUpper, liquidity, g.quoteToPool, g.memeToPool, quoteIs0
+        );
+        // no leftover quote gives no quote-only liquidity, so no second position
+        (bool hasRange, int24 quoteLower, int24 quoteUpper, uint128 quoteOnlyLiq) = _quoteOnlyRange(g, tmpl, quoteIs0);
+        mintQuoteOnly = hasRange;
+        payload = hasRange
+            ? _encodeDoubleMint(
+                g.key, mintMain, _mintParams(g.key, quoteLower, quoteUpper, quoteOnlyLiq, g.quoteLeftover, 0, quoteIs0)
+            )
+            : _encodeSingleMint(g.key, mintMain);
     }
 
-    function _buildMintPayload(Graduation storage g, PerkTypes.Template memory tmpl, bool quoteIs0)
-        private
-        view
-        returns (bytes memory)
-    {
-        uint128 liquidity = _mainLiquidity(g, tmpl, quoteIs0);
-        bytes memory mintMain = abi.encode(
-            g.key,
-            tmpl.pool.tickLower,
-            tmpl.pool.tickUpper,
+    /// @dev MINT_POSITION parameters for `liquidity` in [lower, upper], each side capped at its planned amount + 1.
+    function _mintParams(
+        PoolKey memory key,
+        int24 lower,
+        int24 upper,
+        uint128 liquidity,
+        uint256 quoteAmount,
+        uint256 memeAmount,
+        bool quoteIs0
+    ) private view returns (bytes memory) {
+        (uint256 amount0, uint256 amount1) = quoteIs0 ? (quoteAmount, memeAmount) : (memeAmount, quoteAmount);
+        return abi.encode(
+            key,
+            lower,
+            upper,
             uint256(liquidity),
-            type(uint128).max,
-            type(uint128).max,
+            // planned amounts are bounded by the launch's own balances, far below uint128
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint128(amount0 + 1),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint128(amount1 + 1),
             initialLpLocker,
             bytes("")
         );
-        if (g.quoteLeftover == 0) {
-            return _encodeSingleMint(g.key, mintMain);
-        }
-        (bool mintQuoteOnly, int24 quoteLower, int24 quoteUpper, uint128 quoteOnlyLiq) =
-            _quoteOnlyRange(g, tmpl, quoteIs0);
-        if (!mintQuoteOnly) {
-            return _encodeSingleMint(g.key, mintMain);
-        }
-        return _encodeDoubleMint(g.key, mintMain, quoteLower, quoteUpper, quoteOnlyLiq);
     }
 
     function _actionByte(uint256 action) private pure returns (bytes1) {
@@ -360,13 +344,11 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         return abi.encode(actions, params);
     }
 
-    function _encodeDoubleMint(
-        PoolKey memory key,
-        bytes memory mintMain,
-        int24 quoteLower,
-        int24 quoteUpper,
-        uint128 quoteOnlyLiq
-    ) private view returns (bytes memory) {
+    function _encodeDoubleMint(PoolKey memory key, bytes memory mintMain, bytes memory mintQuote)
+        private
+        view
+        returns (bytes memory)
+    {
         bytes memory actions = abi.encodePacked(
             _actionByte(Actions.MINT_POSITION),
             _actionByte(Actions.MINT_POSITION),
@@ -376,39 +358,25 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         );
         bytes[] memory params = new bytes[](5);
         params[0] = mintMain;
-        params[1] = abi.encode(
-            key,
-            quoteLower,
-            quoteUpper,
-            uint256(quoteOnlyLiq),
-            type(uint128).max,
-            type(uint128).max,
-            initialLpLocker,
-            bytes("")
-        );
+        params[1] = mintQuote;
         params[2] = abi.encode(key.currency0, key.currency1);
         params[3] = abi.encode(key.currency0, address(this));
         params[4] = abi.encode(key.currency1, address(this));
         return abi.encode(actions, params);
     }
 
+    /// @dev Cannot revert on its own account: the burn is capped at the manager's balance of the token, and every
+    ///      other step here is a status write, the grant campaign's initialisation and a dust sweep.
     function _stageDone(
         address meme,
         PerkTypes.LaunchRecord memory rec,
         PerkTypes.Template memory tmpl,
         Graduation storage g
     ) private {
-        uint256 memeBurned = 0;
-        uint256 quoteInRangeOrder = g.quoteLeftover;
-        if (g.memeLeftover > 0) {
-            if (tmpl.pool.leftoverPolicy == PerkTypes.LeftoverPolicy.RANGE_ORDER) {
-                revert LeftoverPolicyNotImplemented();
-            }
-            PerkMemeToken(meme).burn(g.memeLeftover);
-            memeBurned = g.memeLeftover;
-        }
+        uint256 memeBurned = Math.min(g.memeLeftover, IERC20(meme).balanceOf(address(this)));
+        if (memeBurned > 0) PerkMemeToken(meme).burn(memeBurned);
         // forge-lint: disable-next-line(reentrancy-events)
-        emit LeftoverHandled(meme, memeBurned, quoteInRangeOrder);
+        emit LeftoverHandled(meme, memeBurned, g.quoteLeftover);
 
         IPerkLaunchFactory(factory).setLaunchStatus(meme, PerkTypes.LaunchStatus.GRADUATED, g.poolId);
         g.stage = Stage.DONE;
@@ -428,8 +396,8 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
         _sweepDust(meme, rec.quote, rec.launchId, g);
     }
 
-    /// @dev The meme balance is this launch's alone. The quote balance is not: it is shared with every launch that
-    ///      is between stages, so only what this launch still holds is swept.
+    /// @dev The meme balance is this launch's alone. The quote balance is not: it is shared with every launch whose
+    ///      funds the manager holds (a launch being refunded, say), so only what this launch still holds is swept.
     function _sweepDust(address meme, Currency quote, bytes32 launchId, Graduation storage g) private {
         uint256 memeDust = IERC20(meme).balanceOf(address(this));
         if (memeDust > 0) PerkMemeToken(meme).burn(memeDust);
@@ -478,11 +446,20 @@ contract GraduationManager is IPerkGraduationManager, Ownable2Step, ReentrancyGu
 
     /// @inheritdoc IPerkGraduationManager
     /// @dev Permissionless: the owner decided when proposing, the delay let everyone see it coming, and the money
-    ///      can only go back to holders.
+    ///      can only go back to holders. The delay only counts while graduation is open: this reverts while
+    ///      PAUSE_GRADUATION is set, and after the pause is lifted it waits a full `rescueDelay` again, so pausing
+    ///      graduation (the one thing that stops anyone from graduating the launch and voiding the rescue) can
+    ///      never be used to run the delay out.
     function executeRescue(address meme) external nonReentrant {
         Graduation storage g = _graduations[meme];
         uint64 at = g.rescueExecutableAt;
         if (at == 0) revert RescueNotProposed();
+        IPerkLaunchFactory factory_ = IPerkLaunchFactory(factory);
+        if (factory_.isPaused(PerkConstants.PAUSE_GRADUATION)) {
+            revert IPerkLaunchFactory.Paused(PerkConstants.PAUSE_GRADUATION);
+        }
+        uint64 reopenedFor = factory_.graduationResumedAt() + rescueDelay;
+        if (reopenedFor > at) at = reopenedFor;
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < at) revert RescueNotReady(at);
         if (IPerkLaunchFactory(factory).getLaunch(meme).status != PerkTypes.LaunchStatus.GRADUATION_PENDING) {

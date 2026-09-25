@@ -90,6 +90,10 @@ interface IPerkLaunchFactory {
     function pausedFlags() external view returns (uint256);
     /// @notice True when any bit of `area` is paused.
     function isPaused(uint256 area) external view returns (bool);
+    /// @notice When the PAUSE_GRADUATION bit was last cleared by `setPaused` (zero if it never was). A graduation
+    ///         rescue only executes once graduation has been open for a whole rescue delay since then, so a pause
+    ///         can never stand in for the delay during which anyone may still graduate the launch.
+    function graduationResumedAt() external view returns (uint64);
 
     function getLaunch(address meme) external view returns (PerkTypes.LaunchRecord memory);
     function launchByLaunchId(bytes32 launchId) external view returns (address meme);

@@ -9,6 +9,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {CustomRevert} from "v4-core/src/libraries/CustomRevert.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
@@ -228,6 +229,34 @@ contract PerkComposableHookV1Test is Test, Deployers, HookDeployer {
 
     function test_swap_exactOutSell_erc20_memeCurrency1() public {
         _testExactOutSell(false);
+    }
+
+    /// @dev Documented behaviour: when the quote is the specified currency the fee is fixed on the whole specified
+    ///      amount before the swap runs. A binding price limit stops the swap early, and the swapper still pays the
+    ///      fee on the part that never traded, which is why routers size exact-input buys instead of relying on one.
+    function test_swap_exactInBuyWithABindingPriceLimit_paysTheFeeOnTheWholeSpecifiedAmount() public {
+        (PoolKey memory poolKey,, Currency quoteC) = _setupErc20(false); // quote is currency0: a buy is zeroForOne
+        uint256 specified = 100e18;
+        uint256 fee = (specified * HOOK_FEE_BPS) / PerkConstants.BPS;
+        uint160 limit = uint160((uint256(SQRT_PRICE_1_1) * 99) / 100);
+        uint256 before = quoteC.balanceOf(swapper);
+
+        vm.expectEmit(true, true, false, true, address(hook));
+        emit HookFeeTaken(poolKey.toId(), quoteC, fee, true);
+        vm.prank(swapper);
+        swapRouter.swap(
+            poolKey,
+            SwapParams({zeroForOne: true, amountSpecified: -int256(specified), sqrtPriceLimitX96: limit}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        (uint160 sqrtP,,,) = StateLibrary.getSlot0(manager, poolKey.toId());
+        assertEq(sqrtP, limit, "the limit stopped the swap");
+        uint256 paid = before - quoteC.balanceOf(swapper);
+        assertLt(paid, specified / 5, "most of the specified amount never traded");
+        uint256 traded = paid - fee;
+        assertGt(fee * PerkConstants.BPS, traded * HOOK_FEE_BPS * 5, "the fee is far above 0.85% of what traded");
     }
 
     // ---------------------------------------------------------------------

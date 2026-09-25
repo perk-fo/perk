@@ -164,8 +164,8 @@ contract SixDecimalQuoteTest is PerkDeployer, Deployers {
      * launches cheap to graduate. On a six-decimal quote that leaves a virtual quote reserve in the tens of
      * thousands against a meme reserve of ~1e26, and `_sqrtPriceX96` used to form `vMeme * 2^192 / vQuote` — about
      * 1e80 — before taking the root. That overflowed uint256, so graduation reverted with an arithmetic panic and
-     * left the launch stuck at FUNDED with its bonding curve already drained. Two tAAPL launches died that way on
-     * testnet. The square root itself, ~1e40, was always inside the tick range.
+     * left the launch stuck at FUNDED with its bonding curve already drained (graduation was not yet atomic). Two
+     * tAAPL launches died that way on testnet. The square root itself, ~1e40, was always inside the tick range.
      */
     function test_graduate_sixDecimalQuote_scaledCurve_doesNotOverflow() public {
         PerkTemplates.Numbers memory n = PerkTemplates.forQuote(PerkTemplates.defaultNumbers(), quote, 6);
@@ -189,12 +189,7 @@ contract SixDecimalQuoteTest is PerkDeployer, Deployers {
         t.curve.buy(meme, 20_000, 0, buyer); // straight past the 8,500 threshold
         assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATION_PENDING));
 
-        t.graduation.graduate(meme);
-        // graduate() swallows a failing stage; call the stage directly so the revert is visible
-        if (uint256(t.graduation.graduationOf(meme).stage) != uint256(IPerkGraduationManager.Stage.DONE)) {
-            vm.prank(address(t.graduation));
-            t.graduation.executeStage(meme);
-        }
+        t.graduation.graduate(meme); // atomic: an overflow anywhere would revert this call with its reason
 
         IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
         assertEq(uint256(g.stage), uint256(IPerkGraduationManager.Stage.DONE));

@@ -9,7 +9,8 @@ import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
 import {IPerkCommunityTreasury} from "../interfaces/IPerkCommunityTreasury.sol";
 
 /// @title CommunityTreasury
-/// @notice Fixed-rule receiver of quote assets. The only outflow is a whole-balance migration after a timelock.
+/// @notice Fixed-rule receiver of quote assets (and of the meme fees of the locked initial positions). The only
+///         outflow is a whole-balance migration, after a timelock, to any non-zero address the owner proposes.
 contract CommunityTreasury is IPerkCommunityTreasury, Ownable2Step {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;

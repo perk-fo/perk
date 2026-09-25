@@ -8,6 +8,8 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {SwapParams} from "v4-core/src/types/PoolOperation.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 
@@ -103,7 +105,8 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         assertEq(bytes(c.rootUri).length, 0);
     }
 
-    function test_activateRoot_beforeDelay_registerDuringProposed_activateDuringProposed() public {
+    /// @dev A root under review is not yet the root: nothing can be registered or activated against it.
+    function test_activateRoot_beforeDelay_reverts_andNothingRegistersUnderAProposedRoot() public {
         address meme = _graduated(t.erc20Quote, keccak256("delay"));
         t.vault.proposeRoot(meme, root, "ipfs://dataset", _defaultTotalBase(), BOB_BOOST);
         IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
@@ -111,14 +114,22 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         vm.expectRevert(abi.encodeWithSelector(IPerkLPGrantVault.RootDelayNotElapsed.selector, activatableAt));
         t.vault.activateRoot(meme);
 
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPerkLPGrantVault.InvalidStatus.selector, IPerkLPGrantVault.CampaignStatus.ROOT_PROPOSED
+            )
+        );
         t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
-        IPerkLPGrantVault.Allocation memory a = t.vault.allocation(meme, alice);
-        assertTrue(a.registered);
-        assertEq(a.baseAllocation, ALICE_BASE);
+        assertFalse(t.vault.allocation(meme, alice).registered);
 
         vm.prank(alice);
         vm.expectRevert(IPerkLPGrantVault.WindowClosed.selector);
         t.vault.activateGrant(meme, 1 ether, 0, 0, 1 ether, 0);
+
+        vm.warp(activatableAt);
+        t.vault.activateRoot(meme);
+        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
+        assertEq(t.vault.allocation(meme, alice).baseAllocation, ALICE_BASE);
     }
 
     function test_cancelCampaign_beforeDeadline_afterBurns_thenProposeReverts() public {
@@ -174,7 +185,7 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         PoolKey memory key = t.graduation.graduationOf(meme).key;
         _swap(key, _quoteIs0(meme), 30 ether, 0);
         _swap(key, _quoteIs0(meme), 30 ether, 0);
-        vm.warp(block.timestamp + 1 hours); // positions close only once the price has held; see PriceUnstable
+        vm.warp(block.timestamp + 1 hours); // the reference catches up, so the whole excess counts as genuine
 
         vm.prank(alice);
         t.vault.exitGrantPosition(alicePos, 0, 0);
@@ -194,6 +205,238 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         }
         vm.expectRevert(IPerkLPGrantVault.NothingToSweep.selector);
         t.vault.sweepIncentive(meme);
+    }
+
+    // -------------------------------------------------------------------------
+    // Root deadline order
+    // -------------------------------------------------------------------------
+
+    /// @dev After the deadline no root can be proposed. A root cancelled after it leaves the campaign with no root
+    ///      pending, and anyone can then cancel the campaign.
+    function test_proposeRoot_reverts_afterTheRootDeadline_andCancellingThePendingRootOpensTheBurn() public {
+        address meme = _graduated(t.erc20Quote, keccak256("deadline-propose"));
+        uint64 deadline = t.vault.campaign(meme).graduatedAt + 14 days;
+        vm.warp(deadline); // the deadline itself is still in time
+        t.vault.proposeRoot(meme, root, "ipfs://wrong", _defaultTotalBase(), BOB_BOOST);
+
+        vm.warp(deadline + 1);
+        t.vault.cancelRoot(meme); // the owner catches a wrong root late
+        vm.expectRevert(abi.encodeWithSelector(IPerkLPGrantVault.RootDeadlinePassed.selector, deadline));
+        t.vault.proposeRoot(meme, root, "ipfs://dataset", _defaultTotalBase(), BOB_BOOST);
+
+        vm.prank(stranger);
+        t.vault.cancelCampaign(meme);
+        assertEq(uint256(t.vault.campaign(meme).status), uint256(IPerkLPGrantVault.CampaignStatus.CANCELLED));
+    }
+
+    /// @dev Security: around the deadline nobody races. A root proposed in time blocks the burn and stays
+    ///      activatable after its delay, even though that falls after the deadline.
+    function test_rootDeadline_aRootProposedInTime_blocksTheBurn_andStillActivates() public {
+        address meme = _graduated(t.erc20Quote, keccak256("deadline-race"));
+        uint64 deadline = t.vault.campaign(meme).graduatedAt + 14 days;
+        vm.warp(deadline - 1 hours);
+        t.vault.proposeRoot(meme, root, "ipfs://dataset", _defaultTotalBase(), BOB_BOOST);
+        uint64 activatableAt = t.vault.campaign(meme).rootProposedAt + 1 days;
+
+        vm.warp(deadline + 1);
+        bytes memory pending = abi.encodeWithSelector(
+            IPerkLPGrantVault.InvalidStatus.selector, IPerkLPGrantVault.CampaignStatus.ROOT_PROPOSED
+        );
+        vm.prank(stranger);
+        vm.expectRevert(pending);
+        t.vault.cancelCampaign(meme);
+        vm.expectRevert(abi.encodeWithSelector(IPerkLPGrantVault.RootDelayNotElapsed.selector, activatableAt));
+        t.vault.activateRoot(meme);
+
+        vm.warp(activatableAt);
+        vm.prank(stranger);
+        vm.expectRevert(pending);
+        t.vault.cancelCampaign(meme); // same block as the activation: the order does not matter
+        vm.prank(stranger);
+        t.vault.activateRoot(meme);
+        assertEq(uint256(t.vault.campaign(meme).status), uint256(IPerkLPGrantVault.CampaignStatus.ACTIVE));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPerkLPGrantVault.InvalidStatus.selector, IPerkLPGrantVault.CampaignStatus.ACTIVE)
+        );
+        t.vault.cancelCampaign(meme);
+    }
+
+    /// @dev Security: a publisher key that keeps replacing its root restarts each review, but never the deadline.
+    ///      Re-proposal stops at the deadline, so the last root proposed is activatable at most one delay after it.
+    function test_rootDeadline_reproposingCannotRunItOut() public {
+        address publisherKey = makeAddr("publisher");
+        t.vault.setPublisher(publisherKey);
+        address meme = _graduated(t.erc20Quote, keccak256("deadline-stall"));
+        uint64 graduatedAt = t.vault.campaign(meme).graduatedAt;
+        uint64 deadline = graduatedAt + 14 days;
+
+        for (uint256 i; i < 28; ++i) {
+            vm.warp(graduatedAt + i * 12 hours);
+            vm.prank(publisherKey);
+            t.vault.proposeRoot(meme, keccak256(abi.encode("stall", i)), "ipfs://again", 1, 0);
+        }
+        uint64 lastProposedAt = t.vault.campaign(meme).rootProposedAt;
+        assertLe(lastProposedAt, deadline);
+
+        vm.warp(deadline + 1);
+        vm.prank(publisherKey);
+        vm.expectRevert(abi.encodeWithSelector(IPerkLPGrantVault.RootDeadlinePassed.selector, deadline));
+        t.vault.proposeRoot(meme, root, "ipfs://again", _defaultTotalBase(), BOB_BOOST);
+
+        vm.warp(lastProposedAt + 1 days);
+        assertLe(lastProposedAt + 1 days, deadline + 1 days);
+        vm.prank(stranger);
+        t.vault.activateRoot(meme);
+        assertEq(uint256(t.vault.campaign(meme).status), uint256(IPerkLPGrantVault.CampaignStatus.ACTIVE));
+    }
+
+    // -------------------------------------------------------------------------
+    // Registration is tied to the active root
+    // -------------------------------------------------------------------------
+
+    /// @dev Security: a wrong root (a publisher bug or a compromised publisher key) gives eve the whole base pool.
+    ///      Registering her leaf while the root is under review used to survive the owner's cancellation, and she then
+    ///      activated the entire base pool under the corrected root she is not part of. Nothing registers under a
+    ///      proposed root now, so the cancelled root leaves nothing behind.
+    function test_registerAllocation_underACancelledRoot_leavesNothingBehind() public {
+        _assertWrongRootLeavesNothing(keccak256("stale-cancel"), true);
+    }
+
+    /// @dev The same when the wrong root is replaced by re-proposal instead of cancelled.
+    function test_registerAllocation_underAReplacedRoot_leavesNothingBehind() public {
+        _assertWrongRootLeavesNothing(keccak256("stale-replace"), false);
+    }
+
+    function _assertWrongRootLeavesNothing(bytes32 salt, bool cancelFirst) internal {
+        address meme = _graduated(t.erc20Quote, salt);
+        IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
+
+        bytes32[] memory bad = new bytes32[](2);
+        bad[0] = MerkleTree.leaf(eve, c.basePool, 0);
+        bad[1] = MerkleTree.leaf(address(0xdead), 0, 0);
+        t.vault.proposeRoot(meme, MerkleTree.root(bad), "ipfs://bad", c.basePool, 0);
+        vm.prank(stranger); // the same block as the proposal
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPerkLPGrantVault.InvalidStatus.selector, IPerkLPGrantVault.CampaignStatus.ROOT_PROPOSED
+            )
+        );
+        t.vault.registerAllocation(meme, _leafStruct(eve, c.basePool, 0), MerkleTree.proof(bad, 0));
+
+        if (cancelFirst) t.vault.cancelRoot(meme);
+        bytes32[] memory good = new bytes32[](4);
+        good[0] = MerkleTree.leaf(alice, 100_000_000 ether, 0);
+        good[1] = MerkleTree.leaf(bob, 10_000_000 ether, 0);
+        good[2] = MerkleTree.leaf(carol, 5_000_000 ether, 0);
+        good[3] = MerkleTree.leaf(address(0xdead), 0, 0);
+        _proposeAndActivateRoot(meme, MerkleTree.root(good), 115_000_000 ether, 0);
+
+        assertFalse(t.vault.allocation(meme, eve).registered);
+        vm.expectRevert(IPerkLPGrantVault.InvalidProof.selector);
+        t.vault.registerAllocation(meme, _leafStruct(eve, c.basePool, 0), MerkleTree.proof(bad, 0));
+        vm.prank(eve);
+        vm.expectRevert(IPerkLPGrantVault.NotRegistered.selector);
+        t.vault.activateGrant(meme, 1 ether, 0, 0, 1 ether, 0);
+
+        // the legitimate top allocation is served in full
+        t.vault.registerAllocation(meme, _leafStruct(alice, 100_000_000 ether, 0), MerkleTree.proof(good, 0));
+        uint256 pos = _activate(meme, alice, 100_000_000 ether, 0, 0);
+        assertApproxEqRel(t.vault.position(pos).grantMemeAmount, 100_000_000 ether, 1e6);
+    }
+
+    /// @dev A tree whose leaves add up to more than the totals it declared cannot hand out more than it declared.
+    function test_registerAllocation_reverts_whenLeavesExceedTheDeclaredBaseTotal() public {
+        address meme = _graduated(t.erc20Quote, keccak256("over-base"));
+        _proposeAndActivateRoot(meme, root, ALICE_BASE + CAROL_BASE, BOB_BOOST); // the leaves hold 3.5M base
+        t.vault.registerAllocation(meme, _leafStruct(alice, ALICE_BASE, 0), MerkleTree.proof(leaves, 0));
+        vm.expectRevert(IPerkLPGrantVault.RootBudgetExceeded.selector);
+        t.vault.registerAllocation(meme, _leafStruct(bob, BOB_BASE, BOB_BOOST), MerkleTree.proof(leaves, 1));
+        t.vault.registerAllocation(meme, _leafStruct(carol, CAROL_BASE, 0), MerkleTree.proof(leaves, 2));
+        IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
+        assertEq(c.registeredBase, ALICE_BASE + CAROL_BASE);
+        assertEq(c.registeredBase, c.rootTotalBase);
+        assertFalse(t.vault.allocation(meme, bob).registered);
+    }
+
+    function test_registerAllocation_reverts_whenLeavesExceedTheDeclaredBoostTotal() public {
+        bytes32[] memory custom = new bytes32[](4);
+        custom[0] = MerkleTree.leaf(alice, 1000 ether, 0);
+        custom[1] = MerkleTree.leaf(bob, 0, 60_000 ether);
+        custom[2] = MerkleTree.leaf(carol, 0, 50_000 ether);
+        custom[3] = MerkleTree.leaf(address(0xdead), 0, 0);
+        address meme = _graduated(t.erc20Quote, keccak256("over-boost"));
+        _proposeAndActivateRoot(meme, MerkleTree.root(custom), 1000 ether, 100_000 ether);
+        t.vault.registerAllocation(meme, _leafStruct(bob, 0, 60_000 ether), MerkleTree.proof(custom, 1));
+        vm.expectRevert(IPerkLPGrantVault.RootBudgetExceeded.selector);
+        t.vault.registerAllocation(meme, _leafStruct(carol, 0, 50_000 ether), MerkleTree.proof(custom, 2));
+        assertEq(t.vault.campaign(meme).registeredInviteeBoost, 60_000 ether);
+    }
+
+    // -------------------------------------------------------------------------
+    // Incentives accrue by liquidity-seconds
+    // -------------------------------------------------------------------------
+
+    /// @dev Security: the incentive pool used to pay by instantaneous liquidity, so an allocation holder could
+    ///      activate right in front of a large exit and take a share of its excess. A position shares in an exit by
+    ///      the liquidity-seconds it has accrued, and one opened in the same block has accrued none.
+    function test_incentive_activatingJustBeforeAnExit_earnsNothingFromIt() public {
+        address meme = _activeDefault(keccak256("jit"));
+        _registerDefault(meme);
+        uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
+        uint256 carolPos = _activate(meme, carol, CAROL_BASE, 0, 0);
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        _swap(key, _quoteIs0(meme), 30 ether, 0);
+        _swap(key, _quoteIs0(meme), 30 ether, 0);
+        vm.warp(vm.getBlockTimestamp() + 1 days + 1); // a genuine rise that has held
+
+        // bob sees carol's exit coming and activates right in front of it, with more liquidity than alice has
+        (uint256 bobBase,,) = t.vault.grantBreakdown(meme, bob);
+        uint256 bobPos = _activate(meme, bob, bobBase, 0, 0);
+        vm.prank(carol);
+        (,, uint256 excess,) = t.vault.exitGrantPosition(carolPos, 0, 0);
+        assertGt(excess, 0);
+        uint256 pool = t.vault.campaign(meme).incentiveBalance;
+        assertEq(pool, excess, "all of a genuine excess is recycled");
+        assertEq(t.vault.position(bobPos).activatedAt, vm.getBlockTimestamp(), "bob opened in the exit's block");
+
+        assertEq(t.vault.pendingIncentive(bobPos), 0);
+        (,, uint256 bobPaid) = t.vault.collectGrantFees(bobPos);
+        assertEq(bobPaid, 0);
+        vm.warp(vm.getBlockTimestamp() + 2 days); // staying on does not buy a share of an exit that is already settled
+        (,, bobPaid) = t.vault.collectGrantFees(bobPos);
+        assertEq(bobPaid, 0);
+        (,, uint256 alicePaid) = t.vault.collectGrantFees(alicePos);
+        assertApproxEqAbs(alicePaid, pool, 1);
+    }
+
+    /// @dev Two positions of different ages share an exit's excess in proportion to liquidity * age.
+    function test_incentive_isSharedByLiquiditySeconds() public {
+        address meme = _activeDefault(keccak256("liquidity-seconds"));
+        _registerDefault(meme);
+        uint256 carolPos = _activate(meme, carol, CAROL_BASE, 0, 0);
+        uint256 alicePos = _activate(meme, alice, ALICE_BASE / 2, 0, 0);
+        uint256 t0 = vm.getBlockTimestamp();
+        vm.warp(t0 + 3 days);
+        (uint256 bobBase,,) = t.vault.grantBreakdown(meme, bob);
+        uint256 bobPos = _activate(meme, bob, bobBase, 0, 0);
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        _swap(key, _quoteIs0(meme), 30 ether, 0);
+        _swap(key, _quoteIs0(meme), 30 ether, 0);
+        vm.warp(t0 + 6 days);
+
+        vm.prank(carol);
+        t.vault.exitGrantPosition(carolPos, 0, 0);
+        uint256 pool = t.vault.campaign(meme).incentiveBalance;
+        assertGt(pool, 0);
+        IPerkLPGrantVault.GrantPosition memory a = t.vault.position(alicePos);
+        IPerkLPGrantVault.GrantPosition memory b = t.vault.position(bobPos);
+        assertEq(b.activatedAt - a.activatedAt, 3 days);
+        uint256 wa = uint256(a.liquidity) * (t0 + 6 days - a.activatedAt);
+        uint256 wb = uint256(b.liquidity) * (t0 + 6 days - b.activatedAt);
+        assertApproxEqAbs(t.vault.pendingIncentive(alicePos), (pool * wa) / (wa + wb), 2);
+        assertApproxEqAbs(t.vault.pendingIncentive(bobPos), (pool * wb) / (wa + wb), 2);
+        assertLe(t.vault.pendingIncentive(alicePos) + t.vault.pendingIncentive(bobPos), pool);
+        assertEq(t.vault.pendingIncentive(carolPos), 0, "an exited position is owed nothing");
     }
 
     // -------------------------------------------------------------------------
@@ -593,25 +836,53 @@ contract LPGrantVaultEdgeTest is GrantTestBase {
         _activate(meme, alice, claimable, 0, 0);
     }
 
-    /// @dev Security: the excess quote an exit routes to the incentive pool is whatever the position holds above
-    ///      the deposit, so a pump around one's own exit would mint "excess" for a second position to collect.
-    function test_exitGrantPosition_reverts_whilePriceIsOffReference_thenClears() public {
+    /// @dev Exits are never blocked by price. Far above the hook's reference (a pump in the same block), the exit
+    ///      goes through, and the excess the pump created goes to the treasury rather than to the incentive pool,
+    ///      where a second position of the same LP would collect it.
+    function test_exitGrantPosition_farAboveReference_succeeds_andTheMoveGoesToTheTreasury() public {
         address meme = _activeDefault(keccak256("guard-exit"));
         _registerDefault(meme);
         uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
-        _activate(meme, bob, BOB_BASE, 0, 0);
+        uint256 bobPos = _activate(meme, bob, BOB_BASE, 0, 0);
         PoolKey memory key = t.graduation.graduationOf(meme).key;
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(vm.getBlockTimestamp() + 1 days + 1);
 
         _swap(key, _quoteIs0(meme), 40 ether, 0);
-        vm.prank(alice);
-        vm.expectPartialRevert(IPerkLPGrantVault.PriceUnstable.selector);
-        t.vault.exitGrantPosition(alicePos, 0, 0);
-        assertEq(t.vault.campaign(meme).incentiveBalance, 0);
+        (int24 spot, int24 ref) = t.hook.referencePrice(t.graduation.graduationOf(meme).poolId);
+        int256 gap = int256(spot) - int256(ref);
+        assertGt(gap < 0 ? -gap : gap, 500, "well outside the activation guard");
 
-        vm.warp(block.timestamp + 1 hours);
+        uint256 treasuryBefore = t.quoteToken.balanceOf(address(t.treasury));
         vm.prank(alice);
-        t.vault.exitGrantPosition(alicePos, 0, 0);
+        (uint256 toUser,, uint256 excess,) = t.vault.exitGrantPosition(alicePos, 0, 0);
+        assertEq(toUser, t.vault.position(alicePos).quoteDeposited);
+        assertGt(excess, 0);
+        assertEq(t.vault.campaign(meme).incentiveBalance, 0, "nothing of the pump is recycled");
+        assertEq(t.quoteToken.balanceOf(address(t.treasury)) - treasuryBefore, excess);
+        assertEq(t.vault.pendingIncentive(bobPos), 0);
+    }
+
+    /// @dev ... and far below it (a crash), the exit goes through too, with the grant meme covering the shortfall.
+    function test_exitGrantPosition_farBelowReference_succeeds() public {
+        address meme = _activeDefault(keccak256("crash-exit"));
+        _registerDefault(meme);
+        uint256 alicePos = _activate(meme, alice, ALICE_BASE, 0, 0);
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        vm.warp(vm.getBlockTimestamp() + 1 days + 1);
+        uint256 inventory = IERC20(meme).balanceOf(buyer);
+        vm.prank(buyer);
+        IERC20(meme).transfer(swapper, inventory);
+        _sellMeme(key, _quoteIs0(meme), meme, inventory / 2);
+        (int24 spot, int24 ref) = t.hook.referencePrice(t.graduation.graduationOf(meme).poolId);
+        int256 gap = int256(spot) - int256(ref);
+        assertGt(gap < 0 ? -gap : gap, 5000, "a crash of thousands of ticks");
+
+        vm.prank(alice);
+        (uint256 toUser, uint256 memeToUser, uint256 excess,) = t.vault.exitGrantPosition(alicePos, 0, 0);
+        assertLt(toUser, t.vault.position(alicePos).quoteDeposited);
+        assertGt(memeToUser, 0);
+        assertEq(excess, 0);
+        assertTrue(t.vault.position(alicePos).exited);
     }
 
     /// @dev Small moves pass: the guard is a band around the reference, not a freeze on trading.
@@ -886,6 +1157,136 @@ contract LPGrantVaultExitManipulationTest is GrantTestBase {
         vm.prank(alice);
         t.vault.exitGrantPosition(pos, 0, 0);
         _sellMeme(key, q0, meme, bought); // sell exactly what was bought
+    }
+}
+
+/// @dev Two positions and the deployed guard values (500 ticks, every unit of excess recycled). An LP holding both
+///      pumps the price, exits one position into the pump, collects the recycled "excess" with the other and
+///      trades the price back. That used to net about 2% of the exiting deposit, paid in grant meme that would
+///      otherwise have been burned. The recycled excess is now measured at the hook's reference price, so the pump
+///      recycles nothing and only costs the attacker its swap fees, inside the guard band and far outside it.
+contract LPGrantVaultPumpExitTest is GrantTestBase {
+    using PoolIdLibrary for PoolKey;
+
+    uint256 internal constant A_BASE = 50_000_000 ether;
+    uint256 internal constant B_BASE = 50_000_000 ether;
+    uint256 internal constant C_BASE = 10_000_000 ether;
+    bytes32[] internal big;
+
+    function setUp() public {
+        _setUpPerk(); // excessToIncentiveBps 10_000, maxPriceDeviationTicks 500: the deployed values
+        big = new bytes32[](4);
+        big[0] = MerkleTree.leaf(alice, A_BASE, 0);
+        big[1] = MerkleTree.leaf(bob, B_BASE, 0);
+        big[2] = MerkleTree.leaf(carol, C_BASE, 0);
+        big[3] = MerkleTree.leaf(address(0xdead), 0, 0);
+    }
+
+    function test_pumpExitCollect_withTwoPositions_insideTheGuard_isNotProfitable() public {
+        _assertPumpExitCollectUnprofitable(keccak256("pump-inside"), 490);
+    }
+
+    function test_pumpExitCollect_withTwoPositions_farOutsideTheGuard_isNotProfitable() public {
+        _assertPumpExitCollectUnprofitable(keccak256("pump-outside"), 3000);
+    }
+
+    function _assertPumpExitCollectUnprofitable(bytes32 salt, int24 pumpTicks) internal {
+        address meme = _graduated(t.erc20Quote, salt);
+        _proposeAndActivateRoot(meme, MerkleTree.root(big), A_BASE + B_BASE + C_BASE, 0);
+        t.vault.registerAllocation(meme, _leafStruct(alice, A_BASE, 0), MerkleTree.proof(big, 0));
+        t.vault.registerAllocation(meme, _leafStruct(bob, B_BASE, 0), MerkleTree.proof(big, 1));
+        uint256 posA = _activate(meme, alice, A_BASE, 0, 0);
+        uint256 posB = _activate(meme, bob, B_BASE, 0, 0);
+
+        vm.warp(vm.getBlockTimestamp() + 1 days + 1);
+        PoolKey memory key = t.graduation.graduationOf(meme).key;
+        bool q0 = _quoteIs0(meme);
+        uint160 p0 = _sqrtPriceOf(meme);
+        (, int24 tick0,,) = StateLibrary.getSlot0(manager, key.toId());
+        vm.prank(swapper); // the attacker's trading account holds quote only
+        IERC20(meme).approve(address(swapRouter), type(uint256).max);
+
+        uint256 snap = vm.snapshotState();
+        vm.prank(alice);
+        t.vault.exitGrantPosition(posA, 0, 0);
+        vm.prank(bob);
+        t.vault.exitGrantPosition(posB, 0, 0);
+        uint256 honest = _wealth(meme, p0);
+        vm.revertToState(snap);
+
+        uint160 pumped =
+            q0 ? TickMath.getSqrtPriceAtTick(tick0 - pumpTicks) : TickMath.getSqrtPriceAtTick(tick0 + pumpTicks);
+        _buyMemeUpTo(key, q0, pumped);
+        (, int24 tickPumped,,) = StateLibrary.getSlot0(manager, key.toId());
+        int256 moved = int256(tickPumped) - int256(tick0);
+        assertGt(moved < 0 ? -moved : moved, int256(pumpTicks) - 20, "the pump reached its target");
+
+        vm.prank(alice);
+        (,, uint256 excess,) = t.vault.exitGrantPosition(posA, 0, 0); // never refused, whatever the price
+        (,, uint256 incentive) = t.vault.collectGrantFees(posB);
+        _swapTo(key, !q0, -int256(1_000_000_000 ether), p0); // meme back in, down to the starting price exactly
+        assertEq(_sqrtPriceOf(meme), p0);
+        vm.prank(bob);
+        t.vault.exitGrantPosition(posB, 0, 0);
+        uint256 attacked = _wealth(meme, p0);
+
+        emit log_named_uint("excess created by the pump", excess);
+        emit log_named_uint("incentive collected by the second position", incentive);
+        emit log_named_int("attacker profit vs honest (quote wei)", int256(attacked) - int256(honest));
+        assertGt(excess, 0);
+        assertEq(incentive, 0, "the pump's excess is not recycled");
+        assertLt(attacked, honest, "pump-exit-collect does not pay");
+    }
+
+    function _wealth(address meme, uint160 sqrtP) internal view returns (uint256) {
+        uint256 q = t.quoteToken.balanceOf(alice) + t.quoteToken.balanceOf(bob) + t.quoteToken.balanceOf(swapper);
+        uint256 m = IERC20(meme).balanceOf(alice) + IERC20(meme).balanceOf(bob) + IERC20(meme).balanceOf(swapper);
+        return q + _memeValueInQuoteAt(meme, m, sqrtP);
+    }
+
+    function _swapTo(PoolKey memory key, bool zeroForOne, int256 amountSpecified, uint160 limit) internal {
+        vm.prank(swapper);
+        swapRouter.swap(
+            key,
+            SwapParams({zeroForOne: zeroForOne, amountSpecified: amountSpecified, sqrtPriceLimitX96: limit}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+    }
+
+    function _trySwap(PoolKey memory key, bool zeroForOne, uint256 amountIn) internal returns (bool ok) {
+        vm.prank(swapper);
+        try swapRouter.swap(
+            key,
+            SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        ) {
+            ok = true;
+        } catch {}
+    }
+
+    /// @dev Exact-input quote swap sized by binary search so the price gets as close to `target` as possible without
+    ///      crossing it. Sized rather than price-limited: the hook charges its fee on the whole specified amount.
+    function _buyMemeUpTo(PoolKey memory key, bool q0, uint160 target) internal returns (uint256 amountIn) {
+        uint256 lo;
+        uint256 hi = 1_000_000 ether;
+        for (uint256 i; i < 90 && lo < hi; ++i) {
+            uint256 mid = (lo + hi + 1) / 2;
+            uint256 snap = vm.snapshotState();
+            bool ok = _trySwap(key, q0, mid);
+            (uint160 p,,,) = StateLibrary.getSlot0(manager, key.toId());
+            vm.revertToState(snap);
+            bool crossed = q0 ? p < target : p > target;
+            if (ok && !crossed) lo = mid;
+            else hi = mid - 1;
+        }
+        amountIn = lo;
+        if (amountIn > 0) assertTrue(_trySwap(key, q0, amountIn));
     }
 }
 

@@ -26,7 +26,7 @@ library PerkTypes {
     /// @dev What GraduationManager does with meme left over after seeding the pool at the curve's final price.
     enum LeftoverPolicy {
         BURN,
-        RANGE_ORDER // reserved, not implemented in V1
+        RANGE_ORDER // reserved: not implemented in V1, so TemplateRegistry refuses templates that select it
     }
 
     enum RegistryStatus {

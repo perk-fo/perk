@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.26;
 
+// forge-lint: disable-start(environment-read-across-mutation)
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
@@ -97,6 +99,27 @@ contract EmergencyControlsTest is GrantTestBase {
         t.factory.setPaused(0);
         t.graduation.graduate(meme);
         assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATED));
+    }
+
+    /// @dev The factory records when graduation was last reopened; a graduation rescue waits a full delay after it.
+    function test_setPaused_recordsWhenGraduationReopens() public {
+        assertEq(t.factory.graduationResumedAt(), 0);
+        t.factory.setPaused(PerkConstants.PAUSE_BUY);
+        t.factory.setPaused(0);
+        assertEq(t.factory.graduationResumedAt(), 0, "other areas do not count");
+
+        uint256 t0 = vm.getBlockTimestamp();
+        t.factory.setPaused(PerkConstants.PAUSE_GRADUATION);
+        vm.warp(t0 + 1 hours);
+        t.factory.setPaused(PerkConstants.PAUSE_GRADUATION | PerkConstants.PAUSE_BUY);
+        assertEq(t.factory.graduationResumedAt(), 0, "still paused");
+
+        vm.warp(t0 + 2 hours);
+        t.factory.setPaused(PerkConstants.PAUSE_BUY);
+        assertEq(t.factory.graduationResumedAt(), t0 + 2 hours);
+        vm.warp(t0 + 3 hours);
+        t.factory.setPaused(0);
+        assertEq(t.factory.graduationResumedAt(), t0 + 2 hours, "only a real reopening counts");
     }
 
     function test_pauseGrantJoin_blocksNewPositions_existingOnesCanLeave() public {
@@ -264,3 +287,4 @@ contract EmergencyControlsTest is GrantTestBase {
         t.factory.setLaunchStatus(done, PerkTypes.LaunchStatus.REFUNDING, PoolId.wrap(bytes32(0)));
     }
 }
+// forge-lint: disable-end(environment-read-across-mutation)

@@ -144,6 +144,20 @@ contract TemplateRegistryTest is Test {
         registry.registerTemplate(bytes32("bad"), t);
     }
 
+    /// @dev GraduationManager implements only BURN. A RANGE_ORDER template used to register fine and then make every
+    ///      launch on it revert at the end of graduation; it is refused up front.
+    function test_registerTemplate_reverts_rangeOrderLeftoverPolicy() public {
+        PerkTypes.Template memory t = _perk();
+        t.pool.leftoverPolicy = PerkTypes.LeftoverPolicy.RANGE_ORDER;
+        _expectInvalid("leftover policy");
+        registry.registerTemplate(bytes32("bad"), t);
+
+        t = PerkTemplates.standardCurveV1(PerkTemplates.defaultNumbers());
+        t.pool.leftoverPolicy = PerkTypes.LeftoverPolicy.RANGE_ORDER;
+        _expectInvalid("leftover policy");
+        registry.registerTemplate(bytes32("bad"), t);
+    }
+
     function test_registerTemplate_reverts_minEligible() public {
         PerkTypes.Template memory t = _perk();
         t.minEligibleBalance = 0;

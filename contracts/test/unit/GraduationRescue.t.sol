@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.26;
 
+// forge-lint: disable-start(environment-read-across-mutation)
+
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
@@ -67,22 +69,26 @@ contract GraduationRescueTest is GrantTestBase {
         else t.curve.buy(meme, amount, 0, who);
     }
 
-    /// @dev Graduate with the next stage's external call failing, so the launch stops at `at`.
-    function _stall(address meme, IPerkGraduationManager.Stage at) internal {
-        if (at == IPerkGraduationManager.Stage.FUNDED) {
+    /// @dev Attempts a graduation whose `step`-th external call fails (0: pool initialisation, 1: seeding,
+    ///      2: the grant campaign). Graduation is atomic, so the attempt reverts and the launch is left at NONE with
+    ///      its money still in the curve.
+    function _failGraduation(address meme, uint256 step) internal {
+        if (step == 0) {
             vm.mockCallRevert(address(manager), abi.encodeWithSelector(IPoolManager.initialize.selector), "STALL");
-        } else if (at == IPerkGraduationManager.Stage.POOL_INITIALIZED) {
+        } else if (step == 1) {
             vm.mockCallRevert(
                 address(t.positionManager), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "STALL"
             );
-        } else if (at == IPerkGraduationManager.Stage.LIQUIDITY_ADDED) {
+        } else {
             vm.mockCallRevert(
                 address(t.vault), abi.encodeWithSelector(IPerkLPGrantVault.initCampaign.selector), "STALL"
             );
         }
+        vm.expectRevert(bytes("STALL"));
         t.graduation.graduate(meme);
         vm.clearMockedCalls();
-        assertEq(uint256(t.graduation.graduationOf(meme).stage), uint256(at));
+        assertEq(uint256(t.graduation.graduationOf(meme).stage), uint256(IPerkGraduationManager.Stage.NONE));
+        assertFalse(t.curve.curveState(meme).finalized);
     }
 
     function _rescue(address meme) internal {
@@ -124,15 +130,11 @@ contract GraduationRescueTest is GrantTestBase {
 
     // ------------------------------------------------------------------ happy paths
 
-    function test_rescue_fromEveryStuckStage_refundsHoldersProRata() public {
-        IPerkGraduationManager.Stage[3] memory stages = [
-            IPerkGraduationManager.Stage.NONE,
-            IPerkGraduationManager.Stage.FUNDED,
-            IPerkGraduationManager.Stage.POOL_INITIALIZED
-        ];
-        for (uint256 s; s < stages.length; ++s) {
+    /// @dev Whichever step of graduation keeps failing, the launch stays whole at NONE and the rescue refunds it.
+    function test_rescue_ofALaunchWhoseGraduationKeepsFailing_refundsHoldersProRata() public {
+        for (uint256 s; s < 4; ++s) {
             address meme = _pending(t.erc20Quote, keccak256(abi.encode("stuck", s)));
-            if (stages[s] != IPerkGraduationManager.Stage.NONE) _stall(meme, stages[s]);
+            if (s > 0) _failGraduation(meme, s - 1);
 
             uint256[4] memory bal;
             uint256 sumBal;
@@ -160,7 +162,7 @@ contract GraduationRescueTest is GrantTestBase {
 
     function test_rescue_nativeQuote() public {
         address meme = _pending(t.nativeQuote, keccak256("native"));
-        _stall(meme, IPerkGraduationManager.Stage.POOL_INITIALIZED);
+        _failGraduation(meme, 1);
         _rescue(meme);
         _redeemAll(meme, t.nativeQuote);
     }
@@ -249,7 +251,7 @@ contract GraduationRescueTest is GrantTestBase {
     /// @dev The delay is the chance for the launch to graduate after all; if it does, the rescue is void.
     function test_rescue_voidedWhenTheLaunchGraduatesDuringTheDelay() public {
         address meme = _pending(t.erc20Quote, keccak256("late"));
-        _stall(meme, IPerkGraduationManager.Stage.POOL_INITIALIZED);
+        _failGraduation(meme, 1);
         t.graduation.proposeRescue(meme);
 
         vm.expectEmit(true, false, false, false, address(t.graduation));
@@ -264,7 +266,7 @@ contract GraduationRescueTest is GrantTestBase {
         t.graduation.executeRescue(meme);
     }
 
-    /// @dev Only launches with nowhere to sell qualify: from LIQUIDITY_ADDED on the pool is live.
+    /// @dev Only launches with nowhere to sell qualify: a launch still on its curve or already graduated does not.
     function test_rescue_onlyForLaunchesStuckBeforeTheirPool() public {
         address active = _createLaunch(PerkConstants.TEMPLATE_PERK_GRANT_V1, t.erc20Quote, keccak256("active"));
         vm.expectRevert(IPerkGraduationManager.NotGraduationPending.selector);
@@ -273,22 +275,15 @@ contract GraduationRescueTest is GrantTestBase {
         address done = _graduated(t.erc20Quote, keccak256("done"));
         vm.expectRevert(IPerkGraduationManager.NotGraduationPending.selector);
         t.graduation.proposeRescue(done);
-
-        address live = _pending(t.erc20Quote, keccak256("live"));
-        _stall(live, IPerkGraduationManager.Stage.LIQUIDITY_ADDED);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPerkGraduationManager.NotRescuable.selector, IPerkGraduationManager.Stage.LIQUIDITY_ADDED
-            )
-        );
-        t.graduation.proposeRescue(live);
     }
 
-    /// @dev A proposal made while funds sat in the curve still works if graduation moved them in the meantime.
-    function test_rescue_proposedAtNone_executesAfterAPartialGraduation() public {
+    /// @dev A graduation that fails during the delay changes nothing: the rescue executes from the curve as proposed.
+    function test_rescue_proposed_thenAFailedGraduation_changesNothing() public {
         address meme = _pending(t.erc20Quote, keccak256("moved"));
         t.graduation.proposeRescue(meme);
-        _stall(meme, IPerkGraduationManager.Stage.FUNDED);
+        uint64 at = t.graduation.graduationOf(meme).rescueExecutableAt;
+        _failGraduation(meme, 2);
+        assertEq(t.graduation.graduationOf(meme).rescueExecutableAt, at);
         vm.warp(block.timestamp + RESCUE_DELAY);
         t.graduation.executeRescue(meme);
         IPerkGraduationManager.Graduation memory g = t.graduation.graduationOf(meme);
@@ -402,29 +397,138 @@ contract GraduationRescueTest is GrantTestBase {
     /// @dev A rescue pays out only its own launch's quote; another launch parked in the same currency is untouched
     ///      and can still graduate with everything it was owed.
     function test_rescue_leavesOtherLaunchesFundsAlone() public {
-        address parked = _pending(t.erc20Quote, keccak256("parked-other"));
-        _stall(parked, IPerkGraduationManager.Stage.POOL_INITIALIZED);
-        uint256 parkedQuote = t.graduation.graduationOf(parked).quoteHeld;
-
         address rescued = _pending(t.erc20Quote, keccak256("rescued"));
-        _stall(rescued, IPerkGraduationManager.Stage.FUNDED);
         _rescue(rescued);
-        _redeemAll(rescued, t.erc20Quote);
+        uint256 rescuedQuote = t.graduation.graduationOf(rescued).quoteHeld;
+        assertEq(t.erc20Quote.balanceOf(address(t.graduation)), rescuedQuote);
 
-        assertEq(t.graduation.graduationOf(parked).quoteHeld, parkedQuote);
-        assertGe(t.erc20Quote.balanceOf(address(t.graduation)), parkedQuote);
-        t.graduation.graduate(parked);
-        assertEq(uint256(t.factory.getLaunch(parked).status), uint256(PerkTypes.LaunchStatus.GRADUATED));
-        assertGt(t.graduation.graduationOf(parked).liquidity, 0);
+        // another launch on the same quote graduates while the refund is outstanding
+        address other = _pending(t.erc20Quote, keccak256("parked-other"));
+        t.graduation.graduate(other);
+        assertEq(uint256(t.factory.getLaunch(other).status), uint256(PerkTypes.LaunchStatus.GRADUATED));
+        assertGt(t.graduation.graduationOf(other).liquidity, 0);
+        assertEq(t.graduation.graduationOf(rescued).quoteHeld, rescuedQuote);
+        assertEq(t.erc20Quote.balanceOf(address(t.graduation)), rescuedQuote);
+
+        _redeemAll(rescued, t.erc20Quote);
+        assertEq(t.erc20Quote.balanceOf(address(t.graduation)), 0);
     }
 
-    /// @dev Pausing everything never blocks the way out: a rescue can still run and holders can still redeem.
-    function test_pauseAll_doesNotBlockRescueOrRedeem() public {
+    /// @dev Pausing everything never blocks the way out: holders of a refunding launch can still redeem. Executing
+    ///      a rescue is not a way out but the end of a launch's chance to graduate, so the pause holds it too.
+    function test_pauseAll_blocksRescueExecution_butNeverRedemption() public {
         address meme = _pending(t.erc20Quote, keccak256("paused"));
+        address refunding = _pending(t.erc20Quote, keccak256("refunding"));
+        _rescue(refunding);
+        t.graduation.proposeRescue(meme);
+        vm.warp(vm.getBlockTimestamp() + RESCUE_DELAY);
+
         t.factory.setPaused(PerkConstants.PAUSE_ALL);
-        vm.expectRevert(abi.encodeWithSelector(IPerkLaunchFactory.Paused.selector, PerkConstants.PAUSE_GRADUATION));
+        bytes memory paused = abi.encodeWithSelector(IPerkLaunchFactory.Paused.selector, PerkConstants.PAUSE_GRADUATION);
+        vm.expectRevert(paused);
         t.graduation.graduate(meme);
+        vm.expectRevert(paused);
+        t.graduation.executeRescue(meme);
+        _redeemAll(refunding, t.erc20Quote);
+    }
+
+    /// @dev Security: pause plus rescue must not let the owner force a launch into refunds. The owner proposes a
+    ///      rescue for a launch whose curve has just completed, then pauses graduation so that nobody can graduate it
+    ///      during the delay. The rescue cannot execute while the pause lasts, and when the pause is lifted it waits
+    ///      a whole delay again with graduation open, so unpausing and executing in one go fails too. Anyone
+    ///      graduates the launch in that window and the rescue is void.
+    function test_pauseAndRescue_cannotForceAPendingLaunchIntoRefunds() public {
+        address meme = _pending(t.erc20Quote, keccak256("forced"));
+        t.graduation.proposeRescue(meme);
+        t.factory.setPaused(PerkConstants.PAUSE_GRADUATION);
+        vm.warp(vm.getBlockTimestamp() + RESCUE_DELAY + 1 days);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IPerkLaunchFactory.Paused.selector, PerkConstants.PAUSE_GRADUATION));
+        t.graduation.executeRescue(meme);
+
+        // lifting the pause and executing at once
+        t.factory.setPaused(0);
+        uint64 now_ = uint64(vm.getBlockTimestamp());
+        assertEq(t.factory.graduationResumedAt(), now_);
+        uint64 reopenedUntil = now_ + RESCUE_DELAY;
+        vm.expectRevert(abi.encodeWithSelector(IPerkGraduationManager.RescueNotReady.selector, reopenedUntil));
+        t.graduation.executeRescue(meme);
+        vm.warp(reopenedUntil - 1);
+        vm.expectRevert(abi.encodeWithSelector(IPerkGraduationManager.RescueNotReady.selector, reopenedUntil));
+        t.graduation.executeRescue(meme);
+
+        // graduation is open the whole time: anyone graduates, and the rescue is void
+        vm.prank(stranger);
+        t.graduation.graduate(meme);
+        assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.GRADUATED));
+        vm.warp(reopenedUntil);
+        vm.expectRevert(IPerkGraduationManager.RescueNotProposed.selector);
+        t.graduation.executeRescue(meme);
+    }
+
+    /// @dev A pause lifted long before the proposal does not delay the rescue at all.
+    function test_executeRescue_anOldPauseDoesNotDelayIt() public {
+        uint256 t0 = vm.getBlockTimestamp();
+        t.factory.setPaused(PerkConstants.PAUSE_GRADUATION);
+        vm.warp(t0 + 1 days);
+        t.factory.setPaused(0);
+        vm.warp(t0 + 1 days + RESCUE_DELAY);
+        address meme = _pending(t.erc20Quote, keccak256("old-pause"));
+        t.graduation.proposeRescue(meme);
+        uint64 at = t.graduation.graduationOf(meme).rescueExecutableAt;
+        assertEq(at, t0 + 1 days + 2 * uint256(RESCUE_DELAY));
+        vm.warp(at);
+        t.graduation.executeRescue(meme);
+        assertEq(uint256(t.factory.getLaunch(meme).status), uint256(PerkTypes.LaunchStatus.REFUNDING));
+    }
+
+    // ------------------------------------------------------------------ the grant reserve of a refunded launch
+
+    /// @dev A refunded Perk launch never gets a grant campaign, so its reserve would sit in the vault for good.
+    ///      Anyone can burn it once the launch is REFUNDING, and nobody's refund changes when they do.
+    function test_burnRefundedReserve_burnsIt_andRefundsAreUnchanged() public {
+        address meme = _pending(t.erc20Quote, keccak256("reserve"));
         _rescue(meme);
+        uint256 reserve = IERC20(meme).balanceOf(address(t.vault));
+        assertGt(reserve, 0);
+        uint256 aliceBal = IERC20(meme).balanceOf(alice);
+        uint256 aliceRefund = t.graduation.previewRedeem(meme, aliceBal);
+        uint256 supply = IERC20(meme).totalSupply();
+
+        vm.expectEmit(true, false, false, true, address(t.vault));
+        emit IPerkLPGrantVault.GrantMemeBurned(meme, reserve, "REFUNDED");
+        vm.expectEmit(true, false, false, true, address(t.vault));
+        emit IPerkLPGrantVault.CampaignCancelled(meme, reserve);
+        vm.prank(stranger);
+        assertEq(t.vault.burnRefundedReserve(meme), reserve);
+
+        assertEq(supply - IERC20(meme).totalSupply(), reserve);
+        assertEq(IERC20(meme).balanceOf(address(t.vault)), 0);
+        IPerkLPGrantVault.Campaign memory c = t.vault.campaign(meme);
+        assertEq(uint256(c.status), uint256(IPerkLPGrantVault.CampaignStatus.CANCELLED));
+        assertEq(c.burned, reserve);
+        assertEq(t.graduation.previewRedeem(meme, aliceBal), aliceRefund, "no holder's refund moves");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPerkLPGrantVault.InvalidStatus.selector, IPerkLPGrantVault.CampaignStatus.CANCELLED)
+        );
+        t.vault.burnRefundedReserve(meme);
         _redeemAll(meme, t.erc20Quote);
     }
+
+    /// @dev Only a refunded launch's reserve: a pending launch may still graduate and a graduated one has a campaign.
+    function test_burnRefundedReserve_reverts_launchNotRefunding() public {
+        address pending = _pending(t.erc20Quote, keccak256("still-pending"));
+        vm.expectRevert(IPerkLPGrantVault.LaunchNotRefunding.selector);
+        t.vault.burnRefundedReserve(pending);
+
+        address done = _graduated(t.erc20Quote, keccak256("has-campaign"));
+        vm.expectRevert(IPerkLPGrantVault.LaunchNotRefunding.selector);
+        t.vault.burnRefundedReserve(done);
+
+        vm.expectRevert(IPerkLPGrantVault.LaunchNotRefunding.selector);
+        t.vault.burnRefundedReserve(stranger);
+    }
 }
+// forge-lint: disable-end(environment-read-across-mutation)

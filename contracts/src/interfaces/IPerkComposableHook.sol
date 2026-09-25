@@ -15,6 +15,11 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 ///      beforeSwap via BeforeSwapDelta; when the quote is *unspecified* (exact-out buy, exact-in sell) it is taken in
 ///      afterSwap via the returned int128. Either way the quote is `take`n to the FeeRouter and accounted with
 ///      FeeSource.HOOK inside the same callback.
+///      Price limits: when the quote is specified, the fee is charged on the whole |amountSpecified| before the swap
+///      runs. A `sqrtPriceLimitX96` that stops the swap early therefore leaves the swapper paying the fee on the unfilled
+///      part too (0.85% of it with the V1 templates). Routers should size exact-input buys (and exact-output sells)
+///      to the amount they want filled instead of relying on a binding price limit. When the quote is unspecified the
+///      fee is taken on the quote actually swapped, so price limits cost nothing extra there.
 interface IPerkComposableHook is IHooks {
     struct PoolInfo {
         bytes32 launchId;
