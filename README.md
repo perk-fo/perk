@@ -13,23 +13,28 @@ The live deployment is on X Layer testnet (chain 1952): the web app at <https://
 - **Launches from templates.** A template is an immutable, registered set of parameters: supply split, curve,
   graduation threshold, fee split, pool settings and which modules are on. Perk Launch enables LP Grant; Standard
   Launch does not. Changing a number means registering a new template, never editing contract code.
-- **Bonding curve and graduation.** A constant-product curve with virtual reserves. Graduation is resumable in
-  stages, seeds the v4 pool at the curve's final price, locks the initial position permanently and burns any surplus.
+- **Bonding curve and graduation.** A constant-product curve with virtual reserves. Graduation is all-or-nothing:
+  one transaction creates the official v4 pool, prices it at the curve's final price and seeds it with a permanently
+  locked position (the mint checks the pool price and is capped at the planned amounts), then burns any surplus.
 - **Perk hook.** Guards the official pool, collects the trading fee on every swap in it and keeps a rate-limited
   reference price.
 - **Fees.** 1.00% per trade on the curve and in the pool, split between the creator, the token's holders (paid in
   the pairing asset), liquidity, the Community Treasury and the protocol.
 - **LP Grant.** A reserve of the token's supply subsidises liquidity after graduation, allocated by a published
-  snapshot with a Merkle root, a public review window, linear decay, a minimum LP time and principal-capped exits.
-  Whatever is not used is burned.
+  snapshot with a Merkle root, a public review window, linear decay, a minimum LP time and principal-capped exits
+  that are never blocked by price. Allocations are registered against the active root. Whatever is not used is
+  burned.
 - **Referrals.** Permanent on-chain inviter binding that boosts LP Grant allocations.
 - **Multiple pairing assets.** Native OKB and whitelisted ERC-20s, including tokenised stocks. Assets may have fewer
   than 18 decimals.
 - **Emergency controls.** Pausing covers entry points only (new launches, curve buys, graduation, joining LP Grant);
-  selling, withdrawing, claiming and refunds cannot be paused. A graduation stuck before its liquidity is added can
-  be rescued into pro-rata refunds after a delay.
+  selling, withdrawing, claiming and refunds cannot be paused. A launch whose graduation cannot complete can be
+  rescued into pro-rata refunds after a public delay; a rescue cannot execute while graduation is paused, and waits
+  a full delay again once graduation reopens. The treasury can migrate a currency's balance to a new address only
+  after its timelock.
 - **Indexer and API.** Syncs chain logs into Postgres and serves launches, trades, candles, holders, LP Grant data,
-  wallet views and admin functions over REST and WebSocket. Stores token images and metadata.
+  wallet views and admin functions over REST and WebSocket. Stores token images and metadata on IPFS, and serves
+  USD prices for the pairing assets so the app can show prices, market caps and volumes in dollars.
 - **Web app.** Trading, launching, LP Grant, liquidity pools, a wallet view and role-gated admin pages, in English,
   Simplified Chinese and Japanese.
 
@@ -41,7 +46,7 @@ backend/              Indexer + read API (Bun, Hono, Postgres)
 frontend/             Web app (Next.js, wagmi, viem)
 packages/indexer      LP Grant snapshot datasets and Merkle tooling (snapshot, verify, proof, propose)
 packages/sim          Graduation maths and LP Grant payoff simulations
-packages/demo-driver  Testnet content driver: launches, trades to graduation, LP Grant cadence
+mock/                 Mock data: simulated testnet launches, trading and LP Grant activity
 scripts/              Shell helpers: environment loading, the local stack, testnet role wallets
 docker-compose.yml    Postgres plus the API, for a containerised backend
 netlify.toml          Web app build configuration
@@ -68,7 +73,7 @@ Environment files are gitignored; only the `*.example` files are committed.
 
 | File | Used by |
 |---|---|
-| `.env.example` → `.env.dev` | Foundry scripts and fork tests (through `scripts/with-env.sh`), and `scripts/stack.sh`, which passes it on to the API, the web app and the demo driver |
+| `.env.example` → `.env.dev` | Foundry scripts and fork tests (through `scripts/with-env.sh`), and `scripts/stack.sh`, which passes it on to the API, the web app and the simulator (`mock/`) |
 | `backend/.env.example` → `backend/.env` | The API when started directly from `backend/` (variables already set in the environment take precedence) |
 | `frontend/.env.example` → `frontend/.env.local` | The web app: the API URL, optional public RPC overrides and the testnet swap router |
 | `backend/test/.env.test.example` | The test database URL for backend tests |
@@ -81,7 +86,7 @@ Secrets stay server-side: the paid RPC key is only ever given to the API, the dr
 Install dependencies once per package:
 
 ```bash
-for d in backend frontend packages/indexer packages/demo-driver; do (cd "$d" && bun install); done
+for d in backend frontend packages/indexer mock; do (cd "$d" && bun install); done
 ```
 
 ### The whole stack
@@ -217,22 +222,25 @@ address does not exist.
 | Grant Admin | On-chain: the LP Grant vault's `publisher` | The Core Admin (`setPublisher`) | Publishes and cancels LP Grant allocation lists, usually as a bot |
 | General Admin | Off-chain: a list the API keeps | The Core Admin, on the admin pages | Hides launches or their media from the site, picks featured launches, sets how quote assets are shown |
 
-The API learns the two on-chain roles from contract events, so it never trusts a configured list. General Admins
+The API reads the two on-chain roles from the contracts themselves (the factory's owner and the vault's
+publisher) at sign-in and on every admin call, so it never trusts a configured list or a lagging index. General Admins
 sign in by signing a message with their wallet (EIP-4361), and the API checks the wallet's role again on every call.
 Moderation only changes what this site shows: a hidden token stays on-chain and tradable, and its page stays
 reachable so holders can sell.
 
 ## Testnet content
 
-`packages/demo-driver` keeps a testnet deployment populated so the app is never demonstrated against an empty
-database: it launches tokens on a schedule, trades each one to graduation, then walks its campaign through the
-LP Grant cadence.
+`mock/` holds the testnet simulator, and everything it produces is mock data: simulated launches, trading, liquidity
+and grant participation by wallets this project controls, each token marked "Simulated testnet token." in its
+description. It keeps the testnet market alive so the app is never demonstrated against an empty database: it launches
+tokens on a schedule, graduates about half of them and keeps the rest trading on their curves at different stages,
+and walks every campaign through the LP Grant cadence.
 
 ## Further documentation
 
 - `frontend/README.md`: web app setup, environment, pages and conventions.
 - `frontend/DESIGN.md`: the visual system.
 - `contracts/deployments/README.md`: deployment records, environment variables and the ownership handoff.
-- `packages/demo-driver/README.md`: the driver's plan, state handling and configuration.
+- `mock/README.md`: the simulator's plan, state handling and configuration.
 - `packages/indexer/DESIGN.md`: why the LP Grant snapshot works the way it does.
 - `backend/test/README.md`: backend test suites and their databases.

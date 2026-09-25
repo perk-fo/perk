@@ -333,6 +333,19 @@ export const launchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "graduationResumedAt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "grantReserveHolder",
     "inputs": [],
     "outputs": [
@@ -4546,19 +4559,6 @@ export const graduationManagerAbi = [
   },
   {
     "type": "function",
-    "name": "executeStage",
-    "inputs": [
-      {
-        "name": "meme",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "factory",
     "inputs": [],
     "outputs": [
@@ -4964,31 +4964,6 @@ export const graduationManagerAbi = [
   },
   {
     "type": "event",
-    "name": "GraduationStageFailed",
-    "inputs": [
-      {
-        "name": "meme",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "reached",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "enum IPerkGraduationManager.Stage"
-      },
-      {
-        "name": "reason",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "LaunchGraduated",
     "inputs": [
       {
@@ -5276,6 +5251,22 @@ export const graduationManagerAbi = [
         "name": "area",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "PoolPriceMismatch",
+    "inputs": [
+      {
+        "name": "poolSqrtPriceX96",
+        "type": "uint160",
+        "internalType": "uint160"
+      },
+      {
+        "name": "plannedSqrtPriceX96",
+        "type": "uint160",
+        "internalType": "uint160"
       }
     ]
   },
@@ -6824,6 +6815,25 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "function",
+    "name": "burnRefundedReserve",
+    "inputs": [
+      {
+        "name": "meme",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "burned",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "campaign",
     "inputs": [
       {
@@ -6996,7 +7006,27 @@ export const lpGrantVaultAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "accIncentivePerLiquidity",
+            "name": "accIncentivePerLiquiditySecond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "accIncentiveTimePerLiquiditySecond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "activeLiquidityTime",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "registeredBase",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "registeredInviteeBoost",
             "type": "uint256",
             "internalType": "uint256"
           }
@@ -7522,12 +7552,12 @@ export const lpGrantVaultAbi = [
             "internalType": "uint160"
           },
           {
-            "name": "incentiveDebt",
+            "name": "incentiveCheckpoint",
             "type": "uint256",
             "internalType": "uint256"
           },
           {
-            "name": "incentiveSettled",
+            "name": "incentiveTimeCheckpoint",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -8374,6 +8404,11 @@ export const lpGrantVaultAbi = [
   },
   {
     "type": "error",
+    "name": "LaunchNotRefunding",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "MinLpNotElapsed",
     "inputs": [
       {
@@ -8496,6 +8531,17 @@ export const lpGrantVaultAbi = [
   {
     "type": "error",
     "name": "RootDeadlineNotReached",
+    "inputs": [
+      {
+        "name": "deadline",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "RootDeadlinePassed",
     "inputs": [
       {
         "name": "deadline",
