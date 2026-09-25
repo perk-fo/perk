@@ -8,7 +8,7 @@ const docs: DocsContent = {
       blocks: [
         {
           kind: "p",
-          text: "Perk is a token launchpad on X Layer. Anyone can create a token in one transaction. The token trades on a bonding curve until buyers have paid in a set amount of its pairing asset; it then moves, in one transaction, to its own Uniswap v4 pool, whose starting liquidity is locked permanently.",
+          text: "Perk is a meme launchpad on X Layer built around the people who make each market: its creator, its holders, and the holders of OKB and other pairing assets who provide its liquidity. Each has a share of what the market produces, fixed when the meme launches and checkable by anyone. A meme trades on a bonding curve until buyers have paid in a set amount of its pairing asset; it then moves, in one transaction, to its own Uniswap v4 pool, whose starting liquidity is locked permanently.",
         },
         {
           kind: "p",
