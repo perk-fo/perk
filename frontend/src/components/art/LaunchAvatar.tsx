@@ -42,20 +42,25 @@ const FRAME_R = 45;
 const GROUND = 109;
 
 /**
- * The two pieces of a hatched egg, drawn flat (2D): each is an irregular fragment broken on every edge, a zigzag all
- * the way round, resting on its base at y = 0 on GROUND. Plain shell colour and a thin outline; a larger piece on the
- * left and a smaller one of a different shape on the right, so they never look like halves that fit back together.
+ * The two pieces of a hatched egg, drawn flat (2D): the lower part of a shell, with the broken rim as a jagged top
+ * edge and the egg's own curve as a smooth rounded bottom, resting on that curve at y = 0 on GROUND. No inner surface
+ * is drawn, so nothing suggests depth. Plain shell colour and a thin outline; a larger piece on the left with a
+ * roughly level rim and a smaller one on the right broken lower on one side, so they never look like a matching pair.
  */
 const SHARDS: ReadonlyArray<{ x: number; w: number; body: string }> = [
   {
     x: 5,
     w: 23,
-    body: "M0.5 0 L1.8 -3.6 L0.4 -6.2 L3.4 -8.6 L5.2 -6.6 L7.8 -10.4 L10.4 -7.4 L13.6 -10.8 L15.8 -7.6 L19 -9.4 L20.2 -6 L22.6 -4.2 L21.4 -1.8 L23 0 L17.6 -1.4 L12.4 0.2 L7 -1.2 Z",
+    body:
+      "M0.3 -9 C0.3 -3.4 4.6 0 11.5 0 C18.4 0 22.7 -3.4 22.7 -9.6" +
+      " L21.2 -12.4 L19.2 -9.8 L17 -13 L14.6 -10 L12.2 -13.4 L9.8 -10.2 L7.4 -12.8 L5 -9.8 L2.8 -12 L1.4 -9.6 Z",
   },
   {
     x: 93,
     w: 16,
-    body: "M0.4 0 L1.6 -3 L0.2 -5.2 L3.2 -7.2 L5.4 -5.4 L8.2 -8.4 L10.2 -5.8 L13.4 -7.4 L14.2 -4.4 L16 -2.6 L14.8 0 L10.6 -1.2 L6.4 0.2 L3.2 -1 Z",
+    body:
+      "M0.3 -7.6 C0.3 -2.6 3.4 0 8 0 C12.6 0 15.7 -2.2 15.7 -5.6" +
+      " L14.2 -8 L12.6 -6.2 L10.8 -9.4 L8.8 -7 L6.8 -10.2 L4.8 -7.6 L2.8 -9.6 L1.4 -7.8 Z",
   },
 ];
 
